@@ -933,6 +933,94 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       border-color: var(--accent);
     }
 
+    /* Pop-up do tipo de documento, chips do valor e rótulos da leitura */
+    .doc-type-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .doc-type-family {
+      grid-column: 1 / -1;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .doc-type-btn {
+      padding: 12px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      text-align: left;
+      line-height: 1.3;
+      cursor: pointer;
+    }
+
+    .doc-type-btn small {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--accent);
+    }
+
+    .doc-type-btn.suggested {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-light);
+    }
+
+    .doc-type-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .doc-type-hint {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--warn);
+    }
+
+    .confidence-chip.warn { color: var(--warn); background: rgba(245, 158, 11, 0.15); }
+    .confidence-chip.bad { color: var(--danger); background: rgba(239, 68, 68, 0.12); }
+    .confidence-chip.neutral { color: var(--muted); background: rgba(148, 163, 184, 0.15); }
+
+    .valor-candidates {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .valor-chip {
+      padding: 4px 10px;
+      border: 1px solid var(--warn);
+      border-radius: var(--radius-pill);
+      background: rgba(245, 158, 11, 0.12);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    textarea.fld-val {
+      min-height: 110px;
+      resize: vertical;
+      font-family: inherit;
+    }
+
     /* Print styles */
     @media print {
       .app-topbar, .app-bottom-nav, .preview-toolbar, .editor-actions-row, #toastContainer {
@@ -1040,6 +1128,16 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           
           <div style="font-size:12px; color:var(--muted);">
             Confira ou edite os campos antes de salvar:
+          </div>
+
+          <div id="docTypeRow" class="doc-type-row">
+            <span id="docTypeLabel" class="meta-tag"></span>
+            <span id="textKindLabel" class="meta-tag"></span>
+            <button type="button" id="btnChangeDocType" class="sample-btn">Trocar tipo</button>
+          </div>
+          <div id="docTypeHint" class="doc-type-hint" style="display:none;">
+            <span id="docTypeHintText"></span>
+            <button type="button" id="btnUseDetectedType" class="sample-btn">Usar esse tipo</button>
           </div>
 
           <div id="fieldsListContainer" class="fields-table-list">
@@ -1231,6 +1329,20 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       </div>
     </dialog>
 
+    <!-- TIPO DO DOCUMENTO: perguntado logo depois da foto, para o leitor saber
+         quais campos esperar. O último tipo usado vem sugerido. -->
+    <dialog id="docTypeDialog">
+      <div class="dialog-header">
+        <div class="dialog-title">O que é essa foto?</div>
+      </div>
+      <div class="dialog-body">
+        <div id="docTypeGrid" class="doc-type-grid"></div>
+      </div>
+      <div class="dialog-footer">
+        <button id="btnDocTypeCancel" class="btn btn-ghost" style="flex:1;">Cancelar</button>
+      </div>
+    </dialog>
+
   </div>
 
   <script>
@@ -1260,6 +1372,41 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       'AID',
       'Via'
     ];
+
+    /* =========================================================
+       TIPOS DE DOCUMENTO
+       Cada tipo diz o que esperar do papel: quais campos são vitais (ficam
+       em vermelho quando não lidos), que palavras denunciam o tipo (sinais),
+       que palavras acompanham o valor (palavras) e que linhas nunca têm o
+       valor (ignorar: itens, tributos, gorjeta, troco...). Para ensinar um
+       tipo novo, basta uma entrada aqui.
+       ========================================================= */
+    const DOC_TYPES = {
+      auto: { nome: 'Não sei, descobrir', familia: 'Deixar o app decidir', vitais: [] },
+      cartao: {
+        nome: 'Comprovante de maquininha', familia: 'Dinheiro', vitais: ['Valor'],
+        sinais: /VIA CLIENTE|VIA DO CLIENTE|COMPROVANTE DE (?:VENDA|PAGAMENTO)|CART[AÃ]O|CR[EÉ]DITO|D[EÉ]BITO|MASTERCARD|\bVISA\b|\bELO\b|\bNSU\b|\bAUTH?[:=\s]|\bAID\b|GETNET|CIELO|\bSTONE\b|\bREDE\b|PAGSEGURO|INFINITEPAY|SENHA APROVADA|PARCELA|VALOR:|\bCARD\b|APPROVAL|AMOUNT/g,
+        palavras: /VALOR|TOTAL|CR[EÉ]DITO|D[EÉ]BITO|COMPRA|VENDA|APROVAD|PAGO|PAGAR|AMOUNT/,
+        ignorar: /\d\s?X\s|PARCELA|POR PESSOA|TRIB|DESCONTO|TROCO|SALDO|TAXA|JUROS|LIMITE|SUB-?\s?TOTAL|\bTIP\b|SUGGEST/
+      },
+      nfce: {
+        nome: 'Nota fiscal / cupom', familia: 'Dinheiro', vitais: ['Valor'],
+        sinais: /NFC-?E|NOTA FISCAL|CUPOM FISCAL|DANFE|CONSUMIDOR|CHAVE DE ACESSO|PROTOCOLO DE AUTORIZA|TRIBUT|\bSAT\b|ITENS|UN\s?X|VL\.?\s?ITEM|EMISS[AÃ]O|QTDE?\b/g,
+        palavras: /VALOR A PAGAR|VALOR PAGO|TOTAL A PAGAR|VALOR TOTAL|TOTAL|A PAGAR|PAGO|VALOR/,
+        ignorar: /TRIB|DESCONTO|UN\s?X|VL\.?\s?ITEM|UNIT|ITE[MN]S|QTD|TROCO|DINHEIRO|SUB-?\s?TOTAL|ECONOMIZOU|\bTAX\b|CHANGE|CASH|ACESS[OÓ]RIO|PRODUTOS/
+      },
+      conta: {
+        nome: 'Conta de restaurante', familia: 'Dinheiro', vitais: ['Valor'],
+        sinais: /CONFER[EÊ]NCIA|SUB-?\s?TOTAL|GORJETA|SERVI[CÇ]O|MESA|PESSOAS?|COUVERT|GAR[CÇ]OM|\bTIP\b|GRATUITY|\d\s?X\s|\bTAX\b|CHANGE|CASH/g,
+        palavras: /TOTAL|A PAGAR|PAGO|VALOR/,
+        ignorar: /SUB-?\s?TOTAL|GORJETA|SERVI[CÇ]O|PESSOA|COUVERT|\d\s?X\s|TRIB|DESCONTO|TROCO|TAXA|\bTIP\b|CHANGE|CASH|SUGGEST|ITE[MN]S|\bTAX\b/
+      },
+      livre: { nome: 'Outro (texto livre)', familia: 'Outros', vitais: [] }
+    };
+    const DOC_TYPE_KEY = 'leitor_tipo_doc';
+    let currentDocType = 'auto';   // escolhido no pop-up
+    let lastReadings = [];         // leituras da última foto, para trocar o tipo sem reler
+    let lastTipo = 'livre';        // tipo que valeu na última leitura
 
     // Seed mock data if none exists
     const INITIAL_MOCK_DATA = [
@@ -1385,6 +1532,17 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
     const toastContainer = document.getElementById('toastContainer');
 
+    const confidenceDisplay = document.getElementById('confidenceDisplay');
+    const docTypeDialog = document.getElementById('docTypeDialog');
+    const docTypeGrid = document.getElementById('docTypeGrid');
+    const btnDocTypeCancel = document.getElementById('btnDocTypeCancel');
+    const docTypeLabel = document.getElementById('docTypeLabel');
+    const textKindLabel = document.getElementById('textKindLabel');
+    const btnChangeDocType = document.getElementById('btnChangeDocType');
+    const docTypeHint = document.getElementById('docTypeHint');
+    const docTypeHintText = document.getElementById('docTypeHintText');
+    const btnUseDetectedType = document.getElementById('btnUseDetectedType');
+
     /* =========================================================
        THEME MANAGEMENT
        ========================================================= */
@@ -1452,6 +1610,70 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     btnConfirmOk.addEventListener('click', () => {
       confirmDialog.close();
       if (confirmResolver) confirmResolver(true);
+    });
+
+    /* =========================================================
+       POP-UP DO TIPO DE DOCUMENTO
+       ========================================================= */
+    let docTypeResolver = null;
+    function askDocType() {
+      return new Promise((resolve) => {
+        docTypeResolver = resolve;
+        const suggested = localStorage.getItem(DOC_TYPE_KEY) || 'auto';
+        docTypeGrid.innerHTML = '';
+        let family = null;
+        Object.keys(DOC_TYPES).forEach(key => {
+          const t = DOC_TYPES[key];
+          if (t.familia !== family) {
+            family = t.familia;
+            const h = document.createElement('div');
+            h.className = 'doc-type-family';
+            h.textContent = family;
+            docTypeGrid.appendChild(h);
+          }
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'doc-type-btn' + (key === suggested ? ' suggested' : '');
+          b.dataset.tipo = key;
+          b.innerHTML = escapeHtml(t.nome) + (key === suggested ? '<small>sugerido (último usado)</small>' : '');
+          b.addEventListener('click', () => {
+            localStorage.setItem(DOC_TYPE_KEY, key);
+            docTypeDialog.close();
+            const r = docTypeResolver; docTypeResolver = null;
+            if (r) r(key);
+          });
+          docTypeGrid.appendChild(b);
+        });
+        docTypeDialog.showModal();
+      });
+    }
+
+    function cancelDocType() {
+      if (docTypeDialog.open) docTypeDialog.close();
+      const r = docTypeResolver; docTypeResolver = null;
+      if (r) r(null);
+    }
+    btnDocTypeCancel.addEventListener('click', cancelDocType);
+    docTypeDialog.addEventListener('cancel', (e) => { e.preventDefault(); cancelDocType(); });
+
+    btnChangeDocType.addEventListener('click', async () => {
+      if (!lastReadings.length) return;
+      const tipo = await askDocType();
+      if (!tipo) return;
+      currentDocType = tipo;
+      const resolved = tipo === 'auto' ? detectDocType(lastReadings) : tipo;
+      // A money type needs two readings to confirm the amount: read again if there is only one
+      if (DOC_TYPES[resolved].vitais.length && lastReadings.length < 2 && currentImage) { executeOCR(); return; }
+      finishReading(lastReadings, resolved);
+    });
+
+    btnUseDetectedType.addEventListener('click', () => {
+      const tipo = btnUseDetectedType.dataset.tipo;
+      if (!tipo || !lastReadings.length) return;
+      currentDocType = tipo;
+      localStorage.setItem(DOC_TYPE_KEY, tipo);
+      if (DOC_TYPES[tipo].vitais.length && lastReadings.length < 2 && currentImage) { executeOCR(); return; }
+      finishReading(lastReadings, tipo);
     });
 
     /* =========================================================
@@ -1795,13 +2017,13 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       ocrPercentText.textContent = '10%';
       ocrStatusText.textContent = 'Preparando OCR...';
 
-      let ocrText = '';
-      let confidence = 85;
+      let readings = [];
+      let tipo = currentDocType;
 
       try {
         const T = await loadTesseractLibrary();
         ocrStatusText.textContent = 'Lendo caracteres...';
-        
+
         const worker = await T.createWorker('por', 1, {
           workerPath: OCR_BASE + 'worker.min.js',
           corePath: OCR_BASE,
@@ -1821,40 +2043,40 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         const tilt = estimateAngles(currentImage);
         const a1 = currentRotation + tilt[0];
 
-        // Several attempts, stopping at the first one that finds the amount:
-        // straightened, as photographed, with reinforced contrast, upside down
+        // Several readings of the same photo: straightened, as photographed,
+        // with reinforced contrast, upside down. The amount is only accepted
+        // when two readings agree on it (see finishReading), so a money
+        // document gets at least two readings.
         const passes = [
           [a1, false, 1000],
           [currentRotation, false, 1000],
+          [a1, false, 1400],
           [a1, true, 1000],
           [a1 + 180, true, 1000]
         ].filter((p, i, all) => all.findIndex(q => q[0] === p[0] && q[1] === p[1] && q[2] === p[2]) === i);
-        let best = null;
+        const started = Date.now();
         for (const [rot, bin, size] of passes) {
           const res = await worker.recognize(buildOcrCanvas(currentImage, rot, bin, size));
-          const text = res.data.text || '';
-          const conf = res.data.confidence || 0;
-          const hasValue = parseReceiptText(text).some(f => f.key === 'Valor');
-          if (!best || (hasValue && !best.hasValue) || (hasValue === best.hasValue && conf > best.conf)) {
-            best = { text, conf, hasValue };
-          }
-          if (hasValue) break;
-          ocrStatusText.textContent = 'Tentando de outro jeito...';
+          readings.push({ text: res.data.text || '', conf: res.data.confidence || 0, words: res.data.words || [] });
+          tipo = currentDocType === 'auto' ? detectDocType(readings) : currentDocType;
+          const wantsValue = DOC_TYPES[tipo].vitais.includes('Valor');
+          if (!wantsValue && (currentDocType !== 'auto' || readings.length >= 2)) break;
+          if (wantsValue && agreedValue(readings, tipo) !== null) break;
+          if (readings.length >= 2 && Date.now() - started > 20000) break;   // não prender a pessoa
+          ocrStatusText.textContent = 'Conferindo com outra leitura...';
         }
-        ocrText = best.text;
-        confidence = Math.round(best.conf || 88);
         await worker.terminate();
 
       } catch (err) {
-        console.warn('OCR online falhou ou restrito, usando analisador heurístico interno:', err);
-        // Fallback simulation with realistic progress for testing
+        console.warn('OCR falhou, usando o texto de exemplo ou um analisador interno:', err);
         for (let p = 20; p <= 100; p += 20) {
           await new Promise(r => setTimeout(r, 80));
           ocrProgressBar.style.width = `${p}%`;
           ocrPercentText.textContent = `${p}%`;
         }
-        ocrText = currentImage._presetText || generateFallbackFromCanvas();
-        confidence = 92;
+        const text = currentImage._presetText || generateFallbackFromCanvas();
+        readings = [{ text, conf: 0, words: [] }, { text, conf: 0, words: [] }];
+        tipo = currentDocType === 'auto' ? detectDocType(readings) : currentDocType;
       }
 
       ocrProgressBar.style.width = '100%';
@@ -1864,14 +2086,113 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         ocrProgressWrap.style.display = 'none';
       }, 500);
 
-      // Parse and display fields
-      const extracted = parseReceiptText(ocrText);
-      renderFieldsEditor(extracted, confidence);
-      if (extracted.some(f => f.key === 'Valor')) {
-        showToast('Comprovante processado com sucesso!', 'ok');
-      } else {
-        showToast('Não consegui ler o valor. Digite no campo em vermelho.', 'warn');
+      lastReadings = readings;
+      finishReading(readings, tipo);
+    }
+
+    // Guesses the document type from the words that give it away
+    function detectDocType(readings) {
+      const text = readings.map(r => r.text).join('\n').toUpperCase();
+      let best = 'livre', bestScore = 2;   // fewer than 3 signs: free text
+      ['nfce', 'cartao', 'conta'].forEach(key => {
+        const score = (text.match(DOC_TYPES[key].sinais) || []).length;
+        if (score > bestScore) { best = key; bestScore = score; }
+      });
+      return best;
+    }
+
+    // Among all readings, the value most often read for a field (Data, Hora)
+    function mostCommon(parsed, key, fallback) {
+      const counts = {};
+      parsed.forEach(p => { const f = p.fields.find(x => x.key === key); if (f) counts[f.val] = (counts[f.val] || 0) + 1; });
+      const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+      return keys.length && (!fallback || counts[keys[0]] > counts[fallback]) ? keys[0] : fallback;
+    }
+
+    // The amount two different readings agree on, or null
+    function agreedValue(readings, tipo) {
+      const bests = readings
+        .map(r => { const c = parseDocument(r.text, tipo).candidatos[0]; return c ? c.num : null; })
+        .filter(n => n !== null);
+      const dup = bests.find((n, i) => bests.indexOf(n) !== i);
+      return dup === undefined ? null : dup;
+    }
+
+    // Printed text comes out as confident, word-like tokens; handwriting
+    // comes out as low-confidence gibberish. This only labels the photo,
+    // the person confirms.
+    function classifyTextKind(words) {
+      const ws = (words || []).filter(w => w.text && w.text.replace(/[^0-9A-Za-zÀ-ÿ]/g, '').length >= 3);
+      if (ws.length < 5) return { label: 'Pouco texto', good: 0 };
+      const good = ws.filter(w => w.confidence >= 70).length / ws.length;
+      const pct = Math.round(good * 100);
+      if (good >= 0.6) return { label: 'Texto impresso', good: pct };
+      if (good <= 0.3) return { label: 'Parece escrito à mão ou apagado', good: pct };
+      return { label: 'Impresso com partes à mão ou apagadas', good: pct };
+    }
+
+    function formatBRL(num) {
+      return 'R$ ' + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // Decides the final result from the readings of one photo: the amount
+    // only when two readings agree, otherwise the candidates are offered as
+    // buttons; every other field comes from the best reading.
+    function finishReading(readings, tipo) {
+      const def = DOC_TYPES[tipo] || DOC_TYPES.livre;
+      const expectsValue = def.vitais.includes('Valor');
+      const parsed = readings.map(r => parseDocument(r.text, tipo));
+      const valor = expectsValue ? agreedValue(readings, tipo) : null;
+      const candidates = expectsValue && valor === null
+        ? [...new Set(parsed.map(p => p.candidatos[0] ? p.candidatos[0].num : null).filter(n => n !== null))]
+        : [];
+
+      // The other fields come from the reading that found the agreed amount,
+      // or from the most confident one
+      let bestIdx = 0;
+      readings.forEach((r, i) => {
+        const has = valor !== null && parsed[i].candidatos.some(c => c.num === valor);
+        const bestHas = valor !== null && parsed[bestIdx].candidatos.some(c => c.num === valor);
+        if ((has && !bestHas) || (has === bestHas && r.conf > readings[bestIdx].conf)) bestIdx = i;
+      });
+      const fields = parsed[bestIdx].fields.slice();
+      ['Data', 'Hora'].forEach(key => {
+        const f = fields.find(x => x.key === key);
+        const common = mostCommon(parsed, key, f ? f.val : null);
+        if (common && f) f.val = common;
+        else if (common) fields.push({ key, val: common });
+      });
+      if (valor !== null) {
+        const at = fields.findIndex(f => ORDERED_FIELD_KEYS.indexOf(f.key) > ORDERED_FIELD_KEYS.indexOf('Valor'));
+        fields.splice(at === -1 ? fields.length : at, 0, { key: 'Valor', val: formatBRL(valor) });
       }
+
+      let status;
+      if (!expectsValue) status = { cls: 'neutral', text: 'Texto lido' };
+      else if (valor !== null) status = { cls: 'ok', text: 'Valor confirmado em 2 leituras' };
+      else if (candidates.length) status = { cls: 'warn', text: 'Valor incerto: confira' };
+      else status = { cls: 'bad', text: 'Valor não lido' };
+
+      // Suggest another type when the text looks like something else
+      const detected = detectDocType(readings);
+      const hint = (detected !== tipo && detected !== 'livre') ? detected : null;
+      const textKind = classifyTextKind(readings[bestIdx].words);
+
+      // Debug info for the console and the test script (testes/medir.js)
+      const allText = readings.map(r => r.text).join('\n').toUpperCase();
+      const sinais = {};
+      ['nfce', 'cartao', 'conta'].forEach(k => { sinais[k] = (allText.match(DOC_TYPES[k].sinais) || []).length; });
+      window.ocrDebug = {
+        tipo, detected, sinais, valor, candidates, textKind,
+        readings: readings.map((r, i) => ({ text: r.text, conf: r.conf, words: r.words.length, candidatos: parsed[i].candidatos }))
+      };
+
+      lastTipo = tipo;
+      renderFieldsEditor({ fields, tipo, expectsValue, candidates, status, hint, textKind });
+      if (!expectsValue) showToast('Texto lido. Confira os campos.', 'ok');
+      else if (valor !== null) showToast('Comprovante processado com sucesso!', 'ok');
+      else if (candidates.length) showToast('Não tenho certeza do valor. Toque no valor certo.', 'warn');
+      else showToast('Não consegui ler o valor. Digite no campo em vermelho.', 'warn');
     }
 
     function generateFallbackFromCanvas() {
@@ -1896,7 +2217,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     /* =========================================================
        OCR TEXT EXTRACTION & REGEX HEURISTICS
        ========================================================= */
-    function parseReceiptText(rawText) {
+    function parseDocument(rawText, tipo) {
+      const def = DOC_TYPES[tipo] || DOC_TYPES.livre;
       const textUpper = (rawText || '').toUpperCase();
       const lines = textUpper.split('\n').map(l => l.trim()).filter(Boolean);
 
@@ -1908,137 +2230,118 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         fieldsMap['CNPJ'] = `${cnpjMatch[1]}.${cnpjMatch[2]}.${cnpjMatch[3]}/${cnpjMatch[4]}-${cnpjMatch[5]}`;
       }
 
-      // 2. Valor: score every money-looking number; "R$" and words like
-      // VALOR/TOTAL/APROVADA/CREDITO nearby win. CNPJ, dates and times are ignored.
-      let bestVal = null;
-      lines.forEach(line => {
-        const clean = line
-          .replace(/\d{2}[.,\s]?\d{3}[.,\s]?\d{3}\s?\/\s?\d{4}\s?-?\s?\d{2}/g, ' ')   // CNPJ
-          .replace(/\d{1,2}\s?[\/-]\s?\d{1,2}\s?[\/-]\s?\d{2,4}/g, ' ')                // datas
-          .replace(/\d{1,2}\s?[:H]\s?\d{2}(?:\s?:\s?\d{2})?/g, ' ')                    // horas
-          .replace(/\*+\s?\d+/g, ' ')                                                  // cartão ****9458
-          .replace(/\b(?:R|H|K|P)\s?[$S5§&]{1,2}/g, 'R$');                            // R$ mal lido (RS, R5, H$...)
-        const keyword = /VALOR|TOTAL|APROVAD|VENDA|CREDITO|CRÉDITO|DEBITO|DÉBITO|PAGAR|PAGO/.test(line);
-        const re = /(R\$\s?)?(\d{1,3}(?:[.\s]\d{3})*|\d+)\s?[.,]\s?(\d{2})(?![\d\/])/g;
-        let m;
-        while ((m = re.exec(clean)) !== null) {
-          const before = clean[m.index - 1];
-          if (!m[1] && before && /[\d.\/-]/.test(before)) continue;
-          const num = parseFloat(m[2].replace(/[.\s]/g, '') + '.' + m[3]);
-          if (!(num > 0 && num < 100000)) continue;
-          const score = (m[1] ? 4 : 0) + (keyword ? 2 : 0);
-          if (!bestVal || score > bestVal.score || (score === bestVal.score && num > bestVal.num)) {
-            bestVal = { num, score };
-          }
-        }
-        // "R$35096" (vírgula perdida na leitura): os 2 últimos dígitos são os centavos
-        if (!bestVal || bestVal.score < 4) {
-          const glued = clean.match(/R\$\s?(\d{3,7})(?![\d.,])/);
-          if (glued) {
-            const num = parseInt(glued[1], 10) / 100;
-            const score = 3 + (keyword ? 2 : 0);
-            if (!bestVal || score > bestVal.score) bestVal = { num, score };
-          }
-        }
-      });
-      if (bestVal) {
-        fieldsMap['Valor'] = `R$ ${bestVal.num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-      }
+      // 2. Valor: candidates ranked by findMoney; which one is shown is
+      // decided by agreedValue, when two readings agree
+      const candidatos = def.vitais.includes('Valor') ? findMoney(lines, def) : [];
 
-      // 3. Data: dd/mm/aaaa ou dd/mm/aa
-      const dateMatch = textUpper.match(/\b(\d{2})[\/\.-](\d{2})[\/\.-](\d{2,4})\b/);
-      if (dateMatch) {
-        let yr = dateMatch[3];
+      // 3. Data: dd/mm/aaaa ou dd/mm/aa, only real dates; the most repeated wins
+      const dates = {};
+      const dateRe = /\b(\d{2})[\/\.-](\d{2})[\/\.-](\d{2,4})\b/g;
+      let dm;
+      while ((dm = dateRe.exec(textUpper)) !== null) {
+        let yr = dm[3];
+        if (yr.length === 3) continue;
         if (yr.length === 2) yr = '20' + yr;
-        fieldsMap['Data'] = `${dateMatch[1]}/${dateMatch[2]}/${yr}`;
+        const d = +dm[1], mo = +dm[2], y = +yr;
+        const minYear = def.vitais.includes('Valor') ? 2010 : 1900;
+        if (d < 1 || d > 31 || mo < 1 || mo > 12 || y < minYear || y > new Date().getFullYear() + 1) continue;
+        const key = `${dm[1]}/${dm[2]}/${yr}`;
+        dates[key] = (dates[key] || 0) + 1;
       }
+      const dateKeys = Object.keys(dates).sort((a, b) => dates[b] - dates[a]);
+      if (dateKeys.length) fieldsMap['Data'] = dateKeys[0];
 
-      // 4. Hora: hh:mm ou 14H26
-      const timeMatch = textUpper.match(/\b([012]?\d)[:\.\sHh]([0-5]\d)\b/);
-      if (timeMatch) {
-        const hh = timeMatch[1].padStart(2, '0');
-        const mm = timeMatch[2];
-        fieldsMap['Hora'] = `${hh}:${mm}`;
-      }
+      // 4. Hora: hh:mm ou 14H26, preferably on the same line as the date
+      const timeRe = /\b([01]?\d|2[0-3])[:Hh]([0-5]\d)\b/;
+      const dateLine = fieldsMap['Data'] ? lines.find(l => l.includes(fieldsMap['Data'].slice(0, 5))) : null;
+      const timeMatch = (dateLine && dateLine.match(timeRe)) || textUpper.match(timeRe);
+      if (timeMatch) fieldsMap['Hora'] = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
 
-      // 5. Bandeira: MASTERCARD, VISA, ELO, AMEX, AMERICAN EXPRESS, HIPERCARD, DINERS
-      const flags = [
-        ['AMERICAN EXPRESS', 'AMEX'],
-        ['AMEX', 'AMEX'],
-        ['MASTERCARD', 'MASTERCARD'],
-        ['VISA', 'VISA'],
-        ['ELO', 'ELO'],
-        ['HIPERCARD', 'HIPERCARD'],
-        ['DINERS', 'DINERS']
-      ];
-      for (const [pattern, label] of flags) {
-        if (textUpper.includes(pattern)) {
-          fieldsMap['Bandeira'] = label;
-          break;
-        }
-      }
-
-      // 6. Modalidade: Crédito / Débito / Pix / Parcelado
-      let mod = '';
-      if (textUpper.includes('PIX')) {
-        mod = 'Pix';
-      } else if (textUpper.includes('CREDITO') || textUpper.includes('CRÉDITO')) {
-        if (textUpper.includes('PARCELADO') || textUpper.includes('PARC')) {
-          mod = 'Crédito Parcelado';
-        } else {
-          mod = 'Crédito à Vista';
-        }
-      } else if (textUpper.includes('DEBITO') || textUpper.includes('DÉBITO')) {
-        mod = 'Débito';
-      }
-      if (mod) fieldsMap['Modalidade'] = mod;
-
-      // 7. Terminal: (TERMINAL|POS)\s*[:\.]?\s*([A-Z0-9]{4,12})
-      const termMatch = textUpper.match(/(?:TERMINAL|POS)\s*[:\.]?\s*([A-Z0-9]{4,12})/);
-      if (termMatch) fieldsMap['Terminal'] = termMatch[1];
-
-      // 8. NSU/DOC: (NSU|DOC\w*)\s*[:\.]?\s*(\d{4,})
-      const nsuMatch = textUpper.match(/(?:NSU|DOC\w*)\s*[:\.]?\s*(\d{4,})/);
-      if (nsuMatch) fieldsMap['NSU/DOC'] = nsuMatch[1];
-
-      // 9. Autorização: (AUTO|AUTORIZA\w*)\s*[:\.]?\s*(\d{4,})
-      const authMatch = textUpper.match(/(?:AUTO|AUTORIZA\w*)\s*[:\.]?\s*([A-Z0-9]{4,})/);
-      if (authMatch) fieldsMap['Autorização'] = authMatch[1];
-
-      // 10. AID: \bA0000[0-9A-F]{10,12}\b
-      const aidMatch = textUpper.match(/\b(A0000[0-9A-F]{10,12})\b/);
-      if (aidMatch) fieldsMap['AID'] = aidMatch[1];
-
-      // 11. Via: VIA CLIENTE ou VIA ESTABELECIMENTO
-      if (textUpper.includes('VIA CLIENTE') || textUpper.includes('CLIENTE')) {
-        fieldsMap['Via'] = 'VIA CLIENTE';
-      } else if (textUpper.includes('VIA ESTABELECIMENTO')) {
-        fieldsMap['Via'] = 'VIA ESTABELECIMENTO';
-      } else {
-        fieldsMap['Via'] = 'VIA CLIENTE';
-      }
-
-      // 12. Estabelecimento: line after ESTABELECIMENTO, or first containing S.A./LTDA/COMERCIO/RESTAURANTE/POSTO/LOJA
-      let estab = '';
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes('ESTABELECIMENTO') && lines[i + 1]) {
-          estab = lines[i + 1];
-          break;
-        }
-      }
-      if (!estab) {
-        for (const line of lines) {
-          if (/(?:S\.A\.|LTDA|COMERCIO|COMÉRCIO|RESTAURANTE|POSTO|LOJA|DROGARIA|FARMACIA|PADARIA)/.test(line)) {
-            estab = line;
+      if (tipo === 'cartao') {
+        // 5. Bandeira: MASTERCARD, VISA, ELO, AMEX, AMERICAN EXPRESS, HIPERCARD, DINERS
+        const flags = [
+          ['AMERICAN EXPRESS', 'AMEX'],
+          ['AMEX', 'AMEX'],
+          ['MASTERCARD', 'MASTERCARD'],
+          ['VISA', 'VISA'],
+          ['ELO', 'ELO'],
+          ['HIPERCARD', 'HIPERCARD'],
+          ['DINERS', 'DINERS']
+        ];
+        for (const [pattern, label] of flags) {
+          if (textUpper.includes(pattern)) {
+            fieldsMap['Bandeira'] = label;
             break;
           }
         }
+
+        // 6. Modalidade: Crédito / Débito / Pix / Parcelado
+        let mod = '';
+        if (textUpper.includes('PIX')) {
+          mod = 'Pix';
+        } else if (textUpper.includes('CREDITO') || textUpper.includes('CRÉDITO')) {
+          if (textUpper.includes('PARCELADO') || textUpper.includes('PARC')) {
+            mod = 'Crédito Parcelado';
+          } else {
+            mod = 'Crédito à Vista';
+          }
+        } else if (textUpper.includes('DEBITO') || textUpper.includes('DÉBITO')) {
+          mod = 'Débito';
+        }
+        if (mod) fieldsMap['Modalidade'] = mod;
+
+        // 7. Terminal: (TERMINAL|POS)\s*[:\.]?\s*([A-Z0-9]{4,12})
+        const termMatch = textUpper.match(/(?:TERMINAL|POS)\s*[:\.]?\s*([A-Z0-9]{4,12})/);
+        if (termMatch) fieldsMap['Terminal'] = termMatch[1];
+
+        // 8. NSU/DOC: (NSU|DOC\w*)\s*[:\.]?\s*(\d{4,})
+        const nsuMatch = textUpper.match(/(?:NSU|DOC\w*)\s*[:\.]?\s*(\d{4,})/);
+        if (nsuMatch) fieldsMap['NSU/DOC'] = nsuMatch[1];
+
+        // 9. Autorização: the number after AUT, AUTH or AUTORIZACAO (never "AUTO POSTO")
+        const authMatch = textUpper.match(/\bAUT(?:H|ORIZA[CÇ][AÃ]O)?\s*[:=.]?\s*(\d{5,})/);
+        if (authMatch) fieldsMap['Autorização'] = authMatch[1];
+
+        // 10. AID: \bA0000[0-9A-F]{10,12}\b
+        const aidMatch = textUpper.match(/\b(A0000[0-9A-F]{10,12})\b/);
+        if (aidMatch) fieldsMap['AID'] = aidMatch[1];
+
+        // 11. Via: VIA CLIENTE ou VIA ESTABELECIMENTO
+        if (textUpper.includes('VIA CLIENTE') || textUpper.includes('CLIENTE')) {
+          fieldsMap['Via'] = 'VIA CLIENTE';
+        } else if (textUpper.includes('VIA ESTABELECIMENTO')) {
+          fieldsMap['Via'] = 'VIA ESTABELECIMENTO';
+        } else {
+          fieldsMap['Via'] = 'VIA CLIENTE';
+        }
       }
-      if (!estab && lines.length > 0) {
-        estab = lines[0];
-      }
-      if (estab) {
-        fieldsMap['Estabelecimento'] = estab.replace(/CNPJ.*$/, '').trim();
+
+      if (tipo !== 'livre') {
+        // 12. Estabelecimento: line after ESTABELECIMENTO, or first containing S.A./LTDA/COMERCIO/RESTAURANTE/POSTO/LOJA
+        let estab = '';
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes('ESTABELECIMENTO') && lines[i + 1]) {
+            estab = lines[i + 1];
+            break;
+          }
+        }
+        if (!estab) {
+          for (const line of lines) {
+            if (/(?:S\.A\.|LTDA|COMERCIO|COMÉRCIO|RESTAURANTE|POSTO|LOJA|DROGARIA|FARMACIA|PADARIA)/.test(line)) {
+              estab = line;
+              break;
+            }
+          }
+        }
+        if (!estab && lines.length > 0) {
+          estab = lines[0];
+        }
+        if (estab) {
+          fieldsMap['Estabelecimento'] = estab.replace(/CNPJ.*$/, '').trim();
+        }
+      } else {
+        // Free text: everything that was read, to be kept as is
+        fieldsMap['Texto'] = (rawText || '').trim();
       }
 
       // Order fields according to prompt specification
@@ -2056,27 +2359,104 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         }
       });
 
-      return orderedResult;
+      return { fields: orderedResult, candidatos };
+    }
+
+    // Every money-looking number in the text, ranked. Lines that never hold
+    // the amount (items, taxes, tips, change...) are skipped; "R$" and words
+    // like TOTAL add points; a number seen on more than one line gets a
+    // bonus. Only numbers with "R$" or a keyword can win: a bare number is
+    // never shown as the amount.
+    function findMoney(lines, def) {
+      const seen = {};
+      const add = (num, score) => {
+        const k = num.toFixed(2);
+        if (!seen[k]) seen[k] = { num, score: 0, count: 0 };
+        seen[k].score = Math.max(seen[k].score, score);
+        seen[k].count++;
+      };
+      lines.forEach(raw => {
+        const line = raw.replace(/\b(?:R|H|K|P)\s?[$S5§&]{1,2}(?=\s*[:\d])/g, 'R$');   // R$ mal lido (RS, R5, H$...)
+        if (def.ignorar && def.ignorar.test(line)) return;
+        const clean = line
+          .replace(/\d{2}[.,\s]?\d{3}[.,\s]?\d{3}\s?\/\s?\d{4}\s?-?\s?\d{2}/g, ' ')   // CNPJ
+          .replace(/\d{1,2}\s?[\/-]\s?\d{1,2}\s?[\/-]\s?\d{2,4}/g, ' ')                // datas
+          .replace(/\b\d{1,2}\s?[:H]\s?\d{2}(?:\s?:\s?\d{2})?/g, ' ')                  // horas
+          .replace(/\*+\s?\d+/g, ' ');                                                 // cartão ****9458
+        // "1otal" and "T0TAL" still count as TOTAL
+        const keyword = def.palavras.test(clean.replace(/1/g, 'I').replace(/0/g, 'O'));
+        const re = /((?:R|US)?\$\s?)?(\d{1,3}(?:[.,\s]\d{3})*|\d+)\s?[.,]\s?(\d{2})(?![\d\/])/g;
+        let m, found = false;
+        while ((m = re.exec(clean)) !== null) {
+          const before = clean[m.index - 1];
+          if (!m[1] && before && /[\d.\/-]/.test(before)) continue;
+          const num = parseFloat(m[2].replace(/[.,\s]/g, '') + '.' + m[3]);
+          if (!(num > 0 && num < 100000)) continue;
+          found = true;
+          add(num, (m[1] ? 4 : 0) + (keyword ? 3 : 0));
+        }
+        // "R$35096" (vírgula perdida na leitura): só vale com palavra-chave
+        // na linha, e ainda precisa de outra leitura concordando
+        if (!found && keyword) {
+          const glued = clean.match(/R\$\s?(\d{3,7})(?![\d.,])/);
+          if (glued) add(parseInt(glued[1], 10) / 100, 3);
+        }
+      });
+      return Object.values(seen)
+        .map(c => ({ num: c.num, score: c.score + (c.count > 1 ? 1 : 0) }))
+        .filter(c => c.score >= 3)
+        .sort((a, b) => b.score - a.score || b.num - a.num);
     }
 
     /* =========================================================
        FIELDS EDITOR (CAPTURE TAB)
        ========================================================= */
-    function renderFieldsEditor(fields, confidence = 95) {
+    function renderFieldsEditor(result) {
       fieldsListContainer.innerHTML = '';
-      confidenceVal.textContent = `${confidence}% de confiança`;
+      confidenceVal.textContent = result.status.text;
+      confidenceDisplay.className = 'confidence-chip ' + result.status.cls;
 
-      // The amount is the point of the whole reading, so its field is always
-      // on screen: empty and marked in red when it could not be read
-      const list = fields.slice();
-      if (!list.some(f => f.key === 'Valor')) {
+      // The amount is the point of the reading, so for money documents its
+      // field is always on screen: empty and in red when not confirmed
+      const list = result.fields.slice();
+      if (result.expectsValue && !list.some(f => f.key === 'Valor')) {
         const at = list.findIndex(f => ORDERED_FIELD_KEYS.indexOf(f.key) > ORDERED_FIELD_KEYS.indexOf('Valor'));
         list.splice(at === -1 ? list.length : at, 0, { key: 'Valor', val: '', missing: true });
       }
 
       list.forEach(f => {
-        createFieldRow(f.key, f.val, f.missing);
+        const row = createFieldRow(f.key, f.val, f.missing);
+        // Readings that disagreed: offer each amount as a button
+        if (f.key === 'Valor' && f.missing && result.candidates.length) {
+          const box = document.createElement('div');
+          box.className = 'valor-candidates';
+          box.innerHTML = '<span>Li valores diferentes, toque no certo:</span>';
+          result.candidates.forEach(num => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'valor-chip';
+            chip.textContent = formatBRL(num);
+            chip.addEventListener('click', () => {
+              const input = row.querySelector('.fld-val');
+              input.value = formatBRL(num);
+              input.dispatchEvent(new Event('input'));
+              box.remove();
+            });
+            box.appendChild(chip);
+          });
+          fieldsListContainer.appendChild(box);
+        }
       });
+
+      docTypeLabel.textContent = '📄 ' + (DOC_TYPES[result.tipo] || DOC_TYPES.livre).nome;
+      textKindLabel.textContent = '✍️ ' + result.textKind.label;
+      if (result.hint) {
+        docTypeHintText.textContent = 'Parece ser: ' + DOC_TYPES[result.hint].nome + '.';
+        btnUseDetectedType.dataset.tipo = result.hint;
+        docTypeHint.style.display = 'flex';
+      } else {
+        docTypeHint.style.display = 'none';
+      }
 
       fieldsEditorCard.style.display = 'flex';
       fieldsEditorCard.scrollIntoView({ behavior: 'smooth' });
@@ -2085,9 +2465,12 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     function createFieldRow(key = '', val = '', missing = false) {
       const row = document.createElement('div');
       row.className = missing ? 'field-row field-missing' : 'field-row';
+      const multiline = key === 'Texto';
       row.innerHTML = `
         <input type="text" class="fld fld-sm fld-key" value="${escapeHtml(key)}" placeholder="Campo">
-        <input type="text" class="fld fld-sm fld-val" value="${escapeHtml(val)}" placeholder="${missing ? 'Não detectado — digite aqui' : 'Valor'}">
+        ${multiline
+          ? `<textarea class="fld fld-sm fld-val" placeholder="Texto">${escapeHtml(val)}</textarea>`
+          : `<input type="text" class="fld fld-sm fld-val" value="${escapeHtml(val)}" placeholder="${missing ? 'Não detectado — digite aqui' : 'Valor'}">`}
         <button type="button" class="btn-field-del" title="Remover">✕</button>
       `;
       row.querySelector('.btn-field-del').addEventListener('click', () => {
@@ -2101,6 +2484,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         });
       }
       fieldsListContainer.appendChild(row);
+      return row;
     }
 
     btnAddField.addEventListener('click', () => {
@@ -2145,6 +2529,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         const newRecord = {
           id: 'rec_' + Date.now(),
           savedAt: new Date().toISOString(),
+          tipo: lastTipo,
           fields
         };
         list.unshift(newRecord);
@@ -2177,10 +2562,14 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       const reader = new FileReader();
       reader.onload = (e) => {
         const img = new Image();
-        img.onload = () => {
+        img.onload = async () => {
           currentImage = img;
           currentRotation = 0;
           processImageToCanvas(img, 0);
+          // Ask what the photo is before reading, so the right fields are expected
+          const tipo = await askDocType();
+          if (!tipo) { resetPhotoState(); return; }
+          currentDocType = tipo;
           executeOCR();
         };
         img.src = e.target.result;
@@ -2230,6 +2619,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         img._presetText = text;
         currentImage = img;
         currentRotation = 0;
+        currentDocType = 'cartao';
         processImageToCanvas(img, 0);
         executeOCR();
       };
@@ -2322,6 +2712,7 @@ VALOR TOTAL: R$ 68,90
         const data = map['Data'] || '';
         const band = map['Bandeira'] || '';
         const mod = map['Modalidade'] || '';
+        const tipoNome = item.tipo && DOC_TYPES[item.tipo] ? DOC_TYPES[item.tipo].nome : '';
 
         const card = document.createElement('div');
         card.className = 'history-card-item';
@@ -2334,6 +2725,7 @@ VALOR TOTAL: R$ 68,90
             ${data ? `<span class="meta-tag">📅 ${escapeHtml(data)}</span>` : ''}
             ${band ? `<span class="meta-tag">💳 ${escapeHtml(band)}</span>` : ''}
             ${mod ? `<span class="meta-tag">🏷️ ${escapeHtml(mod)}</span>` : ''}
+            ${tipoNome ? `<span class="meta-tag">📄 ${escapeHtml(tipoNome)}</span>` : ''}
           </div>
         `;
 

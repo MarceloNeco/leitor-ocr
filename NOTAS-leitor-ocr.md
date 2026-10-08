@@ -14,25 +14,35 @@ O motor é o Tesseract.js 5.1.1 em português (`por`, modelo `4.0.0_best_int`). 
    - acha o papel como a maior área clara da foto e recorta;
    - amplia até a largura pedida (no máximo 3×);
    - opcionalmente aplica limiar adaptativo (Bradley, janela = largura/32, T = 0,15).
-3. `executeOCR()` faz até 4 tentativas e **para na primeira que encontra o valor**:
+3. Antes de ler, o app pergunta **o que é a foto** (pop-up `askDocType`, com o último tipo usado sugerido). Os tipos estão em `DOC_TYPES`: cada um diz quais campos são vitais (`vitais`), que palavras denunciam o tipo (`sinais`), que palavras acompanham o valor (`palavras`) e que linhas nunca têm o valor (`ignorar`: itens, tributos, gorjeta, troco, parcela...). Hoje existem: comprovante de maquininha (`cartao`), nota fiscal/cupom (`nfce`), conta de restaurante (`conta`), texto livre (`livre`) e "não sei, descobrir" (`auto`, que escolhe pelos `sinais` e cai em `livre` com menos de 3 sinais). Para ensinar um tipo novo basta uma entrada nessa tabela.
+4. `executeOCR()` faz até 5 leituras da mesma foto e **só aceita o valor quando duas leituras concordam**:
    1. endireitada, em tons de cinza, largura 1000
    2. como foi fotografada, em tons de cinza, largura 1000
-   3. endireitada, preto e branco, largura 1000
-   4. de cabeça para baixo, preto e branco, largura 1000
+   3. endireitada, em tons de cinza, largura 1400
+   4. endireitada, preto e branco, largura 1000
+   5. de cabeça para baixo, preto e branco, largura 1000
 
-   As tentativas repetidas são descartadas, então quando o ângulo detectado é 0 sobram três.
-4. `parseReceiptText(texto)` extrai os campos. Para o valor:
+   Leituras repetidas são descartadas. Para na primeira concordância, ou depois de 20 segundos com pelo menos duas leituras. Tipos sem valor (texto livre) fazem uma leitura só.
+5. `parseDocument(texto, tipo)` extrai os campos e `findMoney` lista os candidatos a valor:
+   - linhas com palavras de `ignorar` são puladas inteiras;
    - antes de procurar, apaga CNPJ, datas, horas e número de cartão (`****9458`);
-   - corrige leituras erradas de "R$" (RS, R5, H$, K$...);
-   - dá pontos a cada número com cara de dinheiro: +4 se vem depois de "R$", +2 se a linha tem VALOR, TOTAL, APROVAD, VENDA, CREDITO, DEBITO, PAGAR ou PAGO; em caso de empate ganha o maior;
-   - entende "R$35096" (vírgula perdida) como R$ 350,96.
-5. `renderFieldsEditor()` mostra **sempre** o campo Valor. Quando não foi lido, ele fica vazio, em vermelho, com "Não detectado — digite aqui". O vermelho some quando a pessoa digita, e o aviso no rodapé pede para digitar o valor.
+   - corrige leituras erradas de "R$" (RS, R5, H$, K$...) e aceita "$" (recibos americanos) e vírgula de milhar ("7,050,00");
+   - dá pontos a cada número com cara de dinheiro: +4 se vem depois de "R$", +3 se a linha tem uma palavra de `palavras` (TOTAL, VALOR PAGO, CRÉDITO... "1otal" e "T0TAL" contam), +1 se o mesmo número aparece em mais de uma linha; em caso de empate ganha o maior;
+   - **um número sem "R$" e sem palavra-chave nunca vira valor** (era a maior fonte de valores errados);
+   - "R$35096" (vírgula perdida) só vale com palavra-chave na linha, e ainda precisa de outra leitura concordando.
+   - Data: só datas reais (dia 1-31, mês 1-12; documentos de dinheiro entre 2010 e o ano que vem), a mais repetida entre todas as leituras. Hora: só com ":" ou "H", de preferência na mesma linha da data, a mais repetida entre as leituras.
+6. `finishReading(leituras, tipo)` decide: valor confirmado (duas leituras iguais), **incerto** (leituras discordaram ou só uma achou: o campo fica vazio e os valores lidos viram botões para tocar) ou não lido. O selo no alto diz qual dos três aconteceu, em vez da porcentagem antiga. Também rotula a foto como texto impresso, com partes à mão/apagadas ou parecendo escrito à mão, pela proporção de palavras em que o motor confiou (`classifyTextKind`): é só um aviso, a pessoa confirma. O botão "Trocar tipo" reaproveita as leituras sem ler de novo, e quando o texto parece outro tipo aparece "Parece ser: ...".
+7. `renderFieldsEditor()` mostra **sempre** o campo Valor nos tipos de dinheiro. Quando não foi confirmado, ele fica vazio, em vermelho, com "Não detectado — digite aqui". O vermelho some quando a pessoa digita ou toca num dos botões de valor.
+
+Cada comprovante salvo guarda o `tipo`, e o histórico mostra o tipo no cartão. No console do navegador, `window.ocrDebug` tem as leituras, os candidatos e os sinais de tipo da última foto.
 
 ## Decisões tomadas (e por quê)
 
 - **Campo vazio em vermelho é melhor que valor errado.** Tentativas extras com giros de 90° e ampliação maior chegaram a ler R$ 64,00 e R$ 36.020,00 num comprovante de R$ 84,00. Foram retiradas.
-- **As tentativas foram escolhidas por teste, não por chute.** Uma grade de 20 combinações (5 ângulos × cinza/preto e branco × largura 1000/1400) em 6 fotos reais mostrou que só as três primeiras tentativas acima acertam algum valor.
-- **Os 4 botões de exemplo** (Posto Ipiranga, Pizzaria Bella, Drogasil) continuam funcionando e servem de teste rápido.
+- **Duas leituras precisam concordar.** Uma leitura sozinha errava dígito ("R$ 711,61" num papel de R$ 71,61) com toda a cara de certa. Exigir concordância custa tempo (a foto fácil leva 2 leituras em vez de 1), mas zerou os valores errados. Quando as leituras discordam, mostrar os valores lidos como botões é melhor que escolher um: a pessoa decide com um toque.
+- **O tipo do documento manda na leitura.** Numa nota fiscal, o número ao lado de "Tributos" ou de um item nunca é o total; num pedido médico não existe valor. Perguntar o tipo antes de ler deixa o app esperar os campos certos e ignorar o resto.
+- **As leituras foram escolhidas por teste, não por chute.** Uma grade de 20 combinações (5 ângulos × cinza/preto e branco × largura 1000/1400) em 6 fotos reais mostrou que só as três primeiras acertam algum valor; a largura 1400 voltou como terceira leitura porque serve de segunda opinião para confirmar o valor (5 fotos passaram de incerto a confirmado com ela).
+- **Os 3 botões de exemplo** (Posto Ipiranga, Pizzaria Bella, Drogasil) continuam funcionando e servem de teste rápido; entram como comprovante de maquininha sem passar pelo pop-up.
 
 ## Resultado nos testes (6 fotos reais, recebidas pelo WhatsApp e por isso comprimidas)
 
@@ -64,7 +74,7 @@ Se a pasta tiver um `gabarito.json`, o script imprime a tabela certo/vazio/errad
 
 ## Resultado nos testes (17 fotos reais pelo WhatsApp, 8/10/2026)
 
-Conjunto novo, com mais tipos de papel: 2 pedidos médicos (sem valor), 4 notas fiscais NFC-e, 1 conferência de conta de restaurante, 3 fotos com vários comprovantes juntos, 4 comprovantes girados ou de cabeça para baixo e o resto comprovantes de maquininha normais. Medição com o app desta versão (antes de qualquer mudança na leitura):
+Conjunto novo, com mais tipos de papel: 2 pedidos médicos (sem valor), 4 notas fiscais NFC-e, 1 conferência de conta de restaurante, 3 fotos com vários comprovantes juntos, 4 comprovantes girados ou de cabeça para baixo e o resto comprovantes de maquininha normais. Medição com o app da etapa 1 (antes de qualquer mudança na leitura):
 
 | Campo | Certo | Vazio | Errado |
 |---|---|---|---|
@@ -72,11 +82,27 @@ Conjunto novo, com mais tipos de papel: 2 pedidos médicos (sem valor), 4 notas 
 | Data | 8 | 6 | 3 |
 | Estabelecimento | 1 | - | 12 |
 
-Os 2 pedidos médicos saíram vazios, que é o certo, e estão contados nos 6 certos do valor. Os 5 valores errados são o problema principal: linha de tributos ("R$ 0,00") e preço de item lidos como total numa nota fiscal, item de conta lido como total, e dígito a mais ("711,61" num papel de 71,61). Os vazios são as fotos giradas, a nota com pouca luz e as fotos com vários papéis.
+Os 2 pedidos médicos saíram vazios, que é o certo, e estão contados nos 6 certos do valor. Os 5 valores errados eram o problema principal: linha de tributos ("R$ 0,00") e preço de item lidos como total numa nota fiscal, item de conta lido como total, e dígito a mais ("711,61" num papel de 71,61).
+
+## Resultado da etapa 2 (36 fotos, 8/10/2026)
+
+As 17 acima mais 19 originais do celular: comprovantes Stone e InfinitePay, conta de gás e de luz, DANFE, NFC-e de farmácia, 6 cupons americanos (dois com gorjeta à mão), cartão de vacina, recibo manuscrito, comprovante de comparecimento preenchido à mão, receita impressa e uma redação à mão. Tipo escolhido no pop-up como a pessoa escolheria:
+
+| Campo | Certo | Incerto, certo entre as opções | Incerto | Vazio | Errado |
+|---|---|---|---|---|---|
+| Valor | 16 | 4 | 5 | 11 | 0 |
+| Data | 25 | - | - | 7 | 4 |
+| Estabelecimento | 5 | - | - | - | 21 |
+
+Com "não sei, descobrir" em todas, o app acertou o tipo em 27 das 36 e o valor ficou: 16 certos, 3 + 4 incertos, 13 vazios, 0 errados. Tempo médio por foto no servidor de teste: 9.0 s (no celular, espere o dobro ou o triplo).
+
+O que ainda fica vazio ou incerto: fotos giradas de lado ou de cabeça para baixo (etapa 3), papéis pequenos numa foto grande e fotos com vários comprovantes (etapa 5), conta de luz e de gás com o valor numa coluna separada do rótulo (leitor próprio de contas) e a nota com pouca luz. Nenhum valor errado é mostrado como certo.
 
 ## Pendências conhecidas (ninguém pediu ainda)
 
-- **Hora:** às vezes pega o ano mais a hora. Em "12/06/26 13:24:24" saiu "26:13".
-- **Confiança:** o selo verde continua mostrando "88% de confiança" mesmo quando nada foi lido, o que contradiz o alerta vermelho.
-- **Estabelecimento:** costuma sair embaralhado, porque ele usa a primeira linha do texto quando não acha LTDA, POSTO etc.
-- **Autorização:** a expressão pega "POSTO" (de AUTO POSTO) ou "RIZACAO" (de AUTORIZACAO) em vez do número.
+- **Estabelecimento:** costuma sair embaralhado, porque ele usa a primeira linha do texto quando não acha LTDA, POSTO etc. (planejado para a etapa 4).
+- **Conta de luz e de gás:** o valor fica numa coluna separada do rótulo "Total a pagar", então as regras por linha não acham; a linha digitável do código de barras carrega o valor e resolve isso (leitor próprio de contas).
+- **Rótulo impresso/à mão:** é calculado pela confiança do motor por palavra. Foto escura de texto impresso também sai como "parece escrito à mão ou apagado"; por isso o rótulo diz "ou apagado" e não decide nada sozinho.
+- **Vários papéis na mesma foto:** sai só um valor (etapa 5).
+
+Resolvidas na etapa 2: hora pegando o ano ("26:13"), selo de confiança mentindo, Autorização pegando "POSTO".
