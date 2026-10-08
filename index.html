@@ -1393,7 +1393,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         nome: 'Nota fiscal / cupom', familia: 'Dinheiro', vitais: ['Valor'],
         sinais: /NFC-?E|NOTA FISCAL|CUPOM FISCAL|DANFE|CONSUMIDOR|CHAVE DE ACESSO|PROTOCOLO DE AUTORIZA|TRIBUT|\bSAT\b|ITENS|UN\s?X|VL\.?\s?ITEM|EMISS[AÃ]O|QTDE?\b/g,
         palavras: /VALOR A PAGAR|VALOR PAGO|TOTAL A PAGAR|VALOR TOTAL|TOTAL|A PAGAR|PAGO|VALOR/,
-        ignorar: /TRIB|DESCONTO|UN\s?X|VL\.?\s?ITEM|UNIT|ITE[MN]S|QTD|TROCO|DINHEIRO|SUB-?\s?TOTAL|ECONOMIZOU|\bTAX\b|CHANGE|CASH|ACESS[OÓ]RIO|PRODUTOS/
+        ignorar: /TRIB|DESCONTO|UN\s?X|VL\.?\s?ITEM|UNIT|ITE[MN]S|QTD|TROCO|DINHEIRO|SUB-?\s?TOTAL|ECONOMIZOU|\bTAX\b|CHANGE|CASH|ACESS[OÓ]RIO|PRODUTOS|SERVI[CÇ]O|\bTX\b|TAXA/
       },
       conta: {
         nome: 'Conta de restaurante', familia: 'Dinheiro', vitais: ['Valor'],
@@ -1407,6 +1407,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     let currentDocType = 'auto';   // escolhido no pop-up
     let lastReadings = [];         // leituras da última foto, para trocar o tipo sem reler
     let lastTipo = 'livre';        // tipo que valeu na última leitura
+    let lastTilt = 0;              // inclinação medida na última foto (para depuração)
 
     // Seed mock data if none exists
     const INITIAL_MOCK_DATA = [
@@ -1871,7 +1872,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
     // Builds a high-resolution image just for OCR: finds the receipt paper,
     // crops it, enlarges the text and turns it into clean black-on-white.
-    function buildOcrCanvas(img, rotation = 0, binarize = false, targetW = 1000) {
+    function buildOcrCanvas(img, rotation = 0, binarize = false, targetW = 1000, region = null) {
       const MAX_SRC = 3000;
       let w = img.naturalWidth || img.width;
       let h = img.naturalHeight || img.height;
@@ -1893,7 +1894,71 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       sctx.rotate(rad);
       sctx.drawImage(img, -w / 2, -h / 2, w, h);
 
-      // 1. Find the paper: largest bright area on a small copy of the photo
+      // Region to read: the one asked for (in the rotated frame), the block of
+      // small ink marks that looks like text ('ink'), else the paper
+      if (region === 'ink') region = findTextBox(src) || findPaperBox(src);
+      const { cx, cy, cw, ch } = region || findPaperBox(src);
+
+      // 2. Crop and resize so the receipt text has a size Tesseract reads well
+      const scale = Math.min(region ? 4 : 3, targetW / cw);
+      const out = document.createElement('canvas');
+      out.width = Math.round(cw * scale);
+      out.height = Math.round(ch * scale);
+      out.frame = { cx, cy, cw, ch, scale, width: src.width, height: src.height };   // to map word boxes back
+      const octx = out.getContext('2d');
+      octx.imageSmoothingEnabled = true;
+      octx.imageSmoothingQuality = 'high';
+      octx.drawImage(src, cx, cy, cw, ch, 0, 0, out.width, out.height);
+
+      // 3. Grayscale + local (adaptive) threshold: handles shadows and faded thermal print
+      const od = octx.getImageData(0, 0, out.width, out.height);
+      const d = od.data;
+      const W = out.width, H = out.height;
+      const g = new Float32Array(W * H);
+      for (let i = 0; i < g.length; i++) {
+        g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+      }
+      // Local mean of the gray level: the paper and the table around it. In
+      // gray mode every pixel is measured against it, so a dark table or a
+      // blue background turns white and only the ink stays dark (Tesseract
+      // takes a big dark area for a picture and reads nothing). In black and
+      // white mode it is the adaptive threshold (Bradley).
+      const integ = new Float64Array((W + 1) * (H + 1));
+      for (let y = 0; y < H; y++) {
+        let row = 0;
+        for (let x = 0; x < W; x++) {
+          row += g[y * W + x];
+          integ[(y + 1) * (W + 1) + x + 1] = integ[y * (W + 1) + x + 1] + row;
+        }
+      }
+      const r = Math.max(8, Math.round(W / 32));
+      const T = 0.15;
+      for (let y = 0; y < H; y++) {
+        const ya = Math.max(0, y - r), yb = Math.min(H, y + r + 1);
+        for (let x = 0; x < W; x++) {
+          const xa = Math.max(0, x - r), xb = Math.min(W, x + r + 1);
+          const area = (xb - xa) * (yb - ya);
+          const mean = (integ[yb * (W + 1) + xb] - integ[ya * (W + 1) + xb] - integ[yb * (W + 1) + xa] + integ[ya * (W + 1) + xa]) / area;
+          const v = g[y * W + x];
+          if (binarize) {
+            g[y * W + x] = v < mean * (1 - T) ? 0 : 255;
+          } else {
+            const ratio = v / (mean + 1);
+            g[y * W + x] = ratio >= 1 ? 255 : Math.round(255 * ratio * ratio);
+          }
+        }
+      }
+      for (let i = 0; i < g.length; i++) {
+        d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = g[i];
+      }
+      octx.putImageData(od, 0, 0);
+      return out;
+    }
+
+    // Finds the paper in a photo (or canvas): the largest bright area on a
+    // small copy. Returns the box to crop, or the whole image when no paper
+    // stands out.
+    function findPaperBox(src) {
       const SMALL = 300;
       const k = Math.min(1, SMALL / Math.max(src.width, src.height));
       const sw = Math.max(1, Math.round(src.width * k));
@@ -1964,50 +2029,102 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         cw = Math.round((bx1 - bx0) / k);
         ch = Math.round((by1 - by0) / k);
       }
+      return { cx, cy, cw, ch };
+    }
 
-      // 2. Crop and resize so the receipt text has a size Tesseract reads well
-      const scale = Math.min(3, targetW / cw);
+    // Finds the block of text in a photo by its ink: dark marks the size of
+    // letters (not big engraved letters on a table, not dust), grouped on a
+    // coarse grid, largest group wins. Works when the paper is as bright as
+    // the table behind it, where findPaperBox gives up.
+    function findTextBox(src, SMALL = 400) {
+      const k = Math.min(1, SMALL / Math.max(src.width, src.height));
+      const sw = Math.max(1, Math.round(src.width * k)), sh = Math.max(1, Math.round(src.height * k));
+      const small = document.createElement('canvas');
+      small.width = sw; small.height = sh;
+      const ctx = small.getContext('2d');
+      ctx.drawImage(src, 0, 0, sw, sh);
+      const d = ctx.getImageData(0, 0, sw, sh).data;
+      const g = new Float32Array(sw * sh);
+      for (let i = 0; i < g.length; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+      // ink = clearly darker than its neighborhood
+      const integ = new Float64Array((sw + 1) * (sh + 1));
+      for (let y = 0; y < sh; y++) {
+        let row = 0;
+        for (let x = 0; x < sw; x++) { row += g[y * sw + x]; integ[(y + 1) * (sw + 1) + x + 1] = integ[y * (sw + 1) + x + 1] + row; }
+      }
+      const r = Math.max(5, Math.round(sw / 30));
+      const ink = new Uint8Array(sw * sh);
+      for (let y = 0; y < sh; y++) {
+        const ya = Math.max(0, y - r), yb = Math.min(sh, y + r + 1);
+        for (let x = 0; x < sw; x++) {
+          const xa = Math.max(0, x - r), xb = Math.min(sw, x + r + 1);
+          const area = (xb - xa) * (yb - ya);
+          const sum = integ[yb * (sw + 1) + xb] - integ[ya * (sw + 1) + xb] - integ[yb * (sw + 1) + xa] + integ[ya * (sw + 1) + xa];
+          ink[y * sw + x] = g[y * sw + x] * area < sum * 0.82 ? 1 : 0;
+        }
+      }
+      // connected marks; keep the letter-sized ones
+      const label = new Int32Array(sw * sh).fill(-1);
+      const marks = [];
+      const stack = [];
+      for (let start = 0; start < ink.length; start++) {
+        if (!ink[start] || label[start] >= 0) continue;
+        const id = marks.length;
+        let area = 0, x0 = sw, y0 = sh, x1 = 0, y1 = 0;
+        label[start] = id; stack.push(start);
+        while (stack.length) {
+          const p = stack.pop();
+          const x = p % sw, y = (p - x) / sw;
+          area++;
+          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+          const nb = [x > 0 ? p - 1 : -1, x < sw - 1 ? p + 1 : -1, y > 0 ? p - sw : -1, y < sh - 1 ? p + sw : -1];
+          for (const q of nb) if (q >= 0 && ink[q] && label[q] < 0) { label[q] = id; stack.push(q); }
+        }
+        marks.push({ area, x0, y0, x1, y1 });
+      }
+      const letterLike = marks.map(m => m.area >= 2 && m.area <= 400 && (m.x1 - m.x0) < 30 && (m.y1 - m.y0) < 30);
+      // coarse grid: cells with a few letter-sized marks are text
+      const CELL = 10;
+      const gw = Math.ceil(sw / CELL), gh = Math.ceil(sh / CELL);
+      const cells = new Uint8Array(gw * gh);
+      const count = new Uint16Array(gw * gh);
+      marks.forEach((m, i) => {
+        if (!letterLike[i]) return;
+        const gx = Math.floor((m.x0 + m.x1) / 2 / CELL), gy = Math.floor((m.y0 + m.y1) / 2 / CELL);
+        count[gy * gw + gx]++;
+      });
+      const text = [];
+      for (let i = 0; i < cells.length; i++) if (count[i] >= 2) text.push({ x: i % gw, y: Math.floor(i / gw), n: count[i] });
+      if (text.length < 4) return null;
+      // keep the cells near the middle of the text, drop stray ones far away
+      const med = a => { const b = a.slice().sort((p, q) => p - q); return b[Math.floor(b.length / 2)]; };
+      const mx = med(text.map(c => c.x)), my = med(text.map(c => c.y));
+      const dist = text.map(c => Math.hypot(c.x - mx, c.y - my));
+      const limit = Math.max(3 * med(dist), 4);
+      const kept = text.filter((c, i) => dist[i] <= limit);
+      const best = { letters: kept.reduce((a, c) => a + c.n, 0), x0: Math.min(...kept.map(c => c.x)), y0: Math.min(...kept.map(c => c.y)), x1: Math.max(...kept.map(c => c.x)), y1: Math.max(...kept.map(c => c.y)) };
+      if (best.letters < 15) return null;
+      const pad = CELL;
+      const cx = Math.max(0, Math.round((best.x0 * CELL - pad) / k)), cy = Math.max(0, Math.round((best.y0 * CELL - pad) / k));
+      const cw = Math.min(src.width - cx, Math.round(((best.x1 + 1) * CELL + pad) / k) - cx);
+      const ch = Math.min(src.height - cy, Math.round(((best.y1 + 1) * CELL + pad) / k) - cy);
+      return { cx, cy, cw, ch, letters: best.letters };
+    }
+
+    // The photo cut down to the paper, so the tilt is measured on the
+    // receipt's own text and not on the table around it
+    function cropPaper(img) {
+      const MAX = 1500;
+      let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+      const s = Math.min(1, MAX / Math.max(w, h));
+      w = Math.round(w * s); h = Math.round(h * s);
+      const src = document.createElement('canvas');
+      src.width = w; src.height = h;
+      src.getContext('2d').drawImage(img, 0, 0, w, h);
+      const { cx, cy, cw, ch } = findTextBox(src) || findPaperBox(src);
       const out = document.createElement('canvas');
-      out.width = Math.round(cw * scale);
-      out.height = Math.round(ch * scale);
-      const octx = out.getContext('2d');
-      octx.imageSmoothingEnabled = true;
-      octx.imageSmoothingQuality = 'high';
-      octx.drawImage(src, cx, cy, cw, ch, 0, 0, out.width, out.height);
-
-      // 3. Grayscale + local (adaptive) threshold: handles shadows and faded thermal print
-      const od = octx.getImageData(0, 0, out.width, out.height);
-      const d = od.data;
-      const W = out.width, H = out.height;
-      const g = new Float32Array(W * H);
-      for (let i = 0; i < g.length; i++) {
-        g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-      }
-      if (binarize) {
-        const integ = new Float64Array((W + 1) * (H + 1));
-        for (let y = 0; y < H; y++) {
-          let row = 0;
-          for (let x = 0; x < W; x++) {
-            row += g[y * W + x];
-            integ[(y + 1) * (W + 1) + x + 1] = integ[y * (W + 1) + x + 1] + row;
-          }
-        }
-        const r = Math.max(8, Math.round(W / 32));
-        const T = 0.15;
-        for (let y = 0; y < H; y++) {
-          const ya = Math.max(0, y - r), yb = Math.min(H, y + r + 1);
-          for (let x = 0; x < W; x++) {
-            const xa = Math.max(0, x - r), xb = Math.min(W, x + r + 1);
-            const area = (xb - xa) * (yb - ya);
-            const sum = integ[yb * (W + 1) + xb] - integ[ya * (W + 1) + xb] - integ[yb * (W + 1) + xa] + integ[ya * (W + 1) + xa];
-            g[y * W + x] = g[y * W + x] * area < sum * (1 - T) ? 0 : 255;
-          }
-        }
-      }
-      for (let i = 0; i < g.length; i++) {
-        d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = g[i];
-      }
-      octx.putImageData(od, 0, 0);
+      out.width = cw; out.height = ch;
+      out.getContext('2d').drawImage(src, cx, cy, cw, ch, 0, 0, cw, ch);
       return out;
     }
 
@@ -2038,32 +2155,64 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           }
         });
 
+        const read = async (rot, bin, size, region = null) => {
+          const canvas = buildOcrCanvas(currentImage, rot, bin, size, region);
+          const res = await worker.recognize(canvas);
+          const f = canvas.frame;
+          return { text: res.data.text || '', conf: res.data.confidence || 0, words: res.data.words || [], rot, bin, size, region: { cx: f.cx, cy: f.cy, cw: f.cw, ch: f.ch }, frame: f };
+        };
+        const started = Date.now();
+
         // Straighten the photo automatically: the app measures how tilted the
         // receipt is instead of assuming it was photographed square
-        const tilt = estimateAngles(currentImage);
-        const a1 = currentRotation + tilt[0];
+        const tilt = estimateAngles(cropPaper(currentImage));
+        lastTilt = tilt[0];
+        let base = currentRotation + tilt[0];
+        readings.push(await read(base, false, 1000));
 
-        // Several readings of the same photo: straightened, as photographed,
-        // with reinforced contrast, upside down. The amount is only accepted
-        // when two readings agree on it (see finishReading), so a money
-        // document gets at least two readings.
-        const passes = [
-          [a1, false, 1000],
-          [currentRotation, false, 1000],
-          [a1, false, 1400],
-          [a1, true, 1000],
-          [a1 + 180, true, 1000]
-        ].filter((p, i, all) => all.findIndex(q => q[0] === p[0] && q[1] === p[1] && q[2] === p[2]) === i);
-        const started = Date.now();
-        for (const [rot, bin, size] of passes) {
-          const res = await worker.recognize(buildOcrCanvas(currentImage, rot, bin, size));
-          readings.push({ text: res.data.text || '', conf: res.data.confidence || 0, words: res.data.words || [] });
+        // Sideways or upside-down photo, or paper the app failed to find: the
+        // first reading comes out as gibberish. Then read the whole frame in
+        // every position (the measured tilt and its quarter turns, plus the
+        // plain quarter turns in case the tilt was misjudged), keep the
+        // position the engine reads with confidence, and crop to where the
+        // confident words are.
+        let region = null;
+        if (goodWords(readings[0]) < 8) {
+          ocrStatusText.textContent = 'Procurando a posição certa...';
+          let best = null;
+          const near = (a, b) => Math.abs(((a - b) % 360 + 540) % 360 - 180) < 6;
+          const probes = [base, base + 180, base + 90, base - 90, currentRotation, currentRotation + 90, currentRotation + 180, currentRotation + 270]
+            .filter((r, i, all) => all.findIndex(q => near(q, r)) === i);
+          const probing = Date.now();
+          for (const rot of probes) {
+            const probe = await read(rot, false, 900, 'ink');
+            const q = goodWords(probe);
+            if (!best || q > best.q) best = { rot, q, probe };
+            if (q >= 12 || Date.now() - probing > 12000) break;   // bom o bastante, ou já demorou
+          }
+          if (best && best.q > goodWords(readings[0]) + 2) {
+            base = best.rot;
+            region = textRegion(best.probe) || best.probe.region;
+            readings = [region === best.probe.region ? best.probe : await read(base, false, 1000, region)];
+          }
+        }
+
+        // More readings of the same photo: as photographed, larger, with
+        // reinforced contrast. The amount is only accepted when two readings
+        // agree on it (see finishReading), so a money document gets at least
+        // two readings; free text stops at the first.
+        const done = p => readings.some(r => r.rot === p[0] && r.bin === p[1] && r.size === p[2]);
+        const passes = [[currentRotation, false, 1000, null], [base, false, 1400, region], [base, true, 1000, region]].filter(p => !done(p));
+        let next = 0;
+        while (true) {
           tipo = currentDocType === 'auto' ? detectDocType(readings) : currentDocType;
           const wantsValue = DOC_TYPES[tipo].vitais.includes('Valor');
           if (!wantsValue && (currentDocType !== 'auto' || readings.length >= 2)) break;
           if (wantsValue && agreedValue(readings, tipo) !== null) break;
+          if (next >= passes.length) break;
           if (readings.length >= 2 && Date.now() - started > 20000) break;   // não prender a pessoa
           ocrStatusText.textContent = 'Conferindo com outra leitura...';
+          readings.push(await read(...passes[next++]));
         }
         await worker.terminate();
 
@@ -2109,13 +2258,50 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       return keys.length && (!fallback || counts[keys[0]] > counts[fallback]) ? keys[0] : fallback;
     }
 
-    // The amount two different readings agree on, or null
+    // The amount two differently processed readings agree on, or null. Two
+    // readings of the same crop at the same size and rotation make the same
+    // mistakes, so they do not confirm each other.
     function agreedValue(readings, tipo) {
-      const bests = readings
-        .map(r => { const c = parseDocument(r.text, tipo).candidatos[0]; return c ? c.num : null; })
-        .filter(n => n !== null);
-      const dup = bests.find((n, i) => bests.indexOf(n) !== i);
-      return dup === undefined ? null : dup;
+      const bests = readings.map(r => { const c = parseDocument(r.text, tipo).candidatos[0]; return c ? c.num : null; });
+      for (let i = 0; i < readings.length; i++) {
+        if (bests[i] === null) continue;
+        for (let j = i + 1; j < readings.length; j++) {
+          if (bests[j] !== bests[i]) continue;
+          const a = readings[i], b = readings[j];
+          if (a.size !== b.size || a.bin !== b.bin || a.rot !== b.rot || a.size === undefined) return bests[i];
+        }
+      }
+      return null;
+    }
+
+    // Where the text is, from the word boxes of a reading: the box around the
+    // confident words, ignoring stray ones far from the rest, with a margin.
+    // Returned in the rotated frame of that reading, ready for buildOcrCanvas.
+    function textRegion(reading) {
+      const f = reading.frame;
+      let ws = (reading.words || []).filter(w => w.confidence >= 50 && w.text && w.text.replace(/[^0-9A-Za-zÀ-ÿ]/g, '').length >= 2 && w.bbox);
+      if (ws.length < 3) return null;
+      const cxs = ws.map(w => (w.bbox.x0 + w.bbox.x1) / 2), cys = ws.map(w => (w.bbox.y0 + w.bbox.y1) / 2);
+      const med = a => { const b = a.slice().sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+      const mx = med(cxs), my = med(cys);
+      const dist = ws.map((w, i) => Math.hypot(cxs[i] - mx, cys[i] - my));
+      const limit = Math.max(3 * med(dist), 80);
+      ws = ws.filter((w, i) => dist[i] <= limit);
+      let x0 = Math.min(...ws.map(w => w.bbox.x0)), y0 = Math.min(...ws.map(w => w.bbox.y0));
+      let x1 = Math.max(...ws.map(w => w.bbox.x1)), y1 = Math.max(...ws.map(w => w.bbox.y1));
+      const pad = Math.max(20, 0.08 * Math.max(x1 - x0, y1 - y0));
+      x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+      // back to the rotated frame
+      const cx = Math.max(0, Math.round(f.cx + x0 / f.scale)), cy = Math.max(0, Math.round(f.cy + y0 / f.scale));
+      const cw = Math.min(f.width - cx, Math.round((x1 - x0) / f.scale)), ch = Math.min(f.height - cy, Math.round((y1 - y0) / f.scale));
+      if (cw < 40 || ch < 40) return null;
+      return { cx, cy, cw, ch };
+    }
+
+    // How many words the engine read with confidence: the measure of a
+    // reading being right side up
+    function goodWords(reading) {
+      return (reading.words || []).filter(w => w.confidence >= 60 && w.text && w.text.replace(/[^0-9A-Za-zÀ-ÿ]/g, '').length >= 3).length;
     }
 
     // Printed text comes out as confident, word-like tokens; handwriting
@@ -2183,12 +2369,14 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       const sinais = {};
       ['nfce', 'cartao', 'conta'].forEach(k => { sinais[k] = (allText.match(DOC_TYPES[k].sinais) || []).length; });
       window.ocrDebug = {
-        tipo, detected, sinais, valor, candidates, textKind,
-        readings: readings.map((r, i) => ({ text: r.text, conf: r.conf, words: r.words.length, candidatos: parsed[i].candidatos }))
+        tipo, detected, sinais, valor, candidates, textKind, tilt: lastTilt,
+        readings: readings.map((r, i) => ({ text: r.text, conf: r.conf, words: r.words.length, good: goodWords(r), rot: r.rot, bin: r.bin, size: r.size, region: r.region, candidatos: parsed[i].candidatos }))
       };
 
       lastTipo = tipo;
       renderFieldsEditor({ fields, tipo, expectsValue, candidates, status, hint, textKind });
+      const far = readings.every(r => goodWords(r) < 8) && readings.some(r => r.region && r.frame && r.region.cw < 0.4 * r.frame.width);
+      if (far) showToast('O texto está pequeno na foto. Tire mais de perto.', 'warn', 5000);
       if (!expectsValue) showToast('Texto lido. Confira os campos.', 'ok');
       else if (valor !== null) showToast('Comprovante processado com sucesso!', 'ok');
       else if (candidates.length) showToast('Não tenho certeza do valor. Toque no valor certo.', 'warn');
@@ -2369,13 +2557,15 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     // never shown as the amount.
     function findMoney(lines, def) {
       const seen = {};
+      let lineNo = 0;
       const add = (num, score) => {
         const k = num.toFixed(2);
-        if (!seen[k]) seen[k] = { num, score: 0, count: 0 };
+        if (!seen[k]) seen[k] = { num, score: 0, lines: new Set() };
         seen[k].score = Math.max(seen[k].score, score);
-        seen[k].count++;
+        seen[k].lines.add(lineNo);
       };
       lines.forEach(raw => {
+        lineNo++;
         const line = raw.replace(/\b(?:R|H|K|P)\s?[$S5§&]{1,2}(?=\s*[:\d])/g, 'R$');   // R$ mal lido (RS, R5, H$...)
         if (def.ignorar && def.ignorar.test(line)) return;
         const clean = line
@@ -2403,7 +2593,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         }
       });
       return Object.values(seen)
-        .map(c => ({ num: c.num, score: c.score + (c.count > 1 ? 1 : 0) }))
+        .map(c => ({ num: c.num, score: c.score + (c.lines.size > 1 ? 1 : 0) }))
         .filter(c => c.score >= 3)
         .sort((a, b) => b.score - a.score || b.num - a.num);
     }

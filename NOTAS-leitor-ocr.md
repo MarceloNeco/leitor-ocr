@@ -15,14 +15,17 @@ O motor é o Tesseract.js 5.1.1 em português (`por`, modelo `4.0.0_best_int`). 
    - amplia até a largura pedida (no máximo 3×);
    - opcionalmente aplica limiar adaptativo (Bradley, janela = largura/32, T = 0,15).
 3. Antes de ler, o app pergunta **o que é a foto** (pop-up `askDocType`, com o último tipo usado sugerido). Os tipos estão em `DOC_TYPES`: cada um diz quais campos são vitais (`vitais`), que palavras denunciam o tipo (`sinais`), que palavras acompanham o valor (`palavras`) e que linhas nunca têm o valor (`ignorar`: itens, tributos, gorjeta, troco, parcela...). Hoje existem: comprovante de maquininha (`cartao`), nota fiscal/cupom (`nfce`), conta de restaurante (`conta`), texto livre (`livre`) e "não sei, descobrir" (`auto`, que escolhe pelos `sinais` e cai em `livre` com menos de 3 sinais). Para ensinar um tipo novo basta uma entrada nessa tabela.
-4. `executeOCR()` faz até 5 leituras da mesma foto e **só aceita o valor quando duas leituras concordam**:
-   1. endireitada, em tons de cinza, largura 1000
+4. `executeOCR()` faz até 4 leituras da mesma foto e **só aceita o valor quando duas leituras concordam**:
+   1. endireitada (inclinação medida em `cropPaper`, que recorta o bloco de texto ou o papel antes de medir), em tons de cinza, largura 1000
    2. como foi fotografada, em tons de cinza, largura 1000
    3. endireitada, em tons de cinza, largura 1400
    4. endireitada, preto e branco, largura 1000
-   5. de cabeça para baixo, preto e branco, largura 1000
 
    Leituras repetidas são descartadas. Para na primeira concordância, ou depois de 20 segundos com pelo menos duas leituras. Tipos sem valor (texto livre) fazem uma leitura só.
+
+   **Foto de lado, de cabeça para baixo ou papel que o app não achou:** quando a primeira leitura sai com menos de 8 palavras confiáveis (`goodWords`), entra o modo de recuperação. Ele lê, numa cópia de 900 px, o bloco de texto (`findTextBox`: marcas de tinta do tamanho de letras, agrupadas numa grade; cai no papel `findPaperBox` se não achar) em até 8 posições: a inclinação medida e seus três giros de 90°, mais os quatro giros "secos" para o caso de a inclinação estar errada. Fica com a posição em que o motor leu mais palavras confiáveis (para assim que uma dá 12 ou mais, ou depois de 12 segundos), recorta pelas caixas das palavras lidas (`textRegion`) e refaz as leituras normais nesse recorte, ampliando até 4×. Quando nenhuma posição lê e o bloco de texto é pequeno na foto, o aviso pede para fotografar mais de perto.
+
+   **Fundo da foto:** em tons de cinza, cada pixel é comparado com a média da vizinhança (janela = largura/32): mesa escura ou fundo azul viram branco e só a tinta fica escura. Sem isso o Tesseract tomava o comprovante rosa sobre fundo azul por uma figura e devolvia nada, mesmo com o recorte perfeito.
 5. `parseDocument(texto, tipo)` extrai os campos e `findMoney` lista os candidatos a valor:
    - linhas com palavras de `ignorar` são puladas inteiras;
    - antes de procurar, apaga CNPJ, datas, horas e número de cartão (`****9458`);
@@ -41,6 +44,9 @@ Cada comprovante salvo guarda o `tipo`, e o histórico mostra o tipo no cartão.
 - **Campo vazio em vermelho é melhor que valor errado.** Tentativas extras com giros de 90° e ampliação maior chegaram a ler R$ 64,00 e R$ 36.020,00 num comprovante de R$ 84,00. Foram retiradas.
 - **Duas leituras precisam concordar.** Uma leitura sozinha errava dígito ("R$ 711,61" num papel de R$ 71,61) com toda a cara de certa. Exigir concordância custa tempo (a foto fácil leva 2 leituras em vez de 1), mas zerou os valores errados. Quando as leituras discordam, mostrar os valores lidos como botões é melhor que escolher um: a pessoa decide com um toque.
 - **O tipo do documento manda na leitura.** Numa nota fiscal, o número ao lado de "Tributos" ou de um item nunca é o total; num pedido médico não existe valor. Perguntar o tipo antes de ler deixa o app esperar os campos certos e ignorar o resto.
+- **Fundo neutralizado antes de ler.** O comprovante da Atlas Estacionamentos (rosa sobre azul) saía vazio em qualquer modo de segmentação de página, e lido direito em preto e branco: o problema era o Tesseract tratar a área escura como figura. Comparar cada pixel com a média da vizinhança resolve sem o custo de binarizar tudo, e de quebra a DrogaRaia passou a ler R$ 71,61 certo.
+- **Giro descoberto pelo próprio motor.** Medir a inclinação pela projeção da tinta não distingue 0° de 180° nem acerta em mesa com letras gravadas; contar palavras confiáveis em cada posição distingue. Só roda quando a primeira leitura sai ruim, para não encarecer a foto normal.
+- **Duas leituras iguais só confirmam se foram processadas diferente** (outro tamanho, giro ou preto e branco). Dois recortes do mesmo tamanho repetiam o mesmo erro de dígito ("57,57" num cupom de 57,52) e se "confirmavam".
 - **As leituras foram escolhidas por teste, não por chute.** Uma grade de 20 combinações (5 ângulos × cinza/preto e branco × largura 1000/1400) em 6 fotos reais mostrou que só as três primeiras acertam algum valor; a largura 1400 voltou como terceira leitura porque serve de segunda opinião para confirmar o valor (5 fotos passaram de incerto a confirmado com ela).
 - **Os 3 botões de exemplo** (Posto Ipiranga, Pizzaria Bella, Drogasil) continuam funcionando e servem de teste rápido; entram como comprovante de maquininha sem passar pelo pop-up.
 
@@ -98,11 +104,24 @@ Com "não sei, descobrir" em todas, o app acertou o tipo em 27 das 36 e o valor 
 
 O que ainda fica vazio ou incerto: fotos giradas de lado ou de cabeça para baixo (etapa 3), papéis pequenos numa foto grande e fotos com vários comprovantes (etapa 5), conta de luz e de gás com o valor numa coluna separada do rótulo (leitor próprio de contas) e a nota com pouca luz. Nenhum valor errado é mostrado como certo.
 
+## Resultado da etapa 3 (37 fotos, 8/10/2026)
+
+As mesmas da etapa 2 mais a caixa de sabonete de cabeça para baixo. Tipo escolhido no pop-up:
+
+| Campo | Certo | Incerto, certo entre as opções | Incerto | Vazio | Errado |
+|---|---|---|---|---|---|
+| Valor | 24 | 5 | 1 | 7 | 0 |
+| Data | 26 | - | - | 7 | 4 |
+| Estabelecimento | 3 | - | - | - | 23 |
+
+Tempo médio por foto no servidor de teste: 12.7 s. Passaram a ler ou a confirmar: o Stone girado de lado (original do celular), o Stone da Atlas (fundo azul), a caixa de sabonete de cabeça para baixo, a conta de gás, o InfinitePay, a DrogaRaia (agora R$ 71,61 certo), a Drogaria São Paulo e os cupons da Shell, IHOP e Five Guys. O tempo médio subiu porque as fotos difíceis passam pelo modo de recuperação; as fáceis continuam em 2 a 4 segundos. Continuam vazios os quatro comprovantes girados do WhatsApp (f10, f11, f14, f15): com 960 px de largura e o papel ocupando um terço da foto, as letras têm 5 a 7 px e nenhuma posição lê; são o caso de pedir a foto original ou mais de perto.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **Estabelecimento:** costuma sair embaralhado, porque ele usa a primeira linha do texto quando não acha LTDA, POSTO etc. (planejado para a etapa 4).
 - **Conta de luz e de gás:** o valor fica numa coluna separada do rótulo "Total a pagar", então as regras por linha não acham; a linha digitável do código de barras carrega o valor e resolve isso (leitor próprio de contas).
 - **Rótulo impresso/à mão:** é calculado pela confiança do motor por palavra. Foto escura de texto impresso também sai como "parece escrito à mão ou apagado"; por isso o rótulo diz "ou apagado" e não decide nada sozinho.
 - **Vários papéis na mesma foto:** sai só um valor (etapa 5).
+- **Fotos pequenas do WhatsApp com o papel longe:** não há o que ler; o app avisa "tire mais de perto".
 
 Resolvidas na etapa 2: hora pegando o ano ("26:13"), selo de confiança mentindo, Autorização pegando "POSTO".
