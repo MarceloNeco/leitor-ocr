@@ -6,7 +6,7 @@ Arquivo: `index.html` (antes era `leitor-ocr.html` no repositório FeatureTestin
 
 ## Como a leitura funciona
 
-O motor é o Tesseract.js 5 em português (`por`), baixado do jsDelivr na hora de ler.
+O motor é o Tesseract.js 5.1.1 em português (`por`, modelo `4.0.0_best_int`). Ele fica na pasta `tesseract/` do próprio repositório, e não mais no jsDelivr: `tesseract.min.js`, `worker.min.js`, os dois núcleos `tesseract-core-simd-lstm.wasm.js` e `tesseract-core-lstm.wasm.js` (o navegador escolhe o que suporta) e `por.traineddata.gz`. São exatamente os arquivos que o app baixava do jsDelivr antes, conferidos byte a byte. O `index.html` aponta para eles com endereços absolutos (`OCR_BASE`), porque o motor roda num worker em blob e caminhos relativos não funcionam lá.
 
 1. `estimateAngles(img)` mede a inclinação do comprovante. Ela marca a tinta com um limiar local, projeta a tinta em ângulos de -87° a +87° (passo de 3°) e escolhe o ângulo em que as linhas de texto ficam mais nítidas. Cada ponto é dividido entre as duas linhas vizinhas; sem isso, os ângulos diagonais (±45°) ganhavam sempre por engano.
 2. `buildOcrCanvas(img, ângulo, binarizar, largura)`:
@@ -51,9 +51,28 @@ As fotos **não estão no repositório**, porque têm dados pessoais e o reposit
 
 ## Como testar sem celular
 
-- O jsDelivr pode estar bloqueado no ambiente de testes. Nesse caso, substitua `window.Tesseract` por uma versão falsa que manda a imagem (`canvas.toDataURL()`) para o `tesseract` instalado no sistema, com `-l por --psm 3`.
-- Use o modelo `por.traineddata` do repositório `tesseract-ocr/tessdata_best`, que é o mais parecido com o que o Tesseract.js usa (4.0.0_best_int). O `tessdata_fast` lê bem pior e engana o teste.
-- Abra a página com Playwright, envie a foto pelo `#fileInputGallery` e leia os campos em `#fieldsListContainer .field-row`.
+Tudo roda num Chromium invisível, sem internet:
+
+```
+node testes/medir.js /pasta/com/as/fotos            # todas as fotos da pasta
+node testes/medir.js /pasta/com/as/fotos f05.jpeg   # só uma
+```
+
+Precisa de Node e do Playwright com Chromium (no ambiente do Claude já vem instalado). O script sobe um servidor local com o repositório, abre o `index.html`, envia cada foto pelo botão Galeria e lê os campos que apareceram na tela. Qualquer pedido para fora do servidor local é bloqueado e listado no fim: se o app tentar buscar algo na internet, aparece ali.
+
+Se a pasta tiver um `gabarito.json`, o script imprime a tabela certo/vazio/errado (formato explicado no começo do `testes/medir.js`). As fotos, o gabarito e o `_resultado.json` (que tem o texto lido) ficam **fora do repositório**, porque têm dados pessoais.
+
+## Resultado nos testes (17 fotos reais pelo WhatsApp, 8/10/2026)
+
+Conjunto novo, com mais tipos de papel: 2 pedidos médicos (sem valor), 4 notas fiscais NFC-e, 1 conferência de conta de restaurante, 3 fotos com vários comprovantes juntos, 4 comprovantes girados ou de cabeça para baixo e o resto comprovantes de maquininha normais. Medição com o app desta versão (antes de qualquer mudança na leitura):
+
+| Campo | Certo | Vazio | Errado |
+|---|---|---|---|
+| Valor | 6 | 6 | 5 |
+| Data | 8 | 6 | 3 |
+| Estabelecimento | 1 | - | 12 |
+
+Os 2 pedidos médicos saíram vazios, que é o certo, e estão contados nos 6 certos do valor. Os 5 valores errados são o problema principal: linha de tributos ("R$ 0,00") e preço de item lidos como total numa nota fiscal, item de conta lido como total, e dígito a mais ("711,61" num papel de 71,61). Os vazios são as fotos giradas, a nota com pouca luz e as fotos com vários papéis.
 
 ## Pendências conhecidas (ninguém pediu ainda)
 

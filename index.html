@@ -1546,12 +1546,18 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       imageControls.style.display = 'flex';
     }
 
+    // The OCR engine (Tesseract.js 5.1.1), its worker, core and the Portuguese
+    // language file live in the site's own tesseract/ folder, so reading no
+    // longer depends on jsDelivr. Absolute URLs are required because the
+    // engine runs inside a blob worker, where relative paths do not resolve.
+    const OCR_BASE = new URL('tesseract/', location.href).href;
+
     // Dynamic loader for Tesseract.js if not already present
     function loadTesseractLibrary() {
       if (window.Tesseract) return Promise.resolve(window.Tesseract);
       return new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        script.src = OCR_BASE + 'tesseract.min.js';
         script.onload = () => resolve(window.Tesseract);
         script.onerror = () => reject(new Error('Falha ao carregar Tesseract'));
         document.head.appendChild(script);
@@ -1797,6 +1803,9 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         ocrStatusText.textContent = 'Lendo caracteres...';
         
         const worker = await T.createWorker('por', 1, {
+          workerPath: OCR_BASE + 'worker.min.js',
+          corePath: OCR_BASE,
+          langPath: OCR_BASE,
           logger: m => {
             if (m.status === 'recognizing text') {
               const p = Math.round((m.progress || 0) * 100);
