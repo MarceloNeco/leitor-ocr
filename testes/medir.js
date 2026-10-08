@@ -116,13 +116,15 @@ function grade(fields, chips, expected) {
     const fallback = logs.some(l => l.includes('OCR falhou'));
     const passes = texts.length;
     const g = k => (fields.find(x => x.key === k) || {}).val || '-';
-    const nota = gabarito && gabarito[f] ? grade(fields, chips, gabarito[f]) : null;
+    const notaG = gabarito && gabarito[f] ? grade(fields, chips, gabarito[f]) : null;
     const kind = debug.textKind ? `${debug.textKind.label} (${debug.textKind.good}%)` : '';
+    const codes = (debug.codes || []).map(c => `${c.format}:${c.text.slice(0, 30)}`).join(';');
+    const nota = g('Nota');
     const sinais = debug.sinais ? ` sinais=${debug.sinais.nfce}/${debug.sinais.cartao}/${debug.sinais.conta}` : '';
     const rots = (debug.readings || []).map(r => `${r.rot}${r.bin ? 'pb' : ''}${r.region ? 'rec' : ''}:${r.good}`).join(',') + (debug.tilt !== undefined ? ` incl=${debug.tilt}` : '');
-    results.push({ file: f, ok, secs, fallback, conf, passes, tipoEscolhido: tipo, tipoLido: debug.tipo, detectado: debug.detected, textKind: debug.textKind, chips, fields, nota, readings: debug.readings, logs: logs.slice(0, 30) });
-    const tag = nota ? `  [valor=${nota.valor} data=${nota.data} estab=${nota.estab}]` : '';
-    console.log(`${f}  ${secs}s  leituras=${passes}${rots ? ' [' + rots + ']' : ''}${fallback ? ' FALLBACK' : ''}  tipo=${tipo}>${debug.tipo || '?'}${sinais}  Valor=${g('Valor')}${chips.length ? ' opções=' + chips.join('|') : ''}  Data=${g('Data')}  Hora=${g('Hora')}  Estab=${g('Estabelecimento').slice(0, 30)}  ${kind}${tag}`);
+    results.push({ file: f, ok, secs, fallback, conf, passes, tipoEscolhido: tipo, tipoLido: debug.tipo, detectado: debug.detected, textKind: debug.textKind, chips, fields, nota: notaG, codes: debug.codes, readings: debug.readings, logs: logs.slice(0, 30) });
+    const tag = notaG ? `  [valor=${notaG.valor} data=${notaG.data} estab=${notaG.estab}]` : '';
+    console.log(`${f}  ${secs}s  leituras=${passes}${rots ? ' [' + rots + ']' : ''}${fallback ? ' FALLBACK' : ''}  tipo=${tipo}>${debug.tipo || '?'}${sinais}  Valor=${g('Valor')}${chips.length ? ' opções=' + chips.join('|') : ''}  Data=${g('Data')}  Hora=${g('Hora')}  Estab=${g('Estabelecimento').slice(0, 30)}${nota !== '-' ? '  Nota=' + nota : ''}${codes ? '  codigo=' + codes : ''}  ${kind}${tag}`);
     fs.writeFileSync(out, JSON.stringify(results, null, 1));
     await page.close();
   }

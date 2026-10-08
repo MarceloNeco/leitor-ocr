@@ -1361,6 +1361,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     const ORDERED_FIELD_KEYS = [
       'Estabelecimento',
       'CNPJ',
+      'Nota',
       'Valor',
       'Data',
       'Hora',
@@ -1775,6 +1776,63 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     // engine runs inside a blob worker, where relative paths do not resolve.
     const OCR_BASE = new URL('tesseract/', location.href).href;
 
+    // QR codes and barcodes: ZXing (every format) and jsQR (QR only, more
+    // tolerant of photos), both in the site's own libs/ folder
+    const CODES_BASE = new URL('libs/', location.href).href;
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Falha ao carregar ' + src));
+        document.head.appendChild(script);
+      });
+    }
+
+    // Reads the QR codes and barcodes in the photo: ZXing on the full frame,
+    // jsQR as a second try for QR codes, then ZXing on the frame turned
+    // sideways for barcodes printed up and down. Stops at the first find or
+    // after about two seconds.
+    async function readCodes(img) {
+      try {
+        if (!window.ZXing) await loadScript(CODES_BASE + 'zxing.min.js');
+        if (!window.jsQR) await loadScript(CODES_BASE + 'jsQR.js');
+      } catch (err) { console.warn(err); return []; }
+      const hints = new Map();
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      const reader = new ZXing.MultiFormatReader();
+      reader.setHints(hints);
+      const draw = (maxW, rot) => {
+        const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
+        const s = Math.min(1, maxW / w0);
+        const w = Math.round(w0 * s), h = Math.round(h0 * s);
+        const c = document.createElement('canvas');
+        c.width = rot ? h : w; c.height = rot ? w : h;
+        const x = c.getContext('2d');
+        x.translate(c.width / 2, c.height / 2);
+        x.rotate(rot * Math.PI / 180);
+        x.drawImage(img, -w / 2, -h / 2, w, h);
+        return c;
+      };
+      const found = [];
+      const started = Date.now();
+      for (const [maxW, rot, lib] of [[2000, 0, 'zxing'], [2000, 0, 'jsqr'], [1300, 0, 'zxing'], [1300, 90, 'zxing']]) {
+        const c = draw(maxW, rot);
+        try {
+          if (lib === 'zxing') {
+            const r = reader.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(c))));
+            found.push({ format: ZXing.BarcodeFormat[r.getBarcodeFormat()], text: r.getText() });
+          } else {
+            const d = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+            const r = jsQR(d.data, c.width, c.height, { inversionAttempts: 'dontInvert' });
+            if (r && r.data) found.push({ format: 'QR_CODE', text: r.data });
+          }
+        } catch (err) { /* nothing found in this try */ }
+        if (found.length || Date.now() - started > 2500) break;
+      }
+      return found;
+    }
+
     // Dynamic loader for Tesseract.js if not already present
     function loadTesseractLibrary() {
       if (window.Tesseract) return Promise.resolve(window.Tesseract);
@@ -2159,7 +2217,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           const canvas = buildOcrCanvas(currentImage, rot, bin, size, region);
           const res = await worker.recognize(canvas);
           const f = canvas.frame;
-          return { text: res.data.text || '', conf: res.data.confidence || 0, words: res.data.words || [], rot, bin, size, region: { cx: f.cx, cy: f.cy, cw: f.cw, ch: f.ch }, frame: f };
+          const lines = (res.data.lines || []).map(l => ({ text: (l.text || '').trim(), conf: l.confidence || 0 })).filter(l => l.text);
+          return { text: res.data.text || '', conf: res.data.confidence || 0, words: res.data.words || [], lines, rot, bin, size, region: { cx: f.cx, cy: f.cy, cw: f.cw, ch: f.ch }, frame: f };
         };
         const started = Date.now();
 
@@ -2216,15 +2275,20 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         }
         await worker.terminate();
 
+        ocrStatusText.textContent = 'Procurando QR code e código de barras...';
+        window.lastCodes = currentImage._presetText ? [] : await readCodes(currentImage);
+
       } catch (err) {
         console.warn('OCR falhou, usando o texto de exemplo ou um analisador interno:', err);
+        window.lastCodes = [];
         for (let p = 20; p <= 100; p += 20) {
           await new Promise(r => setTimeout(r, 80));
           ocrProgressBar.style.width = `${p}%`;
           ocrPercentText.textContent = `${p}%`;
         }
         const text = currentImage._presetText || generateFallbackFromCanvas();
-        readings = [{ text, conf: 0, words: [] }, { text, conf: 0, words: [] }];
+        const lines = text.split('\n').map(t => ({ text: t.trim(), conf: 90 })).filter(l => l.text);
+        readings = [{ text, conf: 0, words: [], lines }, { text, conf: 0, words: [], lines }];
         tipo = currentDocType === 'auto' ? detectDocType(readings) : currentDocType;
       }
 
@@ -2237,6 +2301,72 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
       lastReadings = readings;
       finishReading(readings, tipo);
+    }
+
+    // The access key of a nota fiscal (NF-e/NFC-e): 44 digits in groups of 4,
+    // with a check digit (modulo 11) that tells a correct reading from a
+    // wrong one. It carries the issuer's CNPJ, the month of issue and the
+    // number of the nota.
+    function parseChave(text) {
+      const re = /(?:\d{4}[\s|.-]{0,3}){10}\d{4}/g;
+      let m;
+      while ((m = re.exec(text || '')) !== null) {
+        const digits = m[0].replace(/\D/g, '');
+        if (digits.length !== 44) continue;
+        let sum = 0, w = 2;
+        for (let i = 42; i >= 0; i--) { sum += +digits[i] * w; w = w === 9 ? 2 : w + 1; }
+        const dv = (11 - (sum % 11)) % 11;
+        if (dv > 9 || dv !== +digits[43]) continue;
+        const modelo = digits.slice(20, 22);
+        if (modelo !== '55' && modelo !== '65') continue;
+        const c = digits.slice(6, 20);
+        return {
+          chave: digits,
+          cnpj: `${c.slice(0, 2)}.${c.slice(2, 5)}.${c.slice(5, 8)}/${c.slice(8, 12)}-${c.slice(12)}`,
+          ano: '20' + digits.slice(2, 4), mes: digits.slice(4, 6),
+          numero: String(+digits.slice(25, 34)), modelo
+        };
+      }
+      return null;
+    }
+
+    // The establishment's name: among the lines of every reading, the one the
+    // engine read with confidence that looks like a business name (LTDA,
+    // RESTAURANTE, POSTO...), comes after "COMPRA" (Stone) or sits next to
+    // the CNPJ, and is not an address, a city, a card brand or a label.
+    const ESTAB_SKIP = /VIA\s?CLIENTE|VIA DO CLIENTE|COMPROVANTE|CUPOM|DANFE|NFC-?E|DOCU|AUXILIAR|NOTA FISCAL|FISCAL|ELETR[OÔ]NIC|PROTOCOLO|CONSUMIDOR|CONSULTE|CHAVE|\bCPF\b|\bCEP\b|TELEFONE|\bTEL\b|FONE|CR[EÉ]DITO|D[EÉ]BITO|MASTERCARD|\bVISA\b|\bELO\b|AMEX|HIPERCARD|CART[AÃ]O|\bAUT\b|\bNSU\b|\bDOC\b|TERMINAL|SERIAL|\bAID\b|ARQC|VALOR|TOTAL|SUBTOTAL|TROCO|DESCONTO|\bITE[MN]|\bQTD|\bDATA\b|HORA|EMISS|PARCELA|SENHA|APROVAD|OBRIGADO|VOLTE SEMPRE|EXTRATO|RESUMO|PEDIDO|\bMESA\b|ATENDENTE|OPERADOR|\bOPE\b|CAIXA|\bPDV\b|ORDER|CASHIER|SERVER|RECEIPT|SURVEY|CHECK|GUEST|WELCOME|THANK|CUSTOMER|MERCHANT|\b(?:RUA|R\.|AV\.?|AVENIDA|ALAMEDA|AL\.|PRA[CÇ]A|ROD\.?|RODOVIA|ESTRADA|TRAVESSA|TV\.|LARGO|PKWY|PARKWAY|STREET|SUITE)\b|^\d|\b[A-Z]{3,}\/[A-Z]{2}\b|\b(?:SP|RJ|MG|RS|PR|SC|BA|PE|CE|GO|DF|ES|MT|MS|PA|AM|MA|PB|RN|PI|AL|SE|RO|TO|AC|AP|RR)\b\s*$/;
+    const ESTAB_ACQUIRER = /^(?:STONE|GETNET|CIELO|REDE|PAGSEGURO|PAGBANK|INFINITEPAY|SUMUP|SAFRAPAY|MERCADO PAGO|VERO|BIN|ELAVON|GLOBAL PAYMENTS)\s*$/;
+    const ESTAB_CLUE = /LTDA|\bS\.?A\.?\b|\bS\/A\b|EIRELI|\bME\b|\bEPP\b|COM[EÉ]RCIO|RESTAURANTE|LANCHONETE|LANCHES|\bBAR\b|PIZZARIA|PADARIA|CAFE|CAF[EÉ]|POSTO|FARM[AÁ]CIA|DROGARIA|SUPERMERCADO|MERCADO|VAREJ[AÃ]O|LOJA|CL[IÍ]NICA|HOSPITAL|ESTACIONAMENTO|KITCHEN|GRILL|BURGER|HOTEL|ACADEMIA|PET|ATACAD/;
+    function pickEstablishment(readings) {
+      let best = null;
+      readings.forEach(r => {
+        const lines = r.lines || [];
+        lines.forEach((l, i) => {
+          let text = l.text.toUpperCase();
+          let score = l.conf / 25;                     // 0 a 4
+          if (/CNPJ|\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2}/.test(text)) {
+            text = text.replace(/\s*[-:]*\s*CNPJ.*$/, '').replace(/\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2}/, '');
+            score += 1.5;
+          }
+          text = text.replace(/^[^A-ZÀ-Ú0-9]+|[^A-ZÀ-Ú0-9.&)]+$/g, '').replace(/\s+[\d\s#\-]+$/, '');
+          if (/\d+[.,]\d{2}\b/.test(text)) return;   // a price: an item line, not a name
+          const m = text.match(/^(?:COMPRA|ESTABELECIMENTO|LOJA)\s*[:\-]?\s+(.{3,})$/);
+          if (m) { text = m[1]; score += 2; }
+          const letters = (text.match(/[A-ZÀ-Ú]/g) || []).length;
+          if (text.length < 4 || text.length > 48 || letters < 0.6 * text.length) return;
+          const tokens = text.split(/\s+/);
+          const wordy = tokens.filter(t => /^[A-ZÀ-Ú&.'-]{2,}$/.test(t) && /[AEIOUÀ-Ú]/.test(t)).length;
+          if (wordy < Math.max(1, Math.ceil(tokens.length * 0.6))) return;   // mostly garbage
+          if (ESTAB_SKIP.test(text) || ESTAB_ACQUIRER.test(text)) return;
+          if (ESTAB_CLUE.test(text)) score += 2;
+          const near = [lines[i + 1], lines[i + 2], lines[i - 1]].filter(Boolean).map(x => x.text.toUpperCase());
+          if (near.some(x => /CNPJ|\d{2}\.\d{3}\.\d{3}\/\d{4}/.test(x))) score += 1.5;
+          if (i < 8) score += 1;
+          if (tokens.length === 1 && text.length < 6) score -= 1;
+          if (!best || score > best.score) best = { text, score };
+        });
+      });
+      return best ? best.text : '';
     }
 
     // Guesses the document type from the words that give it away
@@ -2342,6 +2472,30 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         if ((has && !bestHas) || (has === bestHas && r.conf > readings[bestIdx].conf)) bestIdx = i;
       });
       const fields = parsed[bestIdx].fields.slice();
+      (window.lastCodes || []).forEach(c => {
+        fields.push(c.format === 'QR_CODE' ? { key: 'QR code', val: c.text } : { key: 'Código de barras', val: `${c.text} (${c.format.replace(/_/g, ' ')})` });
+      });
+      if (tipo !== 'livre') {
+        const chave = readings.map(r => parseChave(r.text)).find(Boolean) || (window.lastCodes || []).map(c => parseChave(c.text)).find(Boolean);
+        if (chave) {
+          const set = (key, val) => { const f = fields.find(x => x.key === key); if (f) f.val = val; else fields.push({ key, val }); };
+          set('CNPJ', chave.cnpj);
+          set('Nota', chave.numero);
+          set('Chave', chave.chave);
+          // the key says the month of issue: keep a date only if it agrees
+          const ok = d => d && d.slice(3, 5) === chave.mes && d.slice(6) === chave.ano;
+          const f = fields.find(x => x.key === 'Data');
+          if (f && !ok(f.val)) {
+            const alt = parsed.flatMap(p => p.fields.filter(x => x.key === 'Data').map(x => x.val)).find(ok);
+            if (alt) f.val = alt; else fields.splice(fields.indexOf(f), 1);
+          }
+        }
+        const estab = pickEstablishment(readings);
+        const f = fields.find(x => x.key === 'Estabelecimento');
+        if (estab && f) f.val = estab;
+        else if (estab) fields.unshift({ key: 'Estabelecimento', val: estab });
+        else if (f) fields.splice(fields.indexOf(f), 1);
+      }
       ['Data', 'Hora'].forEach(key => {
         const f = fields.find(x => x.key === key);
         const common = mostCommon(parsed, key, f ? f.val : null);
@@ -2369,7 +2523,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       const sinais = {};
       ['nfce', 'cartao', 'conta'].forEach(k => { sinais[k] = (allText.match(DOC_TYPES[k].sinais) || []).length; });
       window.ocrDebug = {
-        tipo, detected, sinais, valor, candidates, textKind, tilt: lastTilt,
+        tipo, detected, sinais, valor, candidates, textKind, tilt: lastTilt, codes: window.lastCodes || [],
         readings: readings.map((r, i) => ({ text: r.text, conf: r.conf, words: r.words.length, good: goodWords(r), rot: r.rot, bin: r.bin, size: r.size, region: r.region, candidatos: parsed[i].candidatos }))
       };
 
@@ -2434,7 +2588,9 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         const minYear = def.vitais.includes('Valor') ? 2010 : 1900;
         if (d < 1 || d > 31 || mo < 1 || mo > 12 || y < minYear || y > new Date().getFullYear() + 1) continue;
         const key = `${dm[1]}/${dm[2]}/${yr}`;
-        dates[key] = (dates[key] || 0) + 1;
+        const lineStart = textUpper.lastIndexOf('\n', dm.index) + 1;
+        const line = textUpper.slice(lineStart, textUpper.indexOf('\n', dm.index) === -1 ? undefined : textUpper.indexOf('\n', dm.index));
+        dates[key] = (dates[key] || 0) + (/EMISS|\bDATA\b|COMPRA|VENDA|PAGAMENTO/.test(line) ? 2 : 1);
       }
       const dateKeys = Object.keys(dates).sort((a, b) => dates[b] - dates[a]);
       if (dateKeys.length) fieldsMap['Data'] = dateKeys[0];

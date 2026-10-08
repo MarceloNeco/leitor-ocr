@@ -35,7 +35,10 @@ O motor é o Tesseract.js 5.1.1 em português (`por`, modelo `4.0.0_best_int`). 
    - "R$35096" (vírgula perdida) só vale com palavra-chave na linha, e ainda precisa de outra leitura concordando.
    - Data: só datas reais (dia 1-31, mês 1-12; documentos de dinheiro entre 2010 e o ano que vem), a mais repetida entre todas as leituras. Hora: só com ":" ou "H", de preferência na mesma linha da data, a mais repetida entre as leituras.
 6. `finishReading(leituras, tipo)` decide: valor confirmado (duas leituras iguais), **incerto** (leituras discordaram ou só uma achou: o campo fica vazio e os valores lidos viram botões para tocar) ou não lido. O selo no alto diz qual dos três aconteceu, em vez da porcentagem antiga. Também rotula a foto como texto impresso, com partes à mão/apagadas ou parecendo escrito à mão, pela proporção de palavras em que o motor confiou (`classifyTextKind`): é só um aviso, a pessoa confirma. O botão "Trocar tipo" reaproveita as leituras sem ler de novo, e quando o texto parece outro tipo aparece "Parece ser: ...".
-7. `renderFieldsEditor()` mostra **sempre** o campo Valor nos tipos de dinheiro. Quando não foi confirmado, ele fica vazio, em vermelho, com "Não detectado — digite aqui". O vermelho some quando a pessoa digita ou toca num dos botões de valor.
+7. **Estabelecimento** (`pickEstablishment`): olha as linhas de todas as leituras com a confiança que o motor deu a cada uma (`res.data.lines`). Ganha a linha confiável que parece nome de empresa (LTDA, RESTAURANTE, POSTO, DROGARIA...), vem depois de "COMPRA" (Stone) ou divide a linha com o CNPJ (o CNPJ é tirado e o resto fica). Descarta endereço, cidade/UF, bandeira de cartão, rótulos (VIA CLIENTE, DANFE, PROTOCOLO, ORDER, CASHIER...), linhas com preço e linhas em que a maioria das palavras não parece palavra.
+8. **Chave de acesso** (`parseChave`): 44 dígitos em grupos de 4, com dígito verificador (módulo 11). Quando a leitura passa na conferência, dela saem o CNPJ, o número da nota e o mês de emissão; a data lida só fica se for desse mês, senão troca por outra data lida que seja, ou fica vazia. A chave também pode vir do QR code.
+9. **QR code e código de barras** (`readCodes`): ZXing (todos os formatos) e jsQR (só QR, aguenta melhor foto), guardados em `libs/`. Roda depois do OCR, em até quatro tentativas (2000 px e 1300 px, em pé e de lado), parando na primeira que lê ou em uns 2,5 segundos. O que lê vira campo "QR code" ou "Código de barras".
+10. `renderFieldsEditor()` mostra **sempre** o campo Valor nos tipos de dinheiro. Quando não foi confirmado, ele fica vazio, em vermelho, com "Não detectado — digite aqui". O vermelho some quando a pessoa digita ou toca num dos botões de valor.
 
 Cada comprovante salvo guarda o `tipo`, e o histórico mostra o tipo no cartão. No console do navegador, `window.ocrDebug` tem as leituras, os candidatos e os sinais de tipo da última foto.
 
@@ -46,6 +49,8 @@ Cada comprovante salvo guarda o `tipo`, e o histórico mostra o tipo no cartão.
 - **O tipo do documento manda na leitura.** Numa nota fiscal, o número ao lado de "Tributos" ou de um item nunca é o total; num pedido médico não existe valor. Perguntar o tipo antes de ler deixa o app esperar os campos certos e ignorar o resto.
 - **Fundo neutralizado antes de ler.** O comprovante da Atlas Estacionamentos (rosa sobre azul) saía vazio em qualquer modo de segmentação de página, e lido direito em preto e branco: o problema era o Tesseract tratar a área escura como figura. Comparar cada pixel com a média da vizinhança resolve sem o custo de binarizar tudo, e de quebra a DrogaRaia passou a ler R$ 71,61 certo.
 - **Giro descoberto pelo próprio motor.** Medir a inclinação pela projeção da tinta não distingue 0° de 180° nem acerta em mesa com letras gravadas; contar palavras confiáveis em cada posição distingue. Só roda quando a primeira leitura sai ruim, para não encarecer a foto normal.
+- **Nome do estabelecimento pela confiança do motor, não pela posição.** A primeira linha da foto costuma ser lixo (borda, mesa, cabeçalho do papel); a linha que o motor leu com confiança e tem cara de nome é bem mais segura. As linhas vêm com a confiança do próprio Tesseract.
+- **Chave de acesso conferida pelo dígito verificador.** Uma chave lida com erro é descartada em vez de contaminar CNPJ e número da nota; a que passa serve para validar o mês da data.
 - **Duas leituras iguais só confirmam se foram processadas diferente** (outro tamanho, giro ou preto e branco). Dois recortes do mesmo tamanho repetiam o mesmo erro de dígito ("57,57" num cupom de 57,52) e se "confirmavam".
 - **As leituras foram escolhidas por teste, não por chute.** Uma grade de 20 combinações (5 ângulos × cinza/preto e branco × largura 1000/1400) em 6 fotos reais mostrou que só as três primeiras acertam algum valor; a largura 1400 voltou como terceira leitura porque serve de segunda opinião para confirmar o valor (5 fotos passaram de incerto a confirmado com ela).
 - **Os 3 botões de exemplo** (Posto Ipiranga, Pizzaria Bella, Drogasil) continuam funcionando e servem de teste rápido; entram como comprovante de maquininha sem passar pelo pop-up.
@@ -116,9 +121,22 @@ As mesmas da etapa 2 mais a caixa de sabonete de cabeça para baixo. Tipo escolh
 
 Tempo médio por foto no servidor de teste: 12.7 s. Passaram a ler ou a confirmar: o Stone girado de lado (original do celular), o Stone da Atlas (fundo azul), a caixa de sabonete de cabeça para baixo, a conta de gás, o InfinitePay, a DrogaRaia (agora R$ 71,61 certo), a Drogaria São Paulo e os cupons da Shell, IHOP e Five Guys. O tempo médio subiu porque as fotos difíceis passam pelo modo de recuperação; as fáceis continuam em 2 a 4 segundos. Continuam vazios os quatro comprovantes girados do WhatsApp (f10, f11, f14, f15): com 960 px de largura e o papel ocupando um terço da foto, as letras têm 5 a 7 px e nenhuma posição lê; são o caso de pedir a foto original ou mais de perto.
 
+## Resultado da etapa 4 (37 fotos, 8/10/2026)
+
+Mesmo conjunto da etapa 3. Tipo escolhido no pop-up:
+
+| Campo | Certo | Incerto, certo entre as opções | Incerto | Vazio | Errado |
+|---|---|---|---|---|---|
+| Valor | 24 | 5 | 1 | 7 | 0 |
+| Data | 27 | - | - | 7 | 3 |
+| Estabelecimento | 8 | - | - | - | 18 |
+
+Estabelecimento passou de 3 para 8 certos entre as 26 fotos com gabarito de nome. QR code ou código de barras lidos em 3 fotos do conjunto (o conjunto tem poucos códigos; em testes à parte, 6 de 13 fotos com código foram lidas: QR em tela, QR e EAN em caixa de produto, QR em etiqueta de peça, EAN em pote de iogurte fotografado de lado; falham o QR de NFC-e em papel térmico amassado, o código de barras ITF da conta de gás e o Code 128 do DANFE). Tempo médio por foto: 13.4 s.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
-- **Estabelecimento:** costuma sair embaralhado, porque ele usa a primeira linha do texto quando não acha LTDA, POSTO etc. (planejado para a etapa 4).
+- **Estabelecimento:** quando o motor não lê nenhuma linha com confiança, o nome sai embaralhado ou vazio; o lixo antes do nome ("E CARRDEENNAS FENIX ENVIDRACAMENTO LTDA") ainda não é cortado.
+- **Códigos em papel térmico:** o QR da NFC-e amassada e os códigos de barras finos (ITF da conta de gás, Code 128 do DANFE) não leem nas fotos atuais; uma foto mais de perto, só do código, resolve.
 - **Conta de luz e de gás:** o valor fica numa coluna separada do rótulo "Total a pagar", então as regras por linha não acham; a linha digitável do código de barras carrega o valor e resolve isso (leitor próprio de contas).
 - **Rótulo impresso/à mão:** é calculado pela confiança do motor por palavra. Foto escura de texto impresso também sai como "parece escrito à mão ou apagado"; por isso o rótulo diz "ou apagado" e não decide nada sozinho.
 - **Vários papéis na mesma foto:** sai só um valor (etapa 5).
