@@ -1436,20 +1436,20 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       cartao: {
         nome: 'Comprovante de maquininha', familia: 'Dinheiro', vitais: ['Valor'],
         sinais: /VIA CLIENTE|VIA DO CLIENTE|COMPROVANTE DE (?:VENDA|PAGAMENTO)|CART[AÃ]O|CR[EÉ]DITO|D[EÉ]BITO|MASTERCARD|\bVISA\b|\bELO\b|\bNSU\b|\bAUTH?[:=\s]|\bAID\b|GETNET|CIELO|\bSTONE\b|\bREDE\b|PAGSEGURO|INFINITEPAY|SENHA APROVADA|PARCELA|VALOR:|\bCARD\b|APPROVAL|AMOUNT/g,
-        palavras: /VALOR|TOTAL|CR[EÉ]DITO|D[EÉ]BITO|COMPRA|VENDA|APROVAD|PAGO|PAGAR|AMOUNT/,
+        palavras: /VALOR|[TIF1]OTAL|CR[EÉ]DITO|D[EÉ]BITO|COMPRA|VENDA|APROVAD|PAGO|PAGAR|AMOUNT/,
         ignorar: /\d\s?X\s|PARCELA|POR PESSOA|TRIB|DESCONTO|TROCO|SALDO|TAXA|JUROS|LIMITE|SUB-?\s?TOTAL|\bTIP\b|SUGGEST/
       },
       nfce: {
         nome: 'Nota fiscal / cupom', familia: 'Dinheiro', vitais: ['Valor'],
         sinais: /NFC-?E|NOTA FISCAL|CUPOM FISCAL|DANFE|CONSUMIDOR|CHAVE DE ACESSO|PROTOCOLO DE AUTORIZA|TRIBUT|\bSAT\b|ITENS|UN\s?X|VL\.?\s?ITEM|EMISS[AÃ]O|QTDE?\b/g,
-        palavras: /VALOR A PAGAR|VALOR PAGO|TOTAL A PAGAR|VALOR TOTAL|TOTAL|A PAGAR|PAGO|VALOR/,
-        ignorar: /TRIB|DESCONTO|UN\s?X|VL\.?\s?ITEM|UNIT|ITE[MN]S|QTD|TROCO|DINHEIRO|SUB-?\s?TOTAL|ECONOMIZOU|\bTAX\b|CHANGE|CASH|ACESS[OÓ]RIO|PRODUTOS|SERVI[CÇ]O|\bTX\b|TAXA/
+        palavras: /VALOR A PAGAR|VALOR PAGO|TOTAL A PAGAR|VALOR TOTAL|[TIF1]OTAL|A PAGAR|PAGO|VALOR/,
+        ignorar: /TRIB|DESCONTO|UN\s?X|VL\.?\s?ITEM|UNIT|ITE[MN]S|QTD|TROCO|DINHEIRO|SUB-?\s?TOTAL|ECONOMIZOU|\bTAX\b|CHANGE|CASH|ACESS[OÓ]RIO|PRODUTOS|SERVI[CÇ]O|\bTX\b|TAXA|\(\s?[+-]\s?\)/
       },
       conta: {
         nome: 'Conta de restaurante', familia: 'Dinheiro', vitais: ['Valor'],
         sinais: /CONFER[EÊ]NCIA|SUB-?\s?TOTAL|GORJETA|SERVI[CÇ]O|MESA|PESSOAS?|COUVERT|GAR[CÇ]OM|\bTIP\b|GRATUITY|\d\s?X\s|\bTAX\b|CHANGE|CASH/g,
-        palavras: /TOTAL|A PAGAR|PAGO|VALOR/,
-        ignorar: /SUB-?\s?TOTAL|GORJETA|SERVI[CÇ]O|PESSOA|COUVERT|\d\s?X\s|TRIB|DESCONTO|TROCO|TAXA|\bTIP\b|CHANGE|CASH|SUGGEST|ITE[MN]S|\bTAX\b/
+        palavras: /[TIF1]OTAL|A PAGAR|PAGO|VALOR/,
+        ignorar: /SUB-?\s?TOTAL|GORJETA|SERVI[CÇ]O|PESSOA|COUVERT|\d\s?X\s|TRIB|DESCONTO|TROCO|TAXA|\bTIP\b|CHANGE|CASH|SUGGEST|ITE[MN]S|\bTAX\b|\(\s?[+-]\s?\)/
       },
       livre: { nome: 'Outro (texto livre)', familia: 'Outros', vitais: [] }
     };
@@ -1806,7 +1806,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       window.ocrDebug = p.result.debug;
       paperTabs.innerHTML = '';
       paperTabs.style.display = papers.length > 1 ? 'flex' : 'none';
-      papers.forEach((q, k) => {
+      (papers.length > 1 ? papers : []).forEach((q, k) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'paper-tab' + (k === i ? ' active' : '');

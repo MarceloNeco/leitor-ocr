@@ -117,11 +117,11 @@ function grade(fields, chips, expected) {
     } catch (e) { ok = false; logs.push('harness: ' + e.message); }
     const secs = +((Date.now() - t0) / 1000).toFixed(1);
     const fallback = logs.some(l => l.includes('OCR falhou'));
-    const nTabs = ok ? (await page.$$('#paperTabs .paper-tab')).length : 0;
+    const nTabs = ok ? await page.$$eval('#paperTabs .paper-tab', els => els.filter(e => e.offsetParent !== null).length) : 0;
     const expectedPapers = (gabarito && gabarito[f] && gabarito[f].papeis) || 1;
     const papersFound = Math.max(1, nTabs);
     for (let pi = 0; pi < papersFound; pi++) {
-      if (nTabs) { await page.click(`#paperTabs .paper-tab:nth-child(${pi + 1})`); }
+      if (nTabs > 1) { await page.click(`#paperTabs .paper-tab:nth-child(${pi + 1})`); }
       const fields = ok ? await page.$$eval('#fieldsListContainer .field-row', rows => rows.map(r => ({
         key: r.querySelector('.fld-key').value, val: r.querySelector('.fld-val').value, missing: r.classList.contains('field-missing') }))) : [];
       const chips = ok ? await page.$$eval('.valor-chip', els => els.map(e => e.textContent)) : [];
