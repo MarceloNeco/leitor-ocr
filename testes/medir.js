@@ -2,8 +2,8 @@
 //
 //   node testes/medir.js /caminho/da/pasta-de-fotos [foto1.jpg foto2.jpg ...]
 //
-// Abre o index.html num Chromium invisível (Playwright), envia cada foto pelo
-// botão "Galeria" e lê os campos que apareceram na tela. Nada sai para a
+// Abre o index.html num Chromium invisível (Playwright), envia cada foto (ou
+// PDF) pelo botão "Fotos ou PDF" e lê os campos que apareceram na tela. Nada sai para a
 // internet: todo pedido fora do servidor local é bloqueado e listado.
 //
 // Se a pasta tiver um gabarito.json, imprime a tabela certo/incerto/vazio/errado:
@@ -40,9 +40,18 @@ let chromium;
 try { ({ chromium } = require('playwright')); }
 catch (e) { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.json': 'application/json',
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.mjs': 'application/javascript', '.json': 'application/json',
   '.gz': 'application/gzip', '.wasm': 'application/wasm', '.css': 'text/css', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json',
+  '.pfb': 'application/octet-stream', '.ttf': 'font/ttf', '.pdf': 'application/pdf' };
+
+// sw.js guarda uma cópia do app no celular; a versão dele tem que ser a do index.html
+function checkVersions() {
+  const html = fs.readFileSync(path.join(REPO, 'index.html'), 'utf8');
+  const sw = fs.readFileSync(path.join(REPO, 'sw.js'), 'utf8');
+  const a = (html.match(/APP_VERSION = '([^']+)'/) || [])[1], b = (sw.match(/VERSAO = '([^']+)'/) || [])[1];
+  if (a !== b) console.log(`ATENÇÃO: index.html diz v${a} e sw.js diz v${b}; os dois precisam ser iguais, senão o celular fica com a versão antiga.`);
+}
 
 function serveRepo() {
   return new Promise(resolve => {
@@ -81,7 +90,8 @@ function grade(fields, chips, expected) {
   const base = `http://127.0.0.1:${server.address().port}/`;
   const gabaritoFile = path.join(PHOTOS, 'gabarito.json');
   const gabarito = fs.existsSync(gabaritoFile) ? JSON.parse(fs.readFileSync(gabaritoFile, 'utf8')) : null;
-  const files = ONLY.length ? ONLY : fs.readdirSync(PHOTOS).filter(f => /\.(jpe?g|png)$/i.test(f) && !f.startsWith('_')).sort();
+  const files = ONLY.length ? ONLY : fs.readdirSync(PHOTOS).filter(f => /\.(jpe?g|png|pdf)$/i.test(f) && !f.startsWith('_')).sort();
+  checkVersions();
 
   const browser = await chromium.launch();
   const context = await browser.newContext();

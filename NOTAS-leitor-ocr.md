@@ -40,8 +40,11 @@ O motor é o Tesseract.js 5.1.1 em português (`por`, modelo `4.0.0_best_int`). 
 9. **QR code e código de barras** (`readCodes`): ZXing (todos os formatos) e jsQR (só QR, aguenta melhor foto), guardados em `libs/`. Roda depois do OCR, em até quatro tentativas (2000 px e 1300 px, em pé e de lado), parando na primeira que lê ou em uns 2,5 segundos. O que lê vira campo "QR code" ou "Código de barras".
 10. **Vários papéis na foto** (`findPapers`): numa cópia pequena, as manchas claras grandes o bastante para ser um papel e com texto em cima (pelo menos 15 letras em 3 linhas) viram caixas. Papéis encostados saem como uma mancha só; quando as letras dela têm uma faixa em branco atravessando (as margens de dois papéis), a mancha é cortada pela faixa mais larga, de um lado e de outro, até não sobrar faixa; um pedaço que fica sem 3 linhas de texto (o "obrigado" no fim de um cupom) não vira papel. Faixas escuras impressas numa conta (cabeçalhos da conta de gás) partem o papel em tiras claras: tiras que quase se encostam e têm os dois lados alinhados são coladas de volta. Papéis um em cima do outro continuam juntos. Com duas ou mais caixas, o app mostra a foto com as caixas numeradas e pergunta "Ler os N separados?" (`askPapers`); dizendo sim, cada caixa é recortada em resolução cheia (`cropBox`) e passa pela mesma leitura de um papel só (`readPaper`). O resultado fica em abas ("Papel 1 · R$ 45,00"), cada uma com seus campos; o que a pessoa digita numa aba é guardado ao trocar (`stashEdits`), e Salvar grava um comprovante por aba.
 11. **Mesma compra em dois papéis** (`linkSamePurchase`): dois papéis da mesma foto com o mesmo valor confirmado e sem data diferente ganham o campo "Mesma compra: papel N" e um aviso. É o caso do cartão da maquininha e da nota fiscal da mesma compra.
-12. **Versão visível**: `APP_VERSION` e `APP_UPDATED` no começo do script aparecem no cabeçalho ("v0.5.0 de 09/10/2026"). A cada etapa publicada, os dois sobem.
+12. **Versão visível**: `APP_VERSION` e `APP_UPDATED` no começo do script aparecem no cabeçalho ("v0.6.0 de 09/10/2026"). A cada etapa publicada, os dois sobem, **e também `VERSAO` no `sw.js`** (é ela que faz o celular trocar a cópia guardada pela nova).
 13. `renderFieldsEditor()` mostra **sempre** o campo Valor nos tipos de dinheiro. Quando não foi confirmado, ele fica vazio, em vermelho, com "Não detectado — digite aqui". O vermelho some quando a pessoa digita ou toca num dos botões de valor.
+
+14. **Sem internet e instalável** (`sw.js`, `manifest.webmanifest`, `icons/`): a página não busca mais nada fora do repositório (o CSS do basecoat e a fonte Inter do Google saíram; a fonte do sistema fica no lugar e nada mudou de aspecto). O `sw.js` é um service worker: na primeira visita guarda no aparelho todos os arquivos listados nele (página, motor OCR, idioma, leitores de código, pdf.js, ícones: uns 13 MB) e dali em diante serve tudo da cópia guardada, com ou sem internet. Quando a versão muda, o navegador baixa a cópia nova por trás e a página mostra "Nova versão pronta — Atualizar". O manifesto deixa o Chrome oferecer "Instalar" (botão em Ajustes → Usar sem internet, quando o navegador permite; senão, o texto explica o caminho pelo menu).
+15. **PDF, várias fotos e câmera do computador** (`handleFiles`, `pdfToImages`, `startReading`): o botão "Fotos ou PDF" aceita várias fotos e PDFs de uma vez. Cada foto e cada página de PDF (até 10, desenhadas com o pdf.js de `libs/pdfjs/` a uns 2200 px) vira uma "fonte"; cada fonte passa pela mesma leitura de sempre, inclusive a pergunta de vários papéis, e vira uma aba ("Foto 2", "Página 1", "Foto 2 · papel 1"). Com mais de uma fonte, o botão de girar some (ele gira e relê uma foto só). No computador, "Fotografar" abre a câmera ao vivo (`getUserMedia`) num diálogo com "Tirar foto"; no celular continua abrindo o app de câmera.
 
 Cada comprovante salvo guarda o `tipo`, e o histórico mostra o tipo no cartão. No console do navegador, `window.ocrDebug` tem as leituras, os candidatos e os sinais de tipo da última foto.
 
@@ -85,7 +88,15 @@ node testes/medir.js /pasta/com/as/fotos f05.jpeg   # só uma
 
 Precisa de Node e do Playwright com Chromium (no ambiente do Claude já vem instalado). O script sobe um servidor local com o repositório, abre o `index.html`, envia cada foto pelo botão Galeria e lê os campos que apareceram na tela. Qualquer pedido para fora do servidor local é bloqueado e listado no fim: se o app tentar buscar algo na internet, aparece ali.
 
-Se a pasta tiver um `gabarito.json`, o script imprime a tabela certo/vazio/errado (formato explicado no começo do `testes/medir.js`). As fotos, o gabarito e o `_resultado.json` (que tem o texto lido) ficam **fora do repositório**, porque têm dados pessoais.
+Se a pasta tiver um `gabarito.json`, o script imprime a tabela certo/vazio/errado (formato explicado no começo do `testes/medir.js`). As fotos, o gabarito e o `_resultado.json` (que tem o texto lido) ficam **fora do repositório**, porque têm dados pessoais. A pasta também pode ter PDFs.
+
+O app instalável tem seu próprio teste, sem fotos pessoais (tudo é gerado na hora):
+
+```
+node testes/offline.js
+```
+
+Ele guarda os arquivos do app, desliga a internet e abre o app de novo (tem que abrir e ler o comprovante de exemplo), manda um PDF de 2 páginas e 2 fotos de uma vez (cada um vira uma aba com seu valor) e testa a câmera do computador com uma câmera falsa do Chromium. Os dois scripts avisam se a versão do `sw.js` não bate com a do `index.html`.
 
 ## Resultado nos testes (17 fotos reais pelo WhatsApp, 8/10/2026)
 
@@ -158,7 +169,19 @@ O que falha na contagem: papéis sobrepostos (um em cima do outro, como a foto d
 
 Foto a foto, em relação à etapa 4, nada piorou: f07 (nota fiscal + cartão da mesma compra) passou de incerto para certo, porque cada papel é lido sozinho. Os 6 papéis a mais das fotos com vários papéis deram 3 certos, 1 incerto com o certo entre as opções e 2 vazios (papéis pequenos em foto do WhatsApp). As 3 datas erradas são as mesmas da etapa 4.
 
+## Resultado da etapa 7 (app sem internet, 9/10/2026)
+
+Nada mudou na leitura, só na entrada (PDF, várias fotos, câmera do computador) e no empacotamento (sem internet, instalável). Conferido de dois jeitos:
+
+- `node testes/offline.js`: 10 verificações, todas certas (33 arquivos guardados; abre e lê sem internet em 2,5 s; PDF de 2 páginas vira 2 abas com os valores certos; 2 fotos de uma vez viram 2 abas com os valores certos; câmera do computador abre e manda a foto; nenhum pedido para fora; nenhum erro).
+- As 14 fotos da etapa 5 de novo: 17 certo, 4 incerto com o certo entre as opções, 0 incerto, 6 vazio, 0 errado, papel por papel igual à etapa 5.
+
+Decisões: o pdf.js vai na versão 5.7 **legacy** (`legacy/build`), porque a 6.x e a 5.7 normal usam um recurso de JavaScript tão novo (`Map.getOrInsertComputed`) que o Chromium 141 do teste, e celulares um pouco mais velhos, não têm. O `sw.js` guarda tudo de uma vez na primeira visita (não aos poucos): simples, e é o que garante que a leitura funcione sem internet logo depois. O arquivo único (`index.html` com tudo dentro, para copiar para o celular) ficou para depois: o motor OCR busca o idioma e o núcleo por `fetch`, que o Chrome não deixa fazer de `file://`; precisa embutir tudo em base64 e testar.
+
 ## Pendências conhecidas (ninguém pediu ainda)
+
+- **Arquivo único para copiar ao celular:** ver decisões da etapa 7.
+- **PDF com mais de 10 páginas:** só as 10 primeiras são lidas (o app avisa).
 
 - **Estabelecimento:** quando o motor não lê nenhuma linha com confiança, o nome sai embaralhado ou vazio; o lixo antes do nome ("E CARRDEENNAS FENIX ENVIDRACAMENTO LTDA") ainda não é cortado.
 - **Códigos em papel térmico:** o QR da NFC-e amassada e os códigos de barras finos (ITF da conta de gás, Code 128 do DANFE) não leem nas fotos atuais; uma foto mais de perto, só do código, resolve.
