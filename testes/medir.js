@@ -12,8 +12,10 @@
 // "tipo" é o botão escolhido no pop-up (cartao, nfce, conta, livre ou auto;
 // sem tipo, usa auto). TIPO=auto no ambiente força "auto" em todas.
 // "papeis" é quantos papéis há na foto (sem o campo, 1). Quando o app
-// pergunta "ler separados?", o script responde sim; cada papel vira uma
-// linha da tabela, e o resumo conta as fotos com a quantidade certa.
+// pergunta "ler separados?", o script responde como uma pessoa que sabe o
+// que fotografou: sim se há mais de um papel, "é um papel só" se não.
+// Cada papel vira uma linha da tabela; o resumo conta as fotos com a
+// quantidade certa e as em que o app perguntou sem precisar.
 // "valores" vazio quer dizer que o papel não tem valor (pedido médico, etc.):
 // aí o certo é o campo ficar vazio. "estab" pode ser uma lista.
 // "incerto" = o app não bateu o martelo e ofereceu botões com os valores lidos;
@@ -100,6 +102,7 @@ function grade(fields, chips, expected) {
     page.on('pageerror', e => logs.push('pageerror: ' + e.message));
     await page.goto(base + 'index.html');
     const tipo = process.env.TIPO || (gabarito && gabarito[f] && gabarito[f].tipo) || 'auto';
+    const expectedPapers = (gabarito && gabarito[f] && gabarito[f].papeis) || 1;
     const t0 = Date.now();
     await page.setInputFiles('#fileInputGallery', path.join(PHOTOS, f));
     let ok = true, askedPapers = 0;
@@ -107,18 +110,17 @@ function grade(fields, chips, expected) {
       // the app asks what the photo is; answer with the type from the gabarito
       await page.waitForSelector('#docTypeDialog[open]', { timeout: 30000 });
       await page.click(`#docTypeDialog button[data-tipo="${tipo}"]`);
-      // then it may ask whether to read several papers apart: say yes
+      // then it may ask whether to read several papers apart: answer as the gabarito says
       await page.waitForFunction(() => document.getElementById('papersDialog').open || document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 600000 });
       if (await page.$eval('#papersDialog', d => d.open)) {
         askedPapers = +(await page.$eval('#papersDialogTitle', e => (e.textContent.match(/\d+/) || [0])[0]));
-        await page.click('#btnPapersMany');
+        await page.click(expectedPapers > 1 ? '#btnPapersMany' : '#btnPapersOne');
         await page.waitForFunction(() => document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 900000 });
       }
     } catch (e) { ok = false; logs.push('harness: ' + e.message); }
     const secs = +((Date.now() - t0) / 1000).toFixed(1);
     const fallback = logs.some(l => l.includes('OCR falhou'));
     const nTabs = ok ? await page.$$eval('#paperTabs .paper-tab', els => els.filter(e => e.offsetParent !== null).length) : 0;
-    const expectedPapers = (gabarito && gabarito[f] && gabarito[f].papeis) || 1;
     const papersFound = Math.max(1, nTabs);
     for (let pi = 0; pi < papersFound; pi++) {
       if (nTabs > 1) { await page.click(`#paperTabs .paper-tab:nth-child(${pi + 1})`); }
@@ -155,7 +157,8 @@ function grade(fields, chips, expected) {
     const photos = [...new Set(results.map(r => r.file))];
     const rightCount = photos.filter(f => { const r = results.find(x => x.file === f); return r.papeis === r.papeisEsperados; }).length;
     console.log('\nResumo (fotos com gabarito: ' + photos.filter(f => results.find(x => x.file === f).nota).length + ', papéis lidos: ' + results.filter(r => r.nota).length + ')');
-    console.log(`Fotos com a quantidade certa de papéis: ${rightCount} de ${photos.length}`);
+    const askedWrong = photos.filter(f => { const r = results.find(x => x.file === f); return r.papeisEsperados === 1 && r.papeisPerguntados; }).length;
+    console.log(`Fotos com a quantidade certa de papéis: ${rightCount} de ${photos.length}; perguntou sem precisar em ${askedWrong}`);
     console.log('| Campo | Certo | Incerto, certo entre as opções | Incerto | Vazio | Errado |');
     console.log('|---|---|---|---|---|---|');
     console.log(`| valor | ${count('valor', 'certo')} | ${count('valor', 'incerto-ok')} | ${count('valor', 'incerto')} | ${count('valor', 'vazio')} | ${count('valor', 'errado')} |`);

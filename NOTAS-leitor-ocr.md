@@ -38,7 +38,7 @@ O motor é o Tesseract.js 5.1.1 em português (`por`, modelo `4.0.0_best_int`). 
 7. **Estabelecimento** (`pickEstablishment`): olha as linhas de todas as leituras com a confiança que o motor deu a cada uma (`res.data.lines`). Ganha a linha confiável que parece nome de empresa (LTDA, RESTAURANTE, POSTO, DROGARIA...), vem depois de "COMPRA" (Stone) ou divide a linha com o CNPJ (o CNPJ é tirado e o resto fica). Descarta endereço, cidade/UF, bandeira de cartão, rótulos (VIA CLIENTE, DANFE, PROTOCOLO, ORDER, CASHIER...), linhas com preço e linhas em que a maioria das palavras não parece palavra.
 8. **Chave de acesso** (`parseChave`): 44 dígitos em grupos de 4, com dígito verificador (módulo 11). Quando a leitura passa na conferência, dela saem o CNPJ, o número da nota e o mês de emissão; a data lida só fica se for desse mês, senão troca por outra data lida que seja, ou fica vazia. A chave também pode vir do QR code.
 9. **QR code e código de barras** (`readCodes`): ZXing (todos os formatos) e jsQR (só QR, aguenta melhor foto), guardados em `libs/`. Roda depois do OCR, em até quatro tentativas (2000 px e 1300 px, em pé e de lado), parando na primeira que lê ou em uns 2,5 segundos. O que lê vira campo "QR code" ou "Código de barras".
-10. **Vários papéis na foto** (`findPapers`): numa cópia pequena, as manchas claras grandes o bastante para ser um papel e com letras em cima viram caixas. Papéis encostados saem como uma mancha só; quando as letras dela têm uma faixa em branco atravessando (as margens de dois papéis), a mancha é cortada pela faixa mais larga, de um lado e de outro, até não sobrar faixa. Papéis um em cima do outro continuam juntos. Com duas ou mais caixas, o app mostra a foto com as caixas numeradas e pergunta "Ler os N separados?" (`askPapers`); dizendo sim, cada caixa é recortada em resolução cheia (`cropBox`) e passa pela mesma leitura de um papel só (`readPaper`). O resultado fica em abas ("Papel 1 · R$ 45,00"), cada uma com seus campos; o que a pessoa digita numa aba é guardado ao trocar (`stashEdits`), e Salvar grava um comprovante por aba.
+10. **Vários papéis na foto** (`findPapers`): numa cópia pequena, as manchas claras grandes o bastante para ser um papel e com texto em cima (pelo menos 15 letras em 3 linhas) viram caixas. Papéis encostados saem como uma mancha só; quando as letras dela têm uma faixa em branco atravessando (as margens de dois papéis), a mancha é cortada pela faixa mais larga, de um lado e de outro, até não sobrar faixa; um pedaço que fica sem 3 linhas de texto (o "obrigado" no fim de um cupom) não vira papel. Faixas escuras impressas numa conta (cabeçalhos da conta de gás) partem o papel em tiras claras: tiras que quase se encostam e têm os dois lados alinhados são coladas de volta. Papéis um em cima do outro continuam juntos. Com duas ou mais caixas, o app mostra a foto com as caixas numeradas e pergunta "Ler os N separados?" (`askPapers`); dizendo sim, cada caixa é recortada em resolução cheia (`cropBox`) e passa pela mesma leitura de um papel só (`readPaper`). O resultado fica em abas ("Papel 1 · R$ 45,00"), cada uma com seus campos; o que a pessoa digita numa aba é guardado ao trocar (`stashEdits`), e Salvar grava um comprovante por aba.
 11. **Mesma compra em dois papéis** (`linkSamePurchase`): dois papéis da mesma foto com o mesmo valor confirmado e sem data diferente ganham o campo "Mesma compra: papel N" e um aviso. É o caso do cartão da maquininha e da nota fiscal da mesma compra.
 12. **Versão visível**: `APP_VERSION` e `APP_UPDATED` no começo do script aparecem no cabeçalho ("v0.5.0 de 09/10/2026"). A cada etapa publicada, os dois sobem.
 13. `renderFieldsEditor()` mostra **sempre** o campo Valor nos tipos de dinheiro. Quando não foi confirmado, ele fica vazio, em vermelho, com "Não detectado — digite aqui". O vermelho some quando a pessoa digita ou toca num dos botões de valor.
@@ -139,7 +139,7 @@ Estabelecimento passou de 3 para 8 certos entre as 26 fotos com gabarito de nome
 
 ## Resultado da etapa 5 (14 fotos, 9/10/2026)
 
-Conjunto novo: 4 fotos com vários comprovantes vindas do WhatsApp, as mesmas 4 em original do celular (4000 px) e 6 fotos de um papel só, de controle, para garantir que nada é separado sem motivo. O roteiro responde "sim" à pergunta de ler separados.
+Conjunto novo: 4 fotos com vários comprovantes vindas do WhatsApp, as mesmas 4 em original do celular (4000 px) e 6 fotos de um papel só, de controle, para garantir que nada é separado sem motivo. O roteiro responde à pergunta de ler separados como quem sabe o que fotografou: sim nas fotos com vários papéis, "é um papel só" nas outras.
 
 | | Fotos | Contagem de papéis certa |
 |---|---|---|
@@ -150,6 +150,14 @@ Nos 27 papéis lidos no total (cada aba conta um): valor certo em 17, incerto co
 
 O que falha na contagem: papéis sobrepostos (um em cima do outro, como a foto do Almanara com cinco papéis) saem juntos, porque a mancha clara é uma só e não há faixa em branco entre os textos. Nas fotos do WhatsApp o papel pequeno recortado fica com letras de 5 a 7 px e não lê; nos originais do celular o mesmo papel lê.
 
+**Regressão nas 37 fotos das etapas anteriores** (4 delas têm vários papéis e agora o gabarito diz isso). Na primeira rodada o app ofereceu "ler separados" em 11 fotos de um papel só: faixa clara da mesa, reflexo no granito, piso claro ao lado do papel, o "obrigado" no fim de um cupom tomado por outro papel e a conta de gás partida em tiras pelas faixas escuras impressas. Lendo os pedaços, uma tira da conta de gás deu valor errado (R$ 163,73, que é um subtotal). Correção: um pedaço só vira papel com 3 linhas de texto, e tiras alinhadas que quase se encostam são coladas de volta. Com isso a pergunta sem precisar caiu para 4 fotos (reflexo, piso e madeira clara ao lado do papel); nelas a pessoa toca "É um papel só" e a leitura segue igual à etapa 4.
+
+| Campo | Certo | Incerto, certo entre as opções | Incerto | Vazio | Errado |
+|---|---|---|---|---|---|
+| valor (43 papéis nas 37 fotos) | 28 | 5 | 1 | 9 | 0 |
+
+Foto a foto, em relação à etapa 4, nada piorou: f07 (nota fiscal + cartão da mesma compra) passou de incerto para certo, porque cada papel é lido sozinho. Os 6 papéis a mais das fotos com vários papéis deram 3 certos, 1 incerto com o certo entre as opções e 2 vazios (papéis pequenos em foto do WhatsApp). As 3 datas erradas são as mesmas da etapa 4.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **Estabelecimento:** quando o motor não lê nenhuma linha com confiança, o nome sai embaralhado ou vazio; o lixo antes do nome ("E CARRDEENNAS FENIX ENVIDRACAMENTO LTDA") ainda não é cortado.
@@ -157,6 +165,7 @@ O que falha na contagem: papéis sobrepostos (um em cima do outro, como a foto d
 - **Conta de luz e de gás:** o valor fica numa coluna separada do rótulo "Total a pagar", então as regras por linha não acham; a linha digitável do código de barras carrega o valor e resolve isso (leitor próprio de contas).
 - **Rótulo impresso/à mão:** é calculado pela confiança do motor por palavra. Foto escura de texto impresso também sai como "parece escrito à mão ou apagado"; por isso o rótulo diz "ou apagado" e não decide nada sozinho.
 - **Papéis um em cima do outro:** saem como um papel só; a pergunta "ler separados?" mostra a contagem para a pessoa conferir, mas ainda não dá para desenhar as caixas na mão.
+- **Pergunta "ler separados?" sem precisar:** reflexo, piso ou madeira clara ao lado do papel ainda passam por papel em 4 das 33 fotos de um papel só (é um toque a mais em "É um papel só", não um erro de leitura).
 - **Fotos pequenas do WhatsApp com o papel longe:** não há o que ler; o app avisa "tire mais de perto".
 
 Resolvidas na etapa 2: hora pegando o ano ("26:13"), selo de confiança mentindo, Autorização pegando "POSTO".
