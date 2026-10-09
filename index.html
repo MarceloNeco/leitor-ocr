@@ -6,12 +6,11 @@
   <title>Leitor de Comprovantes — Via do Cliente (OCR)</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧪</text></svg>">
 
-  <!-- Basecoat CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.2/dist/basecoat.cdn.min.css">
-  
-  <!-- Google Fonts: Inter -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-  
+  <!-- App instalável e sem internet: nada é buscado fora deste repositório -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#090d16">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
   <!-- System Shell API -->
   <style>
 /* Skip artifact shell — fixed styles served beside every artifact.
@@ -998,11 +997,12 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       background: var(--accent-light);
     }
 
-    #papersPreview {
+    #papersPreview, #cameraVideo {
       width: 100%;
       border-radius: 8px;
       display: block;
     }
+    #cameraVideo { background: #000; max-height: 60vh; }
 
     .doc-type-row {
       display: flex;
@@ -1098,10 +1098,10 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
               <span>📷 Fotografar</span>
             </button>
             <button id="btnUpload" class="btn btn-secondary">
-              <span>🖼️ Enviar foto</span>
+              <span>🖼️ Fotos ou PDF</span>
             </button>
             <input type="file" id="fileInputCamera" class="file-input-hidden" accept="image/*" capture="environment">
-            <input type="file" id="fileInputGallery" class="file-input-hidden" accept="image/*">
+            <input type="file" id="fileInputGallery" class="file-input-hidden" accept="image/*,application/pdf,.pdf" multiple>
           </div>
 
           <!-- Sample receipt presets for immediate live testing -->
@@ -1279,6 +1279,17 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
         <div class="app-card">
           <div class="card-title">
+            <span>📲 Usar sem internet</span>
+          </div>
+          <p id="offlineStatus" style="font-size: 13px; line-height: 1.6; color: var(--muted); margin-bottom: 12px;">Verificando...</p>
+          <button id="btnInstallApp" class="btn btn-primary btn-full" style="display: none;">
+            <span>📲 Instalar neste aparelho</span>
+          </button>
+          <p id="installHint" style="font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 8px;"></p>
+        </div>
+
+        <div class="app-card">
+          <div class="card-title">
             <span>🎨 Aparência</span>
           </div>
           <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -1376,6 +1387,19 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
     <!-- VÁRIOS PAPÉIS NA FOTO: o app mostra onde achou cada um e pergunta
          se deve ler separado -->
+    <dialog id="cameraDialog">
+      <div class="dialog-header">
+        <div class="dialog-title">📷 Câmera</div>
+      </div>
+      <div class="dialog-body">
+        <video id="cameraVideo" autoplay playsinline muted></video>
+      </div>
+      <div class="dialog-footer">
+        <button id="btnCameraCancel" class="btn btn-ghost" style="flex:1;">Cancelar</button>
+        <button id="btnCameraShot" class="btn btn-primary" style="flex:1;">📸 Tirar foto</button>
+      </div>
+    </dialog>
+
     <dialog id="papersDialog">
       <div class="dialog-header">
         <div class="dialog-title" id="papersDialogTitle">Encontrei vários papéis</div>
@@ -1396,7 +1420,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.5.0';
+    const APP_VERSION = '0.6.0';
     const APP_UPDATED = '09/10/2026';   // data desta versão
     const STORAGE_KEY = 'comprovantes';
     const THEME_KEY = 'receipt_app_theme';
@@ -1457,7 +1481,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     let currentDocType = 'auto';   // escolhido no pop-up
     let papers = [];               // papéis da última foto: { readings, tipo, codes, result, edited }
     let currentPaper = 0;          // aba mostrada
-    let multiBoxes = null;         // caixas dos papéis quando a pessoa mandou ler separado
+    let sources = [];              // o que vai ser lido: { img, name, boxes } por foto ou página
     let lastTipo = 'livre';        // tipo que valeu na última leitura
     let lastTilt = 0;              // inclinação medida na última foto (para depuração)
 
@@ -1602,6 +1626,13 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     const papersPreview = document.getElementById('papersPreview');
     const btnPapersOne = document.getElementById('btnPapersOne');
     const btnPapersMany = document.getElementById('btnPapersMany');
+    const cameraDialog = document.getElementById('cameraDialog');
+    const cameraVideo = document.getElementById('cameraVideo');
+    const btnCameraShot = document.getElementById('btnCameraShot');
+    const btnCameraCancel = document.getElementById('btnCameraCancel');
+    const offlineStatus = document.getElementById('offlineStatus');
+    const btnInstallApp = document.getElementById('btnInstallApp');
+    const installHint = document.getElementById('installHint');
 
     /* =========================================================
        THEME MANAGEMENT
@@ -1749,7 +1780,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
        VÁRIOS PAPÉIS NA FOTO
        ========================================================= */
     // Shows where the papers were found and asks whether to read them apart
-    function askPapers(img, boxes) {
+    function askPapers(img, boxes, name) {
       return new Promise((resolve) => {
         const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
         const sc = Math.min(1, 700 / Math.max(w0, h0));
@@ -1763,7 +1794,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           x.strokeRect(b.cx * sc, b.cy * sc, b.cw * sc, b.ch * sc);
           x.fillText(String(i + 1), b.cx * sc + 8, b.cy * sc + 30);
         });
-        papersDialogTitle.textContent = `Encontrei ${boxes.length} papéis`;
+        papersDialogTitle.textContent = `Encontrei ${boxes.length} papéis` + (name ? ` em ${name}` : '');
         papersDialogText.textContent = 'Posso ler cada um separado. Se for um papel só, toque em "É um papel só".';
         btnPapersMany.textContent = `Ler os ${boxes.length} separados`;
         const done = (answer) => { papersDialog.close(); btnPapersOne.onclick = btnPapersMany.onclick = null; resolve(answer); };
@@ -1811,10 +1842,11 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         b.type = 'button';
         b.className = 'paper-tab' + (k === i ? ' active' : '');
         const v = (q.edited || q.result.fields).find(f => f.key === 'Valor');
-        b.textContent = `Papel ${k + 1}` + (v && v.val ? ' · ' + v.val : '');
+        b.textContent = (q.label || `Papel ${k + 1}`) + (v && v.val ? ' · ' + v.val : '');
         b.addEventListener('click', () => { if (k !== currentPaper) { stashEdits(); showPaper(k); } });
         paperTabs.appendChild(b);
       });
+      if (p.img && p.img !== currentImage) { currentImage = p.img; processImageToCanvas(currentImage, 0); }
       renderFieldsEditor(Object.assign({}, p.result, { fields: p.edited || p.result.fields }));
     }
 
@@ -2506,14 +2538,15 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           }
         });
 
-        if (multiBoxes && multiBoxes.length >= 2) {
-          // Several papers in one photo: each one is cut out and read on its own
-          for (let i = 0; i < multiBoxes.length; i++) {
-            ocrStatusText.textContent = `Lendo papel ${i + 1} de ${multiBoxes.length}...`;
-            list.push(await readPaper(cropBox(currentImage, multiBoxes[i]), worker, currentRotation, `Papel ${i + 1}: `));
+        // Every photo or page, and every paper cut out of it, is read on its own
+        for (const src of sources) {
+          const boxes = src.boxes || [null];
+          for (let i = 0; i < boxes.length; i++) {
+            const label = src.name ? src.name + (src.boxes ? ` · papel ${i + 1}` : '') : (src.boxes ? `Papel ${i + 1}` : '');
+            ocrStatusText.textContent = `Lendo ${label || 'o papel'}...`;
+            const paper = await readPaper(boxes[i] ? cropBox(src.img, boxes[i]) : src.img, worker, currentRotation, label ? label + ': ' : '');
+            list.push(Object.assign(paper, { label, img: src.img }));
           }
-        } else {
-          list.push(await readPaper(currentImage, worker, currentRotation, ''));
         }
         await worker.terminate();
 
@@ -2527,7 +2560,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         const text = currentImage._presetText || generateFallbackFromCanvas();
         const lines = text.split('\n').map(t => ({ text: t.trim(), conf: 90 })).filter(l => l.text);
         const readings = [{ text, conf: 0, words: [], lines }, { text, conf: 0, words: [], lines }];
-        list = [{ readings, tipo: currentDocType === 'auto' ? detectDocType(readings) : currentDocType, codes: [] }];
+        list = [{ readings, tipo: currentDocType === 'auto' ? detectDocType(readings) : currentDocType, codes: [], label: '', img: currentImage }];
       }
 
       ocrProgressBar.style.width = '100%';
@@ -3208,7 +3241,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
        ========================================================= */
     function resetPhotoState() {
       currentImage = null;
-      multiBoxes = null;
+      sources = [];
+      btnRotate.style.display = '';
       currentRotation = 0;
       previewCanvas.width = 0;
       previewCanvas.height = 0;
@@ -3219,37 +3253,133 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       fileInputGallery.value = '';
     }
 
-    function handleFile(file) {
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = async () => {
-          currentImage = img;
-          currentRotation = 0;
-          processImageToCanvas(img, 0);
-          // Ask what the photo is before reading, so the right fields are expected
-          const tipo = await askDocType();
-          if (!tipo) { resetPhotoState(); return; }
-          currentDocType = tipo;
-          // Several papers in the photo? Show them and ask before reading apart
-          multiBoxes = null;
-          if (tipo !== 'livre') {
-            const boxes = findPapers(img);
-            if (boxes.length >= 2 && await askPapers(img, boxes)) multiBoxes = boxes;
-          }
-          executeOCR();
+    function loadImageFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('imagem inválida'));
+          img.src = e.target.result;
         };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
     }
 
-    btnCamera.addEventListener('click', () => fileInputCamera.click());
+    // Opens a PDF with pdf.js (in libs/) and draws its pages, up to 10, as images
+    let pdfjs = null;
+    async function pdfToImages(file, maxPages = 10) {
+      if (!pdfjs) {
+        pdfjs = await import('./libs/pdfjs/pdf.min.mjs');
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL('libs/pdfjs/pdf.worker.min.mjs', location.href).href;
+      }
+      const doc = await pdfjs.getDocument({
+        data: await file.arrayBuffer(),
+        standardFontDataUrl: new URL('libs/pdfjs/standard_fonts/', location.href).href,
+        wasmUrl: new URL('libs/pdfjs/wasm/', location.href).href
+      }).promise;
+      const images = [];
+      for (let n = 1; n <= Math.min(doc.numPages, maxPages); n++) {
+        const page = await doc.getPage(n);
+        const base = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: Math.min(4, 2200 / Math.max(base.width, base.height)) });
+        const c = document.createElement('canvas');
+        c.width = Math.round(viewport.width); c.height = Math.round(viewport.height);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        images.push(c);
+      }
+      return { images, pages: doc.numPages };
+    }
+
+    // Photos and PDFs chosen by the person: each photo and each PDF page is a source
+    async function handleFiles(fileList) {
+      const files = Array.from(fileList || []).filter(Boolean);
+      if (!files.length) return;
+      const jobs = [];
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i];
+          if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+            ocrProgressWrap.style.display = 'flex';
+            ocrStatusText.textContent = 'Abrindo o PDF...';
+            const { images, pages } = await pdfToImages(f);
+            const prefix = files.length > 1 ? `Arquivo ${i + 1}, p` : 'P';
+            images.forEach((c, k) => jobs.push({ img: c, name: pages > 1 || files.length > 1 ? `${prefix}ágina ${k + 1}` : '' }));
+            if (pages > images.length) showToast(`O PDF tem ${pages} páginas; li as ${images.length} primeiras.`, 'warn', 5000);
+          } else {
+            jobs.push({ img: await loadImageFile(f), name: files.length > 1 ? `Foto ${i + 1}` : '' });
+          }
+        }
+      } catch (err) {
+        console.warn('Não abriu o arquivo:', err);
+        ocrProgressWrap.style.display = 'none';
+        showToast('Não consegui abrir esse arquivo.', 'err');
+        return;
+      }
+      ocrProgressWrap.style.display = 'none';
+      startReading(jobs);
+    }
+
+    async function startReading(jobs) {
+      currentImage = jobs[0].img;
+      currentRotation = 0;
+      processImageToCanvas(currentImage, 0);
+      // Ask what the photo is before reading, so the right fields are expected
+      const tipo = await askDocType();
+      if (!tipo) { resetPhotoState(); return; }
+      currentDocType = tipo;
+      // Several papers in a photo? Show them and ask before reading apart
+      for (const job of jobs) {
+        job.boxes = null;
+        if (tipo === 'livre') continue;
+        const boxes = findPapers(job.img);
+        if (boxes.length >= 2 && await askPapers(job.img, boxes, job.name)) job.boxes = boxes;
+      }
+      sources = jobs;
+      btnRotate.style.display = jobs.length > 1 ? 'none' : '';   // turning one photo at a time only
+      executeOCR();
+    }
+
+    // On a computer the camera is a live preview; on the phone the camera app opens
+    let cameraStream = null;
+    const hasLiveCamera = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && matchMedia('(hover: hover) and (pointer: fine)').matches;
+    async function openLiveCamera() {
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
+      } catch (err) {
+        console.warn('Câmera:', err);
+        showToast('Não consegui abrir a câmera. Escolha um arquivo.', 'warn');
+        fileInputGallery.click();
+        return;
+      }
+      cameraVideo.srcObject = cameraStream;
+      cameraDialog.showModal();
+    }
+    function closeLiveCamera() {
+      if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+      cameraStream = null;
+      cameraVideo.srcObject = null;
+      if (cameraDialog.open) cameraDialog.close();
+    }
+    btnCameraCancel.addEventListener('click', closeLiveCamera);
+    cameraDialog.addEventListener('cancel', (e) => { e.preventDefault(); closeLiveCamera(); });
+    btnCameraShot.addEventListener('click', () => {
+      if (!cameraVideo.videoWidth) return;
+      const c = document.createElement('canvas');
+      c.width = cameraVideo.videoWidth; c.height = cameraVideo.videoHeight;
+      c.getContext('2d').drawImage(cameraVideo, 0, 0);
+      closeLiveCamera();
+      startReading([{ img: c, name: '' }]);
+    });
+
+    btnCamera.addEventListener('click', () => hasLiveCamera() ? openLiveCamera() : fileInputCamera.click());
     btnUpload.addEventListener('click', () => fileInputGallery.click());
 
-    fileInputCamera.addEventListener('change', (e) => handleFile(e.target.files[0]));
-    fileInputGallery.addEventListener('change', (e) => handleFile(e.target.files[0]));
+    fileInputCamera.addEventListener('change', (e) => handleFiles(e.target.files));
+    fileInputGallery.addEventListener('change', (e) => handleFiles(e.target.files));
 
     btnRotate.addEventListener('click', () => {
       if (!currentImage) return;
@@ -3262,6 +3392,64 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       resetPhotoState();
       fieldsEditorCard.style.display = 'none';
       showToast('Foto removida', 'warn');
+    });
+
+    /* =========================================================
+       OFFLINE (SERVICE WORKER) & INSTALL
+       ========================================================= */
+    let offlineReady = false;
+    let installPrompt = null;
+
+    // sw.js keeps a copy of every file of the app on the device, so it opens
+    // and reads without internet. A new version shows a toast to reload.
+    async function setupOffline() {
+      if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) {
+        offlineStatus.textContent = 'Este navegador não guarda o app para uso sem internet.';
+        renderOfflineStatus();
+        return;
+      }
+      try {
+        const reg = await navigator.serviceWorker.register('./sw.js');
+        reg.addEventListener('updatefound', () => {
+          const sw = reg.installing;
+          if (sw) sw.addEventListener('statechange', () => {
+            if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdateToast();
+          });
+        });
+        await navigator.serviceWorker.ready;
+        offlineReady = true;
+      } catch (err) {
+        console.warn('Sem cópia offline:', err);
+      }
+      renderOfflineStatus();
+    }
+
+    function showUpdateToast() {
+      const toast = document.createElement('div');
+      toast.className = 'toast-msg ok';
+      toast.innerHTML = '<span>Nova versão pronta.</span><button type="button" class="btn btn-primary btn-sm">Atualizar</button>';
+      toast.querySelector('button').addEventListener('click', () => location.reload());
+      toastContainer.appendChild(toast);
+    }
+
+    function renderOfflineStatus() {
+      const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+      if (offlineReady) offlineStatus.textContent = `Versão ${APP_VERSION} guardada neste aparelho: o app abre e lê sem internet.`;
+      else if (offlineStatus.textContent === 'Verificando...') offlineStatus.textContent = 'Guardando os arquivos do app neste aparelho...';
+      btnInstallApp.style.display = installPrompt ? '' : 'none';
+      installHint.textContent = standalone ? 'Você está usando o app instalado.'
+        : installPrompt ? 'Instalar cria um ícone na tela inicial, como um aplicativo.'
+        : 'Para ter um ícone na tela inicial: no Chrome, menu ⋮ → "Adicionar à tela inicial"; no iPhone, botão Compartilhar → "Adicionar à Tela de Início".';
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; renderOfflineStatus(); });
+    window.addEventListener('appinstalled', () => { installPrompt = null; renderOfflineStatus(); showToast('App instalado! Procure o ícone na tela inicial.', 'ok', 5000); });
+    btnInstallApp.addEventListener('click', async () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      renderOfflineStatus();
     });
 
     /* =========================================================
@@ -3288,7 +3476,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         currentImage = img;
         currentRotation = 0;
         currentDocType = 'cartao';
-        multiBoxes = null;
+        sources = [{ img, name: '', boxes: null }];
         processImageToCanvas(img, 0);
         executeOCR();
       };
@@ -3608,6 +3796,7 @@ VALOR TOTAL: R$ 68,90
     document.addEventListener('DOMContentLoaded', () => {
       initTheme();
       document.getElementById('brandSub').textContent = `Via do Cliente · OCR · v${APP_VERSION} de ${APP_UPDATED}`;
+      setupOffline();
       getReceipts(); // initialize mock data if first load
       renderHistory();
       renderExportStats();

@@ -78,8 +78,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 - Leitor de comprovantes de maquininha (via do cliente) com OCR no navegador, publicado no GitHub Pages em https://solverone.com.br/leitor-ocr/ (o endereço antigo marceloneco.github.io/leitor-ocr/ redireciona para esse).
 - Veio do repositório FeatureTesting (onde era `leitor-ocr.html`). Lá fica só um card apontando para cá.
-- Não tem build, framework nem dependências instaladas: o app inteiro é o `index.html`, com CSS e JavaScript dentro. O motor de OCR (Tesseract.js) e o idioma português ficam na pasta `tesseract/`, e os leitores de QR code e código de barras (ZXing e jsQR) na pasta `libs/`, tudo no próprio repositório.
-- Para medir a leitura sem celular: `node testes/medir.js <pasta-de-fotos>` (as fotos e o gabarito ficam fora do repositório).
+- Não tem build, framework nem dependências instaladas: o app inteiro é o `index.html`, com CSS e JavaScript dentro. O motor de OCR (Tesseract.js) e o idioma português ficam na pasta `tesseract/`, os leitores de QR code e código de barras (ZXing e jsQR) e o leitor de PDF (pdf.js) na pasta `libs/`, tudo no próprio repositório. Nada é buscado na internet: o app é instalável e funciona sem conexão (`sw.js` guarda os arquivos no aparelho).
+- A cada versão publicada, suba `APP_VERSION`/`APP_UPDATED` no `index.html` **e** `VERSAO` no `sw.js` (os testes avisam se diferirem). Arquivo novo no app entra na lista do `sw.js`.
+- Para medir a leitura sem celular: `node testes/medir.js <pasta-de-fotos>` (as fotos e o gabarito ficam fora do repositório). Para testar o app sem internet, PDF e várias fotos: `node testes/offline.js`.
 - Antes de mexer na leitura, leia `NOTAS-leitor-ocr.md`: explica como a leitura funciona, por que cada decisão foi tomada, os resultados dos testes e as pendências.
 
 ## Cuidados
