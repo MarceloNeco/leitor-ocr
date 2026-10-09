@@ -76,9 +76,10 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## O que é o repositório
 
-- Leitor de comprovantes de maquininha (via do cliente) com OCR no navegador, publicado no GitHub Pages em https://marceloneco.github.io/leitor-ocr/
+- Leitor de comprovantes de maquininha (via do cliente) com OCR no navegador, publicado no GitHub Pages em https://solverone.com.br/leitor-ocr/ (o endereço antigo marceloneco.github.io/leitor-ocr/ redireciona para esse).
 - Veio do repositório FeatureTesting (onde era `leitor-ocr.html`). Lá fica só um card apontando para cá.
-- Não tem build, framework nem dependências instaladas: o app inteiro é o `index.html`, com CSS e JavaScript dentro. O motor de OCR (Tesseract.js) é baixado do jsDelivr na hora de ler.
+- Não tem build, framework nem dependências instaladas: o app inteiro é o `index.html`, com CSS e JavaScript dentro. O motor de OCR (Tesseract.js) e o idioma português ficam na pasta `tesseract/`, e os leitores de QR code e código de barras (ZXing e jsQR) na pasta `libs/`, tudo no próprio repositório.
+- Para medir a leitura sem celular: `node testes/medir.js <pasta-de-fotos>` (as fotos e o gabarito ficam fora do repositório).
 - Antes de mexer na leitura, leia `NOTAS-leitor-ocr.md`: explica como a leitura funciona, por que cada decisão foi tomada, os resultados dos testes e as pendências.
 
 ## Cuidados
