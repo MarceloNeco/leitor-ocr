@@ -11,6 +11,9 @@
 //                   "estab": "ALMANARA", "obs": "..." } }
 // "tipo" é o botão escolhido no pop-up (cartao, nfce, conta, livre ou auto;
 // sem tipo, usa auto). TIPO=auto no ambiente força "auto" em todas.
+// "papeis" é quantos papéis há na foto (sem o campo, 1). Quando o app
+// pergunta "ler separados?", o script responde sim; cada papel vira uma
+// linha da tabela, e o resumo conta as fotos com a quantidade certa.
 // "valores" vazio quer dizer que o papel não tem valor (pedido médico, etc.):
 // aí o certo é o campo ficar vazio. "estab" pode ser uma lista.
 // "incerto" = o app não bateu o martelo e ofereceu botões com os valores lidos;
@@ -99,32 +102,47 @@ function grade(fields, chips, expected) {
     const tipo = process.env.TIPO || (gabarito && gabarito[f] && gabarito[f].tipo) || 'auto';
     const t0 = Date.now();
     await page.setInputFiles('#fileInputGallery', path.join(PHOTOS, f));
-    let ok = true;
+    let ok = true, askedPapers = 0;
     try {
       // the app asks what the photo is; answer with the type from the gabarito
       await page.waitForSelector('#docTypeDialog[open]', { timeout: 30000 });
       await page.click(`#docTypeDialog button[data-tipo="${tipo}"]`);
-      await page.waitForFunction(() => document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 600000 });
+      // then it may ask whether to read several papers apart: say yes
+      await page.waitForFunction(() => document.getElementById('papersDialog').open || document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 600000 });
+      if (await page.$eval('#papersDialog', d => d.open)) {
+        askedPapers = +(await page.$eval('#papersDialogTitle', e => (e.textContent.match(/\d+/) || [0])[0]));
+        await page.click('#btnPapersMany');
+        await page.waitForFunction(() => document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 900000 });
+      }
     } catch (e) { ok = false; logs.push('harness: ' + e.message); }
     const secs = +((Date.now() - t0) / 1000).toFixed(1);
-    const fields = ok ? await page.$$eval('#fieldsListContainer .field-row', rows => rows.map(r => ({
-      key: r.querySelector('.fld-key').value, val: r.querySelector('.fld-val').value, missing: r.classList.contains('field-missing') }))) : [];
-    const chips = ok ? await page.$$eval('.valor-chip', els => els.map(e => e.textContent)) : [];
-    const conf = ok ? await page.$eval('#confidenceVal', e => e.textContent) : '';
-    const debug = (await page.evaluate(() => window.ocrDebug || null)) || {};
-    const texts = (debug.readings || []).map(r => r.text);
     const fallback = logs.some(l => l.includes('OCR falhou'));
-    const passes = texts.length;
-    const g = k => (fields.find(x => x.key === k) || {}).val || '-';
-    const notaG = gabarito && gabarito[f] ? grade(fields, chips, gabarito[f]) : null;
-    const kind = debug.textKind ? `${debug.textKind.label} (${debug.textKind.good}%)` : '';
-    const codes = (debug.codes || []).map(c => `${c.format}:${c.text.slice(0, 30)}`).join(';');
-    const nota = g('Nota');
-    const sinais = debug.sinais ? ` sinais=${debug.sinais.nfce}/${debug.sinais.cartao}/${debug.sinais.conta}` : '';
-    const rots = (debug.readings || []).map(r => `${r.rot}${r.bin ? 'pb' : ''}${r.region ? 'rec' : ''}:${r.good}`).join(',') + (debug.tilt !== undefined ? ` incl=${debug.tilt}` : '');
-    results.push({ file: f, ok, secs, fallback, conf, passes, tipoEscolhido: tipo, tipoLido: debug.tipo, detectado: debug.detected, textKind: debug.textKind, chips, fields, nota: notaG, codes: debug.codes, readings: debug.readings, logs: logs.slice(0, 30) });
-    const tag = notaG ? `  [valor=${notaG.valor} data=${notaG.data} estab=${notaG.estab}]` : '';
-    console.log(`${f}  ${secs}s  leituras=${passes}${rots ? ' [' + rots + ']' : ''}${fallback ? ' FALLBACK' : ''}  tipo=${tipo}>${debug.tipo || '?'}${sinais}  Valor=${g('Valor')}${chips.length ? ' opções=' + chips.join('|') : ''}  Data=${g('Data')}  Hora=${g('Hora')}  Estab=${g('Estabelecimento').slice(0, 30)}${nota !== '-' ? '  Nota=' + nota : ''}${codes ? '  codigo=' + codes : ''}  ${kind}${tag}`);
+    const nTabs = ok ? (await page.$$('#paperTabs .paper-tab')).length : 0;
+    const expectedPapers = (gabarito && gabarito[f] && gabarito[f].papeis) || 1;
+    const papersFound = Math.max(1, nTabs);
+    for (let pi = 0; pi < papersFound; pi++) {
+      if (nTabs) { await page.click(`#paperTabs .paper-tab:nth-child(${pi + 1})`); }
+      const fields = ok ? await page.$$eval('#fieldsListContainer .field-row', rows => rows.map(r => ({
+        key: r.querySelector('.fld-key').value, val: r.querySelector('.fld-val').value, missing: r.classList.contains('field-missing') }))) : [];
+      const chips = ok ? await page.$$eval('.valor-chip', els => els.map(e => e.textContent)) : [];
+      const conf = ok ? await page.$eval('#confidenceVal', e => e.textContent) : '';
+      const debug = (await page.evaluate(() => window.ocrDebug || null)) || {};
+      const texts = (debug.readings || []).map(r => r.text);
+      const passes = texts.length;
+      const g = k => (fields.find(x => x.key === k) || {}).val || '-';
+      const notaG = gabarito && gabarito[f] ? grade(fields, chips, gabarito[f]) : null;
+      const kind = debug.textKind ? `${debug.textKind.label} (${debug.textKind.good}%)` : '';
+      const codes = (debug.codes || []).map(c => `${c.format}:${c.text.slice(0, 30)}`).join(';');
+      const nota = g('Nota');
+      const sinais = debug.sinais ? ` sinais=${debug.sinais.nfce}/${debug.sinais.cartao}/${debug.sinais.conta}` : '';
+      const rots = (debug.readings || []).map(r => `${r.rot}${r.bin ? 'pb' : ''}${r.region ? 'rec' : ''}:${r.good}`).join(',') + (debug.tilt !== undefined ? ` incl=${debug.tilt}` : '');
+      const label = papersFound > 1 ? `${f} [papel ${pi + 1}/${papersFound}]` : f;
+      results.push({ file: f, papel: pi + 1, papeis: papersFound, papeisEsperados: expectedPapers, papeisPerguntados: askedPapers, ok, secs, fallback, conf, passes, tipoEscolhido: tipo, tipoLido: debug.tipo, detectado: debug.detected, textKind: debug.textKind, chips, fields, nota: notaG, codes: debug.codes, readings: debug.readings, logs: logs.slice(0, 30) });
+      const tag = notaG ? `  [valor=${notaG.valor} data=${notaG.data} estab=${notaG.estab}]` : '';
+      const same = g('Mesma compra');
+      console.log(`${label}  ${pi === 0 ? secs + 's' : ''}  leituras=${passes}${rots ? ' [' + rots + ']' : ''}${fallback ? ' FALLBACK' : ''}  tipo=${tipo}>${debug.tipo || '?'}${sinais}  Valor=${g('Valor')}${chips.length ? ' opções=' + chips.join('|') : ''}  Data=${g('Data')}  Hora=${g('Hora')}  Estab=${g('Estabelecimento').slice(0, 30)}${nota !== '-' ? '  Nota=' + nota : ''}${codes ? '  codigo=' + codes : ''}${same !== '-' ? '  mesma-compra=' + same : ''}  ${kind}${tag}`);
+    }
+    if (papersFound !== expectedPapers || askedPapers) console.log(`   papéis: encontrados ${papersFound}, esperados ${expectedPapers}${askedPapers ? ' (perguntou por ' + askedPapers + ')' : ''}`);
     fs.writeFileSync(out, JSON.stringify(results, null, 1));
     await page.close();
   }
@@ -134,13 +152,17 @@ function grade(fields, chips, expected) {
   if (blocked.size) console.log('\nPedidos para fora bloqueados (o app não pode depender deles):\n  ' + [...blocked].join('\n  '));
   if (gabarito) {
     const count = (k, v) => results.filter(r => r.nota && r.nota[k] === v).length;
-    console.log('\nResumo (fotos com gabarito: ' + results.filter(r => r.nota).length + ')');
+    const photos = [...new Set(results.map(r => r.file))];
+    const rightCount = photos.filter(f => { const r = results.find(x => x.file === f); return r.papeis === r.papeisEsperados; }).length;
+    console.log('\nResumo (fotos com gabarito: ' + photos.filter(f => results.find(x => x.file === f).nota).length + ', papéis lidos: ' + results.filter(r => r.nota).length + ')');
+    console.log(`Fotos com a quantidade certa de papéis: ${rightCount} de ${photos.length}`);
     console.log('| Campo | Certo | Incerto, certo entre as opções | Incerto | Vazio | Errado |');
     console.log('|---|---|---|---|---|---|');
     console.log(`| valor | ${count('valor', 'certo')} | ${count('valor', 'incerto-ok')} | ${count('valor', 'incerto')} | ${count('valor', 'vazio')} | ${count('valor', 'errado')} |`);
     console.log(`| data | ${count('data', 'certo')} | - | - | ${count('data', 'vazio')} | ${count('data', 'errado')} |`);
     console.log(`| estab | ${count('estab', 'certo')} | - | - | - | ${count('estab', 'nao')} |`);
-    const secs = results.reduce((a, r) => a + r.secs, 0) / Math.max(1, results.length);
+    const firsts = results.filter(r => r.papel === 1);
+    const secs = firsts.reduce((a, r) => a + r.secs, 0) / Math.max(1, firsts.length);
     console.log(`Tempo médio por foto: ${secs.toFixed(1)}s`);
   }
   console.log('\nResultado completo em ' + out);
