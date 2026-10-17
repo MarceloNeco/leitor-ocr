@@ -95,13 +95,26 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     return readTabs(page);
   };
 
-  // 1. Guarda os arquivos, desliga a internet, abre de novo e lê
+  // 0. Os apps do solverone.com.br dividem o endereço: a cópia guardada de outro app
+  //    (e a antiga deste, com o nome velho) existem antes de o leitor se instalar
   let page = await context.newPage();
+  await page.goto(base + 'icons/icon-192.png');
+  await page.evaluate(async () => {
+    await (await caches.open('outro-app-v1')).put('/outro-app/', new Response('outro'));
+    await (await caches.open('leitor-ocr-0.6.0')).put('/velho', new Response('velho'));
+  });
+  await page.close();
+
+  // 1. Guarda os arquivos, desliga a internet, abre de novo e lê
+  page = await context.newPage();
   const logs = [];
   page.on('pageerror', e => logs.push('pageerror: ' + e.message));
   await page.goto(base + 'index.html');
   await page.waitForFunction(() => document.getElementById('offlineStatus').textContent.includes('guardada'), null, { timeout: 120000 });
-  const cached = await page.evaluate(async () => { const c = await caches.open((await caches.keys())[0]); return (await c.keys()).length; });
+  const keys = await page.evaluate(() => caches.keys());
+  check(keys.includes('outro-app-v1'), 'a cópia sem internet de outro app continua lá depois de o leitor se instalar');
+  check(!keys.includes('leitor-ocr-0.6.0'), 'a cópia antiga do próprio leitor foi apagada');
+  const cached = await page.evaluate(async () => { const c = await caches.open((await caches.keys()).find(k => k.startsWith('dgo-leitor-ocr-'))); return (await c.keys()).length; });
   const listed = (sw.match(/^\s*'\.\//gm) || []).length;
   check(cached === listed, `arquivos guardados para uso sem internet: ${cached} de ${listed}`);
   await page.close();
