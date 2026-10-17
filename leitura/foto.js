@@ -639,6 +639,18 @@
     return list;
   }
 
-  L.foto = { estimateAngles, buildOcrCanvas, findPaperBox, findPapers, letterGrid, findTextBox, cropPaper, cropBox, textRegion, readPaper };
+  // One quick reading, only to guess the type (Leitura.espiar)
+  async function espiar(img) {
+    const T = await loadTesseractLibrary();
+    const worker = await T.createWorker('por', 1, { workerPath: OCR_BASE + 'worker.min.js', corePath: OCR_BASE, langPath: OCR_BASE });
+    try {
+      const res = await worker.recognize(buildOcrCanvas(img, estimateAngles(cropPaper(img))[0], false, 800));
+      return detectDocType([{ text: res.data.text || '' }]);
+    } finally {
+      await worker.terminate();
+    }
+  }
+
+  L.foto = { espiar, estimateAngles, buildOcrCanvas, findPaperBox, findPapers, letterGrid, findTextBox, cropPaper, cropBox, textRegion, readPaper };
   L.lerFotos = lerFotos;
 })(window.Leitura);

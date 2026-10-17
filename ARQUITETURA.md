@@ -31,7 +31,7 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 
 | Arquivo | O que faz |
 |---|---|
-| `leitura.js` | Porta de entrada (global `Leitura`): carregar capacidades sob demanda, registro de leitores, `abrir`, `acharPapeis`, `ler`, `lerArquivo`, `resultado`. |
+| `leitura.js` | Porta de entrada (global `Leitura`): carregar capacidades sob demanda, registro de leitores, `abrir`, `acharPapeis`, `ler`, `lerArquivo`, `resultado`, e o app certo de cada documento (`espiar`, `ondeLer`, `appsDoTipo`). |
 | `leitura/catalogo.js` | Capacidades, formatos de arquivo aceitos (e os recusados com o motivo), **todas as famílias e tipos de documento** com o leitor de cada um, o que vão precisar e a classe de privacidade. |
 | `leitura/texto.js` | Campos a partir do texto (`parseDocument`, `findMoney`, `parseChave`, `pickEstablishment`), tipo pelo texto (`detectDocType`), valor confirmado (`agreedValue`) e o resultado de um papel (`buildResult`). |
 | `leitura/foto.js` | Inclinação, papéis na foto (`findPapers`), recorte, limpeza do fundo, as várias leituras com o Tesseract (`readPaper`, `lerFotos`). |
@@ -59,6 +59,21 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 - **Tipo de documento** ("Não sei, descobrir", `detectDocType` em `leitura/texto.js`): primeiro os leitores de dinheiro (cartão, nota, conta), pelos `sinais` de cada um, porque são eles que leem o valor; se nenhum reconhece o papel, os outros tipos do catálogo, pelas palavras de `SINAIS` em `leitura/catalogo.js` (3 ou mais no texto; ganha o que tiver mais). O tipo descoberto vem com a categoria ("Saúde › Pedido de exame") e já fica no registro, mesmo antes de o tipo ter leitor próprio (aí ele é lido como texto livre).
 - **Arquivo que já diz o que é**: OFX é extrato ou fatura; CSV e planilha com colunas de data e valor viram lançamentos.
 - A pessoa sempre confere e pode trocar o tipo; quando o texto parece outro tipo, aparece "Parece ser: ...".
+
+## Documento no app certo
+
+Cada família do catálogo (ou tipo) diz qual app da SolverONE cuida dela (`apps` em `leitura/catalogo.js`): dinheiro → MoneyTRIO; saúde e esteira → RiseONE; alimentos → HyperNutry; bioimpedância e dieta → RiseONE e HyperNutry; documentos pessoais, escola, casa e carro, prints e recados → OmniLifeONE. O Leitor OCR aceita todos.
+
+No app filho, antes da leitura completa:
+
+```js
+Leitura.app = 'hypernutry';                      // quem é este app
+const tipo = await Leitura.espiar(fonte);        // uma leitura só, ~2 s (arquivo: na hora)
+const outro = Leitura.ondeLer(tipo);             // null = é deste app, ou não dá para saber
+if (outro) avisar(outro.texto + ' Ler aqui mesmo?', outro.apps[0].url);
+```
+
+`ondeLer` só avisa quando o tipo foi reconhecido: na dúvida (texto livre), não atrapalha. Medido nas 52 fotos de 17/10 como se fosse o HyperNutry: avisou em 15 dos 37 documentos de outros apps, sempre com o app certo, e em nenhum dos 14 documentos do próprio HyperNutry.
 
 ## Ensinar um tipo novo de documento
 

@@ -12,6 +12,9 @@
      dele vai usar; "privacidade" diz o cuidado que o dado pede (financeiro,
      saude, pessoal, biometrico): dado de saúde, documento pessoal e rosto
      nunca saem do aparelho sem a pessoa escolher.
+   - apps: o app da SolverONE que cuida de cada família (ou tipo), para o app que
+     está lendo avisar quando o documento é de outro (ex.: extrato no HyperNutry
+     → MoneyTRIO). O Leitor OCR aceita todos.
    - leitores: os leitores prontos, na ordem em que o tipo é procurado no texto.
    - SINAIS: as palavras que denunciam cada tipo sem leitor próprio, para a
      detecção automática da categoria e do tipo.
@@ -54,10 +57,18 @@
     { id: 'doc', ext: ['doc'], recusa: 'documento no formato antigo (.doc): salve como .docx ou PDF' }
   ];
 
+  // Os apps da SolverONE que recebem documentos (endereço: solverone.com.br/<pasta>/)
+  const apps = {
+    moneytrio: { nome: 'MoneyTRIO', pasta: 'investify-me' },
+    riseone: { nome: 'RiseONE', pasta: 'rise-one' },
+    hypernutry: { nome: 'HyperNutry', pasta: 'hypernutry' },
+    omnilife: { nome: 'OmniLifeONE', pasta: 'omnilife-one' }
+  };
+
   // t(id, nome em português, nome em inglês, extras)
   const t = (id, pt, en, x = {}) => Object.assign({ id, pt, en }, x);
   const familias = [
-    { id: 'dinheiro', pt: 'Dinheiro e compras', en: 'Money and purchases', privacidade: 'financeiro', tipos: [
+    { id: 'dinheiro', pt: 'Dinheiro e compras', en: 'Money and purchases', privacidade: 'financeiro', apps: ['moneytrio'], tipos: [
       t('cartao', 'Comprovante de maquininha', 'Card receipt', { leitor: 'cartao', precisa: ['foto'] }),
       t('nfce', 'Nota fiscal / cupom', 'Invoice / receipt', { leitor: 'nfce', precisa: ['foto', 'codigos'] }),
       t('conta', 'Conta de restaurante', 'Restaurant bill', { leitor: 'conta', precisa: ['foto'] }),
@@ -72,17 +83,17 @@
       t('investimento', 'Histórico de investimentos', 'Investment history', { precisa: ['pdf', 'planilha', 'tabela'] }),
       t('ingresso', 'Ingresso ou ticket', 'Ticket', { precisa: ['foto', 'codigos'] })
     ] },
-    { id: 'saude', pt: 'Saúde', en: 'Health', privacidade: 'saude', tipos: [
+    { id: 'saude', pt: 'Saúde', en: 'Health', privacidade: 'saude', apps: ['riseone'], tipos: [
       t('receita-medica', 'Receita médica ou de tratamento', 'Prescription', { precisa: ['foto'] }),
       t('pedido-exame', 'Pedido de exame', 'Test request', { precisa: ['foto'] }),
       t('resultado-exame', 'Resultado de exame ou laudo médico', 'Test result or medical report', { precisa: ['foto', 'pdf', 'tabela'] }),
       t('exame-imagem', 'Exame de imagem', 'Imaging exam', { precisa: ['foto', 'pdf'] }),
-      t('bioimpedancia', 'Bioimpedância', 'Body composition (bioimpedance)', { precisa: ['foto', 'tabela'] }),
+      t('bioimpedancia', 'Bioimpedância', 'Body composition (bioimpedance)', { apps: ['riseone', 'hypernutry'], precisa: ['foto', 'tabela'] }),
       t('vacina', 'Cartão de vacina', 'Vaccination card', { precisa: ['foto', 'tabela'] }),
       t('atestado', 'Atestado', 'Medical certificate', { precisa: ['foto'] }),
-      t('dieta', 'Dieta ou plano alimentar', 'Diet plan', { precisa: ['foto', 'pdf'] })
+      t('dieta', 'Dieta ou plano alimentar', 'Diet plan', { apps: ['riseone', 'hypernutry'], precisa: ['foto', 'pdf'] })
     ] },
-    { id: 'alimentos', pt: 'Alimentos e produtos', en: 'Food and products', tipos: [
+    { id: 'alimentos', pt: 'Alimentos e produtos', en: 'Food and products', apps: ['hypernutry'], tipos: [
       t('nutricional', 'Informação nutricional', 'Nutrition facts', { precisa: ['foto', 'tabela'] }),
       t('ingredientes', 'Ingredientes', 'Ingredients', { precisa: ['foto'] }),
       t('rotulo', 'Rótulo e marca de produto', 'Product label and brand', { precisa: ['foto', 'codigos'] }),
@@ -91,7 +102,7 @@
       t('receita-culinaria', 'Receita culinária', 'Recipe', { precisa: ['foto'] }),
       t('alimento', 'Foto de comida (que alimento é)', 'Food photo (what food it is)', { precisa: ['ia'] })
     ] },
-    { id: 'documentos', pt: 'Documentos pessoais', en: 'Personal documents', privacidade: 'pessoal', tipos: [
+    { id: 'documentos', pt: 'Documentos pessoais', en: 'Personal documents', privacidade: 'pessoal', apps: ['omnilife'], tipos: [
       t('rg', 'RG / carteira de identidade', 'ID card', { precisa: ['foto'] }),
       t('cpf', 'CPF', 'CPF (tax ID)', { precisa: ['foto'] }),
       t('cnh', 'CNH / carteira de motorista', 'Driver’s license', { precisa: ['foto', 'codigos'] }),
@@ -104,30 +115,30 @@
       t('diploma', 'Diploma ou certificado', 'Diploma or certificate', { precisa: ['foto', 'pdf'] }),
       t('carta', 'Carta', 'Letter', { precisa: ['foto', 'pdf', 'word'] }),
       t('laudo-tecnico', 'Laudo técnico', 'Technical report', { precisa: ['foto', 'pdf', 'word'] }),
-      t('cartao-credito', 'Cartão de crédito (só os 4 últimos dígitos ficam)', 'Credit card (only the last 4 digits are kept)', { precisa: ['foto'], privacidade: 'financeiro' })
+      t('cartao-credito', 'Cartão de crédito (só os 4 últimos dígitos ficam)', 'Credit card (only the last 4 digits are kept)', { apps: ['moneytrio'], precisa: ['foto'], privacidade: 'financeiro' })
     ] },
-    { id: 'escola', pt: 'Escola', en: 'School', tipos: [
+    { id: 'escola', pt: 'Escola', en: 'School', apps: ['omnilife'], tipos: [
       t('boletim', 'Boletim escolar', 'Report card', { precisa: ['foto', 'pdf', 'tabela'] }),
       t('grade', 'Grade de horários', 'Class schedule', { precisa: ['foto', 'tabela'] }),
       t('calendario-provas', 'Calendário de provas', 'Exam calendar', { precisa: ['foto', 'tabela'] }),
       t('agenda', 'Agenda ou recado da escola', 'School planner or note', { precisa: ['foto'] })
     ] },
-    { id: 'casa', pt: 'Casa, carro e academia', en: 'Home, car and gym', tipos: [
+    { id: 'casa', pt: 'Casa, carro e academia', en: 'Home, car and gym', apps: ['omnilife'], tipos: [
       t('etiqueta', 'Etiqueta de equipamento (fabricante, modelo, série)', 'Equipment tag', { precisa: ['foto', 'codigos'] }),
       t('manual', 'Manual', 'Manual', { precisa: ['foto', 'pdf'] }),
       t('odometro', 'Quilometragem do carro', 'Car odometer', { precisa: ['foto', 'visor'] }),
-      t('esteira', 'Esteira ou bicicleta (distância, tempo)', 'Treadmill or bike display', { precisa: ['foto', 'visor'] }),
+      t('esteira', 'Esteira ou bicicleta (distância, tempo)', 'Treadmill or bike display', { apps: ['riseone'], precisa: ['foto', 'visor'] }),
       t('placa', 'Placa de rua ou de estabelecimento', 'Street or shop sign', { precisa: ['foto'] }),
       t('garagem', 'Mapa de garagem', 'Parking map', { precisa: ['foto'] }),
       t('regras', 'Regras da casa ou aviso', 'House rules or notice', { precisa: ['foto'] })
     ] },
-    { id: 'telas', pt: 'Telas e mensagens', en: 'Screens and messages', tipos: [
-      t('notificacao', 'Print de notificação (compra, banco)', 'Notification screenshot', { precisa: ['foto'], privacidade: 'financeiro' }),
+    { id: 'telas', pt: 'Telas e mensagens', en: 'Screens and messages', apps: ['omnilife'], tipos: [
+      t('notificacao', 'Print de notificação (compra, banco)', 'Notification screenshot', { apps: ['moneytrio'], precisa: ['foto'], privacidade: 'financeiro' }),
       t('print', 'Print de tela', 'Screenshot', { precisa: ['foto'] }),
       t('email', 'E-mail', 'E-mail', { precisa: ['foto', 'pdf', 'texto'] }),
       t('recado', 'Recado ou bilhete', 'Note', { precisa: ['foto'] })
     ] },
-    { id: 'pessoas', pt: 'Pessoas', en: 'People', privacidade: 'biometrico', tipos: [
+    { id: 'pessoas', pt: 'Pessoas', en: 'People', privacidade: 'biometrico', apps: ['omnilife'], tipos: [
       t('rosto', 'Rosto (reconhecer a pessoa)', 'Face (recognize the person)', { precisa: ['rosto'] })
     ] },
     { id: 'outros', pt: 'Outros', en: 'Other', tipos: [
@@ -199,12 +210,13 @@
   familias.forEach(f => f.tipos.forEach(x => {
     x.familia = f.id;
     if (!x.privacidade && f.privacidade) x.privacidade = f.privacidade;
+    if (!x.apps && f.apps) x.apps = f.apps;
     if (SINAIS[x.id]) x.sinais = SINAIS[x.id];
     tipos[x.id] = x;
   }));
 
   L.catalogo = {
-    capacidades, formatos, familias,
+    capacidades, formatos, familias, apps,
     leitores: ['nfce', 'cartao', 'conta', 'extrato'],
     tipo: id => tipos[id],
     familia: id => familias.find(f => f.id === id),
