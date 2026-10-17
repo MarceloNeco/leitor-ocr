@@ -17,6 +17,8 @@ Resultado: a mesma correção é paga três vezes (em tokens e em bugs), e nenhu
 
 ## 2. A proposta: o "Módulo de Leitura SolverONE"
 
+(Atualização de 17/10/2026: a estrutura abaixo foi feita na etapa 8 com estes nomes: `leitura.js`, `leitura/catalogo.js`, `leitura/texto.js`, `leitura/relacoes.js`, `leitura/foto.js`, `leitura/codigos.js`, `leitores/*.js` e `formatos/*.js`. A câmera continua no `index.html` até a etapa 9. O mapa atual está em `ARQUITETURA.md`.)
+
 Um módulo único, no mesmo espírito do `diretrizes.js` (copiado idêntico para cada app, versionado, com um arquivo de configuração por app), **cuidado em um só lugar: este repositório**, que já é o laboratório (fotos de teste, gabaritos, roteiros de medição, notas de decisão).
 
 - O módulo **não** entra dentro do `diretrizes.js`: ele já tem 5.580 linhas e cuida de outra coisa (idioma, login, anúncios, cofre). O módulo de leitura usa o que o `diretrizes.js` oferece (o cofre `DGO.ia` para a IA online, a regra de rede) e a seção de OCR do `diretrizes.js` é aposentada quando os apps migrarem (no chat do RootifyONE, depois).
@@ -67,7 +69,7 @@ Os pacotes pesados continuam nas pastas `tesseract/` e `libs/` (pdf.js, ZXing, j
 
 | Etapa | Onde | O que | Como se mede |
 |---|---|---|---|
-| 8 | leitor-ocr | Separar o `index.html` em `leitura.js` + `leitura/` + `leitores/`; `LEIA-ME.md`, `VERSAO` 1.0.0; o app de referência passa a usar o módulo | As 37 fotos e o `testes/offline.js` dão o mesmo resultado de antes |
+| 8 ✅ | leitor-ocr | Feito na 0.7.0 (17/10/2026): `leitura.js` + `leitura/` + `leitores/` + `formatos/` (PDF com texto, TXT, CSV, OFX, XLSX, DOCX), catálogo de 55 tipos em 9 famílias, partes pesadas só no primeiro uso, pagamento dividido. O guia de uso ficou em `ARQUITETURA.md` (não em `leitura/LEIA-ME.md`); motor 1.0.0 (`Leitura.versao`) | As 51 fotos e o `testes/offline.js` (ver NOTAS) |
 | 9 | leitor-ocr | Trazer a câmera do HyperNutry para `leitura/captura.js` (lente, foco, lanterna, foto cheia) + aviso de desfoque + código de barras nativo | Fotos tiradas pela tela nova, medidas no celular por você; nada piora nas 37 |
 | 10 | chat do HyperNutry | Trocar `v-scan.js`/`ocr.js` pelo módulo; os leitores de rótulo e laudo viram `leitores/rotulo.js` e `leitores/bioimpedancia.js` (medidos aqui com fotos de rótulo) | Nota "para o chat do HyperNutry" + PR lá |
 | 11 | chat do MoneyTRIO | Foto de comprovante vira gasto (leitores cartão, nota, conta já prontos); entrega pela ponte `ecossistema.ponte.v1` ou direto | Nota "para o chat do MoneyTrio" + PR lá |

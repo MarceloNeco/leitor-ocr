@@ -969,6 +969,71 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       color: var(--accent);
     }
 
+    .doc-type-more {
+      grid-column: 1 / -1;
+      margin-top: 8px;
+    }
+
+    .doc-type-more summary {
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--muted);
+      padding: 6px 0;
+    }
+
+    .doc-type-more .doc-type-btn {
+      font-size: 12px;
+      padding: 9px 8px;
+    }
+
+    .items-box {
+      max-height: 320px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-top: 4px;
+    }
+
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .items-table th, .items-table td {
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .items-table td:last-child, .items-table th:last-child {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .items-table td.neg { color: var(--danger); }
+
+    .items-box p {
+      font-size: 12px;
+      color: var(--muted);
+      padding: 6px 8px;
+    }
+
+    .card-mine-btn {
+      align-self: flex-start;
+      margin: 2px 0 6px;
+    }
+
+    .offline-parts ul {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 12px;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .offline-parts small { color: var(--muted); }
+
     .doc-type-btn.suggested {
       border-color: var(--accent);
       box-shadow: 0 0 0 2px var(--accent-light);
@@ -1098,10 +1163,10 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
               <span>📷 Fotografar</span>
             </button>
             <button id="btnUpload" class="btn btn-secondary">
-              <span>🖼️ Fotos ou PDF</span>
+              <span>📎 Fotos ou arquivos</span>
             </button>
             <input type="file" id="fileInputCamera" class="file-input-hidden" accept="image/*" capture="environment">
-            <input type="file" id="fileInputGallery" class="file-input-hidden" accept="image/*,application/pdf,.pdf" multiple>
+            <input type="file" id="fileInputGallery" class="file-input-hidden" accept="image/*,application/pdf,.pdf,.txt,text/plain,.csv,text/csv,.ofx,.qfx,.xlsx,.docx" multiple>
           </div>
 
           <!-- Sample receipt presets for immediate live testing -->
@@ -1174,6 +1239,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           <div id="fieldsListContainer" class="fields-table-list">
             <!-- Dynamic editable rows rendered here -->
           </div>
+          <div id="itemsBox" class="items-box" style="display: none;"></div>
 
           <div style="display:flex; justify-content:flex-start;">
             <button id="btnAddField" class="btn btn-secondary btn-sm">
@@ -1282,6 +1348,10 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
             <span>📲 Usar sem internet</span>
           </div>
           <p id="offlineStatus" style="font-size: 13px; line-height: 1.6; color: var(--muted); margin-bottom: 12px;">Verificando...</p>
+          <div id="offlineParts" class="offline-parts"></div>
+          <button id="btnSaveAllOffline" class="btn btn-secondary btn-full" style="display: none; margin-bottom: 12px;">
+            <span>⬇️ Guardar tudo para usar sem internet</span>
+          </button>
           <button id="btnInstallApp" class="btn btn-primary btn-full" style="display: none;">
             <span>📲 Instalar neste aparelho</span>
           </button>
@@ -1416,12 +1486,26 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
   </div>
 
+  <!-- Motor de leitura (ver ARQUITETURA.md): a porta de entrada, o catálogo, o que
+       entende texto, as relações entre papéis e os leitores de cada tipo. O resto
+       (foto, códigos, PDF, planilhas, Word) carrega sozinho quando é preciso. -->
+  <script src="leitura.js"></script>
+  <script src="leitura/catalogo.js"></script>
+  <script src="leitura/texto.js"></script>
+  <script src="leitura/relacoes.js"></script>
+  <script src="leitores/cartao.js"></script>
+  <script src="leitores/nfce.js"></script>
+  <script src="leitores/conta.js"></script>
+  <script src="leitores/extrato.js"></script>
   <script>
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.6.1';
+    const APP_VERSION = '0.7.0';
     const APP_UPDATED = '17/10/2026';   // data desta versão
+    // From the reading engine (leitura/texto.js)
+    const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
+    const formatBRL = Leitura.texto.formatBRL;
     const STORAGE_KEY = 'comprovantes';
     const THEME_KEY = 'receipt_app_theme';
 
@@ -1430,60 +1514,12 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     let editingReceiptId = null;
     let activeDetailReceipt = null;
 
-    // Ordered fields specification
-    const ORDERED_FIELD_KEYS = [
-      'Estabelecimento',
-      'CNPJ',
-      'Nota',
-      'Valor',
-      'Data',
-      'Hora',
-      'Bandeira',
-      'Modalidade',
-      'Terminal',
-      'NSU/DOC',
-      'Autorização',
-      'AID',
-      'Via'
-    ];
-
-    /* =========================================================
-       TIPOS DE DOCUMENTO
-       Cada tipo diz o que esperar do papel: quais campos são vitais (ficam
-       em vermelho quando não lidos), que palavras denunciam o tipo (sinais),
-       que palavras acompanham o valor (palavras) e que linhas nunca têm o
-       valor (ignorar: itens, tributos, gorjeta, troco...). Para ensinar um
-       tipo novo, basta uma entrada aqui.
-       ========================================================= */
-    const DOC_TYPES = {
-      auto: { nome: 'Não sei, descobrir', familia: 'Deixar o app decidir', vitais: [] },
-      cartao: {
-        nome: 'Comprovante de maquininha', familia: 'Dinheiro', vitais: ['Valor'],
-        sinais: /VIA CLIENTE|VIA DO CLIENTE|COMPROVANTE DE (?:VENDA|PAGAMENTO)|CART[AÃ]O|CR[EÉ]DITO|D[EÉ]BITO|MASTERCARD|\bVISA\b|\bELO\b|\bNSU\b|\bAUTH?[:=\s]|\bAID\b|GETNET|CIELO|\bSTONE\b|\bREDE\b|PAGSEGURO|INFINITEPAY|SENHA APROVADA|PARCELA|VALOR:|\bCARD\b|APPROVAL|AMOUNT/g,
-        palavras: /VALOR|[TIF1]OTAL|CR[EÉ]DITO|D[EÉ]BITO|COMPRA|VENDA|APROVAD|PAGO|PAGAR|AMOUNT/,
-        ignorar: /\d\s?X\s|PARCELA|POR PESSOA|TRIB|DESCONTO|TROCO|SALDO|TAXA|JUROS|LIMITE|SUB-?\s?TOTAL|\bTIP\b|SUGGEST/
-      },
-      nfce: {
-        nome: 'Nota fiscal / cupom', familia: 'Dinheiro', vitais: ['Valor'],
-        sinais: /NFC-?E|NOTA FISCAL|CUPOM FISCAL|DANFE|CONSUMIDOR|CHAVE DE ACESSO|PROTOCOLO DE AUTORIZA|TRIBUT|\bSAT\b|ITENS|UN\s?X|VL\.?\s?ITEM|EMISS[AÃ]O|QTDE?\b/g,
-        palavras: /VALOR A PAGAR|VALOR PAGO|TOTAL A PAGAR|VALOR TOTAL|[TIF1]OTAL|A PAGAR|PAGO|VALOR/,
-        ignorar: /TRIB|DESCONTO|UN\s?X|VL\.?\s?ITEM|UNIT|ITE[MN]S|QTD|TROCO|DINHEIRO|SUB-?\s?TOTAL|ECONOMIZOU|\bTAX\b|CHANGE|CASH|ACESS[OÓ]RIO|PRODUTOS|SERVI[CÇ]O|\bTX\b|TAXA|\(\s?[+-]\s?\)/
-      },
-      conta: {
-        nome: 'Conta de restaurante', familia: 'Dinheiro', vitais: ['Valor'],
-        sinais: /CONFER[EÊ]NCIA|SUB-?\s?TOTAL|GORJETA|SERVI[CÇ]O|MESA|PESSOAS?|COUVERT|GAR[CÇ]OM|\bTIP\b|GRATUITY|\d\s?X\s|\bTAX\b|CHANGE|CASH/g,
-        palavras: /[TIF1]OTAL|A PAGAR|PAGO|VALOR/,
-        ignorar: /SUB-?\s?TOTAL|GORJETA|SERVI[CÇ]O|PESSOA|COUVERT|\d\s?X\s|TRIB|DESCONTO|TROCO|TAXA|\bTIP\b|CHANGE|CASH|SUGGEST|ITE[MN]S|\bTAX\b|\(\s?[+-]\s?\)/
-      },
-      livre: { nome: 'Outro (texto livre)', familia: 'Outros', vitais: [] }
-    };
     const DOC_TYPE_KEY = 'leitor_tipo_doc';
     let currentDocType = 'auto';   // escolhido no pop-up
     let papers = [];               // papéis da última foto: { readings, tipo, codes, result, edited }
     let currentPaper = 0;          // aba mostrada
-    let sources = [];              // o que vai ser lido: { img, name, boxes } por foto ou página
+    let sources = [];              // o que vai ser lido: as fontes de Leitura.abrir ({ img, nome, boxes } numa foto)
     let lastTipo = 'livre';        // tipo que valeu na última leitura
-    let lastTilt = 0;              // inclinação medida na última foto (para depuração)
 
     // Seed mock data if none exists
     const INITIAL_MOCK_DATA = [
@@ -1632,6 +1668,9 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     const btnCameraCancel = document.getElementById('btnCameraCancel');
     const offlineStatus = document.getElementById('offlineStatus');
     const btnInstallApp = document.getElementById('btnInstallApp');
+    const offlineParts = document.getElementById('offlineParts');
+    const btnSaveAllOffline = document.getElementById('btnSaveAllOffline');
+    const itemsBox = document.getElementById('itemsBox');
     const installHint = document.getElementById('installHint');
 
     /* =========================================================
@@ -1712,29 +1751,45 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         docTypeResolver = resolve;
         const suggested = localStorage.getItem(DOC_TYPE_KEY) || 'auto';
         docTypeGrid.innerHTML = '';
-        let family = null;
-        Object.keys(DOC_TYPES).forEach(key => {
-          const t = DOC_TYPES[key];
-          if (t.familia !== family) {
-            family = t.familia;
-            const h = document.createElement('div');
-            h.className = 'doc-type-family';
-            h.textContent = family;
-            docTypeGrid.appendChild(h);
-          }
+        const header = (text, parent) => {
+          const h = document.createElement('div');
+          h.className = 'doc-type-family';
+          h.textContent = text;
+          parent.appendChild(h);
+        };
+        const button = (key, nome, parent) => {
           const b = document.createElement('button');
           b.type = 'button';
           b.className = 'doc-type-btn' + (key === suggested ? ' suggested' : '');
           b.dataset.tipo = key;
-          b.innerHTML = escapeHtml(t.nome) + (key === suggested ? '<small>sugerido (último usado)</small>' : '');
+          b.innerHTML = escapeHtml(nome) + (key === suggested ? '<small>sugerido (último usado)</small>' : '');
           b.addEventListener('click', () => {
             localStorage.setItem(DOC_TYPE_KEY, key);
             docTypeDialog.close();
             const r = docTypeResolver; docTypeResolver = null;
             if (r) r(key);
           });
-          docTypeGrid.appendChild(b);
+          parent.appendChild(b);
+        };
+        // First the types the app already reads, then every other type of the
+        // catalog (leitura/catalogo.js): those are read as free text for now,
+        // but the record keeps the chosen type
+        header('Deixar o app decidir', docTypeGrid);
+        button('auto', Leitura.catalogo.tipo('auto').pt, docTypeGrid);
+        const more = document.createElement('details');
+        more.className = 'doc-type-more';
+        more.innerHTML = '<summary>Outros tipos de documento (por enquanto lidos como texto)</summary>';
+        const moreGrid = document.createElement('div');
+        moreGrid.className = 'doc-type-grid';
+        more.appendChild(moreGrid);
+        Leitura.catalogo.familias.forEach(f => {
+          const ready = f.tipos.filter(t => t.id === 'livre' || Leitura.tipo(t.id).leitor);
+          const others = f.tipos.filter(t => !ready.includes(t));
+          if (ready.length) { header(f.pt, docTypeGrid); ready.forEach(t => button(t.id, t.pt, docTypeGrid)); }
+          if (others.length) { header(f.pt, moreGrid); others.forEach(t => button(t.id, t.pt, moreGrid)); }
+          if (others.some(t => t.id === suggested)) more.open = true;
         });
+        docTypeGrid.appendChild(more);
         docTypeDialog.showModal();
       });
     }
@@ -1751,12 +1806,18 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     function retype(tipo) {
       const p = papers[currentPaper];
       if (!p) return;
-      const resolved = tipo === 'auto' ? detectDocType(p.readings) : tipo;
-      // A money type needs two readings to confirm the amount: read again if there is only one
-      if (DOC_TYPES[resolved].vitais.length && p.readings.length < 2 && currentImage) { executeOCR(); return; }
-      p.tipo = resolved;
-      p.result = buildResult(p.readings, resolved, p.codes);
+      if (p.fonte && !p.fonte.img) {
+        // A file (PDF with text, TXT, spreadsheet...): its text again, with the new type
+        Object.assign(p, Leitura.lerArquivo(p.fonte, tipo), { label: p.label });
+      } else {
+        const resolved = tipo === 'auto' ? Leitura.texto.detectDocType(p.readings) : tipo;
+        // A money type needs two readings to confirm the amount: read again if there is only one
+        if (Leitura.tipo(resolved).vitais.length && p.readings.length < 2 && currentImage) { executeOCR(); return; }
+        p.tipo = resolved;
+      }
+      p.result = Leitura.resultado(p);
       p.edited = null;
+      Leitura.relacionar(papers);
       showPaper(currentPaper);
     }
 
@@ -1804,30 +1865,6 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       });
     }
     papersDialog.addEventListener('cancel', (e) => { e.preventDefault(); if (btnPapersOne.onclick) btnPapersOne.onclick(); });
-
-    // A paper cut out of the photo, in full resolution
-    function cropBox(img, box) {
-      const c = document.createElement('canvas');
-      c.width = box.cw; c.height = box.ch;
-      c.getContext('2d').drawImage(img, box.cx, box.cy, box.cw, box.ch, 0, 0, box.cw, box.ch);
-      return c;
-    }
-
-    // Two papers with the same confirmed amount (and no different date) are
-    // the same purchase on two papers: the card receipt and the nota fiscal
-    function linkSamePurchase(list) {
-      const pairs = [];
-      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-        const a = list[i].result, b = list[j].result;
-        if (a.valor === null || a.valor !== b.valor) continue;
-        const da = (a.fields.find(f => f.key === 'Data') || {}).val, db = (b.fields.find(f => f.key === 'Data') || {}).val;
-        if (da && db && da !== db) continue;
-        a.fields.push({ key: 'Mesma compra', val: `papel ${j + 1}` });
-        b.fields.push({ key: 'Mesma compra', val: `papel ${i + 1}` });
-        pairs.push([i + 1, j + 1]);
-      }
-      return pairs;
-    }
 
     // Puts the chosen paper on screen (its tab, its fields, its chip)
     function showPaper(i) {
@@ -1882,6 +1919,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         renderHistory();
       } else if (tabId === 'tab-export') {
         renderExportStats();
+      } else if (tabId === 'tab-settings') {
+        renderOfflineStatus();
       }
     }
 
@@ -1960,607 +1999,38 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       imageControls.style.display = 'flex';
     }
 
-    // The OCR engine (Tesseract.js 5.1.1), its worker, core and the Portuguese
-    // language file live in the site's own tesseract/ folder, so reading no
-    // longer depends on jsDelivr. Absolute URLs are required because the
-    // engine runs inside a blob worker, where relative paths do not resolve.
-    const OCR_BASE = new URL('tesseract/', location.href).href;
-
-    // QR codes and barcodes: ZXing (every format) and jsQR (QR only, more
-    // tolerant of photos), both in the site's own libs/ folder
-    const CODES_BASE = new URL('libs/', location.href).href;
-    function loadScript(src) {
-      return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = src;
-        script.onload = resolve;
-        script.onerror = () => reject(new Error('Falha ao carregar ' + src));
-        document.head.appendChild(script);
-      });
-    }
-
-    // Reads the QR codes and barcodes in the photo: ZXing on the full frame,
-    // jsQR as a second try for QR codes, then ZXing on the frame turned
-    // sideways for barcodes printed up and down. Stops at the first find or
-    // after about two seconds.
-    async function readCodes(img) {
-      try {
-        if (!window.ZXing) await loadScript(CODES_BASE + 'zxing.min.js');
-        if (!window.jsQR) await loadScript(CODES_BASE + 'jsQR.js');
-      } catch (err) { console.warn(err); return []; }
-      const hints = new Map();
-      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-      const reader = new ZXing.MultiFormatReader();
-      reader.setHints(hints);
-      const draw = (maxW, rot) => {
-        const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
-        const s = Math.min(1, maxW / w0);
-        const w = Math.round(w0 * s), h = Math.round(h0 * s);
-        const c = document.createElement('canvas');
-        c.width = rot ? h : w; c.height = rot ? w : h;
-        const x = c.getContext('2d');
-        x.translate(c.width / 2, c.height / 2);
-        x.rotate(rot * Math.PI / 180);
-        x.drawImage(img, -w / 2, -h / 2, w, h);
-        return c;
-      };
-      const found = [];
-      const started = Date.now();
-      for (const [maxW, rot, lib] of [[2000, 0, 'zxing'], [2000, 0, 'jsqr'], [1300, 0, 'zxing'], [1300, 90, 'zxing']]) {
-        const c = draw(maxW, rot);
-        try {
-          if (lib === 'zxing') {
-            const r = reader.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(c))));
-            found.push({ format: ZXing.BarcodeFormat[r.getBarcodeFormat()], text: r.getText() });
-          } else {
-            const d = c.getContext('2d').getImageData(0, 0, c.width, c.height);
-            const r = jsQR(d.data, c.width, c.height, { inversionAttempts: 'dontInvert' });
-            if (r && r.data) found.push({ format: 'QR_CODE', text: r.data });
-          }
-        } catch (err) { /* nothing found in this try */ }
-        if (found.length || Date.now() - started > 2500) break;
-      }
-      return found;
-    }
-
-    // Dynamic loader for Tesseract.js if not already present
-    function loadTesseractLibrary() {
-      if (window.Tesseract) return Promise.resolve(window.Tesseract);
-      return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = OCR_BASE + 'tesseract.min.js';
-        script.onload = () => resolve(window.Tesseract);
-        script.onerror = () => reject(new Error('Falha ao carregar Tesseract'));
-        document.head.appendChild(script);
-      });
-    }
-
-    // Discovers how tilted the receipt is in the photo. Text lines make
-    // dark stripes; the angle where those stripes are sharpest is the right one.
-    function estimateAngles(img) {
-      const SIZE = 360;
-      const w0 = img.naturalWidth || img.width;
-      const h0 = img.naturalHeight || img.height;
-      const s = Math.min(1, SIZE / Math.max(w0, h0));
-      const w = Math.max(1, Math.round(w0 * s));
-      const h = Math.max(1, Math.round(h0 * s));
-      const c = document.createElement('canvas');
-      c.width = w;
-      c.height = h;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      const d = ctx.getImageData(0, 0, w, h).data;
-
-      // Grayscale, then local threshold so only the printed ink stays
-      const g = new Float32Array(w * h);
-      for (let i = 0; i < g.length; i++) {
-        g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-      }
-      const integ = new Float64Array((w + 1) * (h + 1));
-      for (let y = 0; y < h; y++) {
-        let row = 0;
-        for (let x = 0; x < w; x++) {
-          row += g[y * w + x];
-          integ[(y + 1) * (w + 1) + x + 1] = integ[y * (w + 1) + x + 1] + row;
-        }
-      }
-      const r = Math.max(6, Math.round(w / 12));
-      const ink = new Float32Array(w * h);
-      for (let y = 0; y < h; y++) {
-        const ya = Math.max(0, y - r), yb = Math.min(h, y + r + 1);
-        for (let x = 0; x < w; x++) {
-          const xa = Math.max(0, x - r), xb = Math.min(w, x + r + 1);
-          const area = (xb - xa) * (yb - ya);
-          const sum = integ[yb * (w + 1) + xb] - integ[ya * (w + 1) + xb] - integ[yb * (w + 1) + xa] + integ[ya * (w + 1) + xa];
-          ink[y * w + x] = g[y * w + x] * area < sum * 0.9 ? 1 : 0;
-        }
-      }
-
-      // For each candidate angle, count ink per line and measure how much
-      // it jumps from line to line — many sharp jumps means the text is level
-      const cx = w / 2, cy = h / 2;
-      const diag = Math.ceil(Math.sqrt(w * w + h * h));
-      const scores = [];
-      for (let a = -87; a < 90; a += 3) {
-        const ar = (a * Math.PI) / 180;
-        const sa = Math.sin(ar), ca = Math.cos(ar);
-        const prof = new Float32Array(diag + 2);
-        for (let y = 0; y < h; y++) {
-          for (let x = 0; x < w; x++) {
-            if (!ink[y * w + x]) continue;
-            // spread each dot between the two nearest lines, otherwise
-            // diagonal angles produce a false striped pattern
-            const yy = -(x - cx) * sa + (y - cy) * ca + diag / 2;
-            const y0 = Math.floor(yy);
-            if (y0 < 0 || y0 >= diag) continue;
-            const f = yy - y0;
-            prof[y0] += 1 - f;
-            prof[y0 + 1] += f;
-          }
-        }
-        let score = 0;
-        for (let i = 1; i <= diag; i++) {
-          const dv = prof[i] - prof[i - 1];
-          score += dv * dv;
-        }
-        scores.push({ a, score });
-      }
-      scores.sort((p, q) => q.score - p.score);
-
-      // Keep the best angle plus one clearly different runner-up
-      const out = [scores[0].a];
-      for (const s2 of scores) {
-        if (Math.abs(s2.a - out[0]) > 12 && Math.abs(Math.abs(s2.a - out[0]) - 180) > 12) {
-          out.push(s2.a);
-          break;
-        }
-      }
-      return out;
-    }
-
-    // Builds a high-resolution image just for OCR: finds the receipt paper,
-    // crops it, enlarges the text and turns it into clean black-on-white.
-    function buildOcrCanvas(img, rotation = 0, binarize = false, targetW = 1000, region = null) {
-      const MAX_SRC = 3000;
-      let w = img.naturalWidth || img.width;
-      let h = img.naturalHeight || img.height;
-      const s = Math.min(1, MAX_SRC / Math.max(w, h));
-      w = Math.round(w * s);
-      h = Math.round(h * s);
-
-      // Rotation by any angle (not only 90°), enlarging the canvas so nothing is cut off
-      const rad = (rotation * Math.PI) / 180;
-      const cos = Math.abs(Math.cos(rad));
-      const sin = Math.abs(Math.sin(rad));
-      const src = document.createElement('canvas');
-      src.width = Math.round(w * cos + h * sin);
-      src.height = Math.round(w * sin + h * cos);
-      const sctx = src.getContext('2d');
-      sctx.fillStyle = '#808080';
-      sctx.fillRect(0, 0, src.width, src.height);
-      sctx.translate(src.width / 2, src.height / 2);
-      sctx.rotate(rad);
-      sctx.drawImage(img, -w / 2, -h / 2, w, h);
-
-      // Region to read: the one asked for (in the rotated frame), the block of
-      // small ink marks that looks like text ('ink'), else the paper
-      if (region === 'ink') region = findTextBox(src) || findPaperBox(src);
-      const { cx, cy, cw, ch } = region || findPaperBox(src);
-
-      // 2. Crop and resize so the receipt text has a size Tesseract reads well
-      const scale = Math.min(region ? 4 : 3, targetW / cw);
-      const out = document.createElement('canvas');
-      out.width = Math.round(cw * scale);
-      out.height = Math.round(ch * scale);
-      out.frame = { cx, cy, cw, ch, scale, width: src.width, height: src.height };   // to map word boxes back
-      const octx = out.getContext('2d');
-      octx.imageSmoothingEnabled = true;
-      octx.imageSmoothingQuality = 'high';
-      octx.drawImage(src, cx, cy, cw, ch, 0, 0, out.width, out.height);
-
-      // 3. Grayscale + local (adaptive) threshold: handles shadows and faded thermal print
-      const od = octx.getImageData(0, 0, out.width, out.height);
-      const d = od.data;
-      const W = out.width, H = out.height;
-      const g = new Float32Array(W * H);
-      for (let i = 0; i < g.length; i++) {
-        g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-      }
-      // Local mean of the gray level: the paper and the table around it. In
-      // gray mode every pixel is measured against it, so a dark table or a
-      // blue background turns white and only the ink stays dark (Tesseract
-      // takes a big dark area for a picture and reads nothing). In black and
-      // white mode it is the adaptive threshold (Bradley).
-      const integ = new Float64Array((W + 1) * (H + 1));
-      for (let y = 0; y < H; y++) {
-        let row = 0;
-        for (let x = 0; x < W; x++) {
-          row += g[y * W + x];
-          integ[(y + 1) * (W + 1) + x + 1] = integ[y * (W + 1) + x + 1] + row;
-        }
-      }
-      const r = Math.max(8, Math.round(W / 32));
-      const T = 0.15;
-      for (let y = 0; y < H; y++) {
-        const ya = Math.max(0, y - r), yb = Math.min(H, y + r + 1);
-        for (let x = 0; x < W; x++) {
-          const xa = Math.max(0, x - r), xb = Math.min(W, x + r + 1);
-          const area = (xb - xa) * (yb - ya);
-          const mean = (integ[yb * (W + 1) + xb] - integ[ya * (W + 1) + xb] - integ[yb * (W + 1) + xa] + integ[ya * (W + 1) + xa]) / area;
-          const v = g[y * W + x];
-          if (binarize) {
-            g[y * W + x] = v < mean * (1 - T) ? 0 : 255;
-          } else {
-            const ratio = v / (mean + 1);
-            g[y * W + x] = ratio >= 1 ? 255 : Math.round(255 * ratio * ratio);
-          }
-        }
-      }
-      for (let i = 0; i < g.length; i++) {
-        d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = g[i];
-      }
-      octx.putImageData(od, 0, 0);
-      return out;
-    }
-
-    // Finds the paper in a photo (or canvas): the largest bright area on a
-    // small copy. Returns the box to crop, or the whole image when no paper
-    // stands out.
-    function findPaperBox(src) {
-      const SMALL = 300;
-      const k = Math.min(1, SMALL / Math.max(src.width, src.height));
-      const sw = Math.max(1, Math.round(src.width * k));
-      const sh = Math.max(1, Math.round(src.height * k));
-      const small = document.createElement('canvas');
-      small.width = sw;
-      small.height = sh;
-      const smctx = small.getContext('2d');
-      smctx.drawImage(src, 0, 0, sw, sh);
-      const sd = smctx.getImageData(0, 0, sw, sh).data;
-      const gray = new Uint8Array(sw * sh);
-      for (let i = 0; i < gray.length; i++) {
-        gray[i] = 0.299 * sd[i * 4] + 0.587 * sd[i * 4 + 1] + 0.114 * sd[i * 4 + 2];
-      }
-      const otsu = (from) => {
-        const hist = new Array(256).fill(0);
-        let n = 0;
-        for (const g of gray) if (g >= from) { hist[g]++; n++; }
-        let sum = 0;
-        for (let t = 0; t < 256; t++) sum += t * hist[t];
-        let sumB = 0, wB = 0, best = 0, thr = from;
-        for (let t = 0; t < 256; t++) {
-          wB += hist[t];
-          if (!wB || wB === n) continue;
-          sumB += t * hist[t];
-          const mB = sumB / wB, mF = (sum - sumB) / (n - wB);
-          const between = wB * (n - wB) * (mB - mF) * (mB - mF);
-          if (between > best) { best = between; thr = t; }
-        }
-        return thr;
-      };
-      const largestBlob = (thr) => {
-        const seen = new Uint8Array(sw * sh);
-        let bestBox = null, bestArea = 0;
-        const stack = [];
-        for (let start = 0; start < gray.length; start++) {
-          if (seen[start] || gray[start] <= thr) continue;
-          let area = 0, x0 = sw, y0 = sh, x1 = 0, y1 = 0;
-          seen[start] = 1;
-          stack.push(start);
-          while (stack.length) {
-            const p = stack.pop();
-            const x = p % sw, y = (p - x) / sw;
-            area++;
-            if (x < x0) x0 = x; if (x > x1) x1 = x;
-            if (y < y0) y0 = y; if (y > y1) y1 = y;
-            const nb = [x > 0 ? p - 1 : -1, x < sw - 1 ? p + 1 : -1, y > 0 ? p - sw : -1, y < sh - 1 ? p + sw : -1];
-            for (const q of nb) {
-              if (q >= 0 && !seen[q] && gray[q] > thr) { seen[q] = 1; stack.push(q); }
-            }
-          }
-          if (area > bestArea) { bestArea = area; bestBox = { x0, y0, x1, y1 }; }
-        }
-        return { box: bestBox, frac: bestArea / (sw * sh) };
-      };
-      // Try progressively brighter cut-offs until the paper separates from the table
-      let blob = largestBlob(otsu(0));
-      for (let i = 0; i < 3 && blob.frac > 0.6; i++) {
-        blob = largestBlob(otsu(otsu(0) + 1 + i * 8));
-      }
-      let cx = 0, cy = 0, cw = src.width, ch = src.height;
-      if (blob.box && blob.frac > 0.02 && blob.frac < 0.9) {
-        const pad = 0.02 * Math.max(sw, sh);
-        const bx0 = Math.max(0, blob.box.x0 - pad), by0 = Math.max(0, blob.box.y0 - pad);
-        const bx1 = Math.min(sw, blob.box.x1 + 1 + pad), by1 = Math.min(sh, blob.box.y1 + 1 + pad);
-        cx = Math.round(bx0 / k);
-        cy = Math.round(by0 / k);
-        cw = Math.round((bx1 - bx0) / k);
-        ch = Math.round((by1 - by0) / k);
-      }
-      return { cx, cy, cw, ch };
-    }
-
-    // Finds every paper in the photo: the bright blobs on a small copy, each
-    // big enough to be a receipt and with text on it. Papers lying against
-    // each other come out as one blob; when its text has a blank band across
-    // it (the margins of two papers), the blob is cut along the widest band,
-    // both ways, until none is left. Papers lying on top of each other stay
-    // together. Returns the boxes in the image's own pixels, top to bottom
-    // and left to right; the person confirms before they are read apart.
-    function findPapers(img) {
-      const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
-      const SMALL = 400;
-      const k = Math.min(1, SMALL / Math.max(w0, h0));
-      const sw = Math.max(1, Math.round(w0 * k)), sh = Math.max(1, Math.round(h0 * k));
-      const small = document.createElement('canvas');
-      small.width = sw; small.height = sh;
-      const ctx = small.getContext('2d');
-      ctx.drawImage(img, 0, 0, sw, sh);
-      const d = ctx.getImageData(0, 0, sw, sh).data;
-      const gray = new Uint8Array(sw * sh);
-      for (let i = 0; i < gray.length; i++) gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-      const otsu = (from) => {
-        const hist = new Array(256).fill(0);
-        let n = 0;
-        for (const g of gray) if (g >= from) { hist[g]++; n++; }
-        let sum = 0;
-        for (let t = 0; t < 256; t++) sum += t * hist[t];
-        let sumB = 0, wB = 0, best = 0, thr = from;
-        for (let t = 0; t < 256; t++) {
-          wB += hist[t];
-          if (!wB || wB === n) continue;
-          sumB += t * hist[t];
-          const mB = sumB / wB, mF = (sum - sumB) / (n - wB);
-          const between = wB * (n - wB) * (mB - mF) * (mB - mF);
-          if (between > best) { best = between; thr = t; }
-        }
-        return thr;
-      };
-      const blobs = (thr) => {
-        const seen = new Uint8Array(sw * sh);
-        const out = [];
-        const stack = [];
-        for (let start = 0; start < gray.length; start++) {
-          if (seen[start] || gray[start] <= thr) continue;
-          let area = 0, x0 = sw, y0 = sh, x1 = 0, y1 = 0;
-          seen[start] = 1; stack.push(start);
-          while (stack.length) {
-            const p = stack.pop();
-            const x = p % sw, y = (p - x) / sw;
-            area++;
-            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-            const nb = [x > 0 ? p - 1 : -1, x < sw - 1 ? p + 1 : -1, y > 0 ? p - sw : -1, y < sh - 1 ? p + sw : -1];
-            for (const q of nb) if (q >= 0 && !seen[q] && gray[q] > thr) { seen[q] = 1; stack.push(q); }
-          }
-          out.push({ area, x0, y0, x1, y1, frac: area / (sw * sh), fill: area / ((x1 - x0 + 1) * (y1 - y0 + 1)) });
-        }
-        return out.sort((a, b) => b.area - a.area);
-      };
-      // Brighter and brighter cut-offs until the biggest blob is a paper, not the whole table
-      let thr = otsu(0), found = blobs(thr);
-      for (let i = 0; i < 3 && found.length && found[0].frac > 0.6; i++) {
-        thr = otsu(otsu(0) + 1 + i * 8);
-        found = blobs(thr);
-      }
-      const papers = found.filter(b => b.frac >= 0.008 && b.frac < 0.9 && b.fill >= 0.35 && (b.x1 - b.x0) >= 0.06 * sw && (b.y1 - b.y0) >= 0.06 * sh);
-      // A small blob inside a bigger one is a bright patch of that paper, not another paper
-      const inside = (a, b) => a.x0 >= b.x0 - 2 && a.y0 >= b.y0 - 2 && a.x1 <= b.x1 + 2 && a.y1 <= b.y1 + 2;
-      const kept = papers.filter((a, i) => !papers.some((b, j) => j < i && inside(a, b)));
-
-      // Letters on a grid (same small size, so the cells line up with the blobs)
-      const { count, gw, gh, CELL } = letterGrid(small, SMALL);
-      const toCells = b => ({ x0: Math.floor(b.x0 / CELL), y0: Math.floor(b.y0 / CELL), x1: Math.floor(b.x1 / CELL), y1: Math.floor(b.y1 / CELL) });
-      const letters = c => { let n = 0; for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) n += count[y * gw + x] || 0; return n; };
-      const rows = c => { let n = 0; for (let y = c.y0; y <= c.y1; y++) { let m = 0; for (let x = c.x0; x <= c.x1; x++) if ((count[y * gw + x] || 0) >= 2) m++; if (m >= 2) n++; } return n; };
-      const hasText = c => letters(c) >= 15 && rows(c) >= 3;   // a few lines of text, not a stripe of light or a loose corner
-      const trim = c => {
-        let x0 = gw, y0 = gh, x1 = -1, y1 = -1;
-        for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) if ((count[y * gw + x] || 0) >= 2) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-        return x1 < 0 ? null : { x0, y0, x1, y1 };
-      };
-      const G = Math.max(3, Math.round(0.06 * Math.max(gw, gh)));
-      const cut = (c, depth) => {
-        const t = trim(c);
-        if (!t || letters(t) < 15) return [];
-        if (depth >= 4) return [t];
-        const colHas = [], rowHas = [];
-        for (let x = t.x0; x <= t.x1; x++) { let h = false; for (let y = t.y0; y <= t.y1; y++) if ((count[y * gw + x] || 0) >= 2) { h = true; break; } colHas.push(h); }
-        for (let y = t.y0; y <= t.y1; y++) { let h = false; for (let x = t.x0; x <= t.x1; x++) if ((count[y * gw + x] || 0) >= 2) { h = true; break; } rowHas.push(h); }
-        const widest = (has) => {
-          let best = null, start = -1;
-          for (let i = 0; i <= has.length; i++) {
-            if (i < has.length && !has[i]) { if (start < 0) start = i; continue; }
-            if (start >= 0) { const len = i - start; if (start > 0 && i < has.length && len >= G && (!best || len > best.len)) best = { start, end: i - 1, len }; start = -1; }
-          }
-          return best;
-        };
-        const vc = widest(colHas), hc = widest(rowHas);
-        if (!vc && !hc) return [t];
-        if (vc && (!hc || vc.len >= hc.len)) {
-          const a = t.x0 + vc.start, b = t.x0 + vc.end;
-          return [...cut({ x0: t.x0, y0: t.y0, x1: a - 1, y1: t.y1 }, depth + 1), ...cut({ x0: b + 1, y0: t.y0, x1: t.x1, y1: t.y1 }, depth + 1)];
-        }
-        const a = t.y0 + hc.start, b = t.y0 + hc.end;
-        return [...cut({ x0: t.x0, y0: t.y0, x1: t.x1, y1: a - 1 }, depth + 1), ...cut({ x0: t.x0, y0: b + 1, x1: t.x1, y1: t.y1 }, depth + 1)];
-      };
-
-      const boxes = [];
-      kept.forEach(b => {
-        const c = toCells(b);
-        if (!hasText(c)) return;
-        const parts = (b.fill >= 0.85 ? [] : cut(c, 0)).filter(hasText);   // one neat paper is never cut
-        if (parts.length <= 1) { boxes.push({ x0: b.x0, y0: b.y0, x1: b.x1 + 1, y1: b.y1 + 1 }); return; }
-        parts.forEach(t => boxes.push({ x0: t.x0 * CELL - CELL, y0: t.y0 * CELL - CELL, x1: (t.x1 + 2) * CELL, y1: (t.y1 + 2) * CELL }));
-      });
-      // Dark bands printed across a bill split its paper into stacked strips: glue back
-      // pieces that nearly touch and line up on both sides
-      const near = 0.012 * Math.max(sw, sh);
-      for (let i = 0; i < boxes.length; i++) for (let j = boxes.length - 1; j > i; j--) {
-        const a = boxes[i], b = boxes[j];
-        const W = Math.max(a.x1 - a.x0, b.x1 - b.x0), H = Math.max(a.y1 - a.y0, b.y1 - b.y0);
-        const stacked = Math.max(a.y0 - b.y1, b.y0 - a.y1) <= near && Math.abs(a.x0 - b.x0) <= 0.1 * W && Math.abs(a.x1 - b.x1) <= 0.1 * W;
-        const beside = Math.max(a.x0 - b.x1, b.x0 - a.x1) <= near && Math.abs(a.y0 - b.y0) <= 0.1 * H && Math.abs(a.y1 - b.y1) <= 0.1 * H;
-        if (!stacked && !beside) continue;
-        boxes[i] = { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
-        boxes.splice(j, 1); j = boxes.length;   // the glued box may now touch another piece
-      }
-      const pad = 0.015 * Math.max(sw, sh);
-      const out = boxes.map(b => {
-        const bx0 = Math.max(0, b.x0 - pad), by0 = Math.max(0, b.y0 - pad);
-        const bx1 = Math.min(sw, b.x1 + pad), by1 = Math.min(sh, b.y1 + pad);
-        return { cx: Math.round(bx0 / k), cy: Math.round(by0 / k), cw: Math.round((bx1 - bx0) / k), ch: Math.round((by1 - by0) / k) };
-      });
-      out.sort((a, b) => (Math.abs(a.cy - b.cy) < 0.15 * h0 ? a.cx - b.cx : a.cy - b.cy));
-      return out;
-    }
-
-    // Letter-sized ink marks counted on a coarse grid: the raw material of
-    // findTextBox (where the text is) and findPapers (how many papers)
-    function letterGrid(src, SMALL = 400) {
-      const k = Math.min(1, SMALL / Math.max(src.width, src.height));
-      const sw = Math.max(1, Math.round(src.width * k)), sh = Math.max(1, Math.round(src.height * k));
-      const small = document.createElement('canvas');
-      small.width = sw; small.height = sh;
-      const ctx = small.getContext('2d');
-      ctx.drawImage(src, 0, 0, sw, sh);
-      const d = ctx.getImageData(0, 0, sw, sh).data;
-      const g = new Float32Array(sw * sh);
-      for (let i = 0; i < g.length; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-      // ink = clearly darker than its neighborhood
-      const integ = new Float64Array((sw + 1) * (sh + 1));
-      for (let y = 0; y < sh; y++) {
-        let row = 0;
-        for (let x = 0; x < sw; x++) { row += g[y * sw + x]; integ[(y + 1) * (sw + 1) + x + 1] = integ[y * (sw + 1) + x + 1] + row; }
-      }
-      const r = Math.max(5, Math.round(sw / 30));
-      const ink = new Uint8Array(sw * sh);
-      for (let y = 0; y < sh; y++) {
-        const ya = Math.max(0, y - r), yb = Math.min(sh, y + r + 1);
-        for (let x = 0; x < sw; x++) {
-          const xa = Math.max(0, x - r), xb = Math.min(sw, x + r + 1);
-          const area = (xb - xa) * (yb - ya);
-          const sum = integ[yb * (sw + 1) + xb] - integ[ya * (sw + 1) + xb] - integ[yb * (sw + 1) + xa] + integ[ya * (sw + 1) + xa];
-          ink[y * sw + x] = g[y * sw + x] * area < sum * 0.82 ? 1 : 0;
-        }
-      }
-      // connected marks; keep the letter-sized ones
-      const label = new Int32Array(sw * sh).fill(-1);
-      const marks = [];
-      const stack = [];
-      for (let start = 0; start < ink.length; start++) {
-        if (!ink[start] || label[start] >= 0) continue;
-        const id = marks.length;
-        let area = 0, x0 = sw, y0 = sh, x1 = 0, y1 = 0;
-        label[start] = id; stack.push(start);
-        while (stack.length) {
-          const p = stack.pop();
-          const x = p % sw, y = (p - x) / sw;
-          area++;
-          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-          const nb = [x > 0 ? p - 1 : -1, x < sw - 1 ? p + 1 : -1, y > 0 ? p - sw : -1, y < sh - 1 ? p + sw : -1];
-          for (const q of nb) if (q >= 0 && ink[q] && label[q] < 0) { label[q] = id; stack.push(q); }
-        }
-        marks.push({ area, x0, y0, x1, y1 });
-      }
-      const letterLike = marks.map(m => m.area >= 2 && m.area <= 400 && (m.x1 - m.x0) < 30 && (m.y1 - m.y0) < 30);
-      // coarse grid: cells with a few letter-sized marks are text
-      const CELL = 10;
-      const gw = Math.ceil(sw / CELL), gh = Math.ceil(sh / CELL);
-      const cells = new Uint8Array(gw * gh);
-      const count = new Uint16Array(gw * gh);
-      marks.forEach((m, i) => {
-        if (!letterLike[i]) return;
-        const gx = Math.floor((m.x0 + m.x1) / 2 / CELL), gy = Math.floor((m.y0 + m.y1) / 2 / CELL);
-        count[gy * gw + gx]++;
-      });
-      return { count, gw, gh, CELL, k, sw, sh };
-    }
-
-    function findTextBox(src, SMALL = 400) {
-      const { count, gw, gh, CELL, k } = letterGrid(src, SMALL);
-      const cells = new Uint8Array(gw * gh);
-      const text = [];
-      for (let i = 0; i < cells.length; i++) if (count[i] >= 2) text.push({ x: i % gw, y: Math.floor(i / gw), n: count[i] });
-      if (text.length < 4) return null;
-      // keep the cells near the middle of the text, drop stray ones far away
-      const med = a => { const b = a.slice().sort((p, q) => p - q); return b[Math.floor(b.length / 2)]; };
-      const mx = med(text.map(c => c.x)), my = med(text.map(c => c.y));
-      const dist = text.map(c => Math.hypot(c.x - mx, c.y - my));
-      const limit = Math.max(3 * med(dist), 4);
-      const kept = text.filter((c, i) => dist[i] <= limit);
-      const best = { letters: kept.reduce((a, c) => a + c.n, 0), x0: Math.min(...kept.map(c => c.x)), y0: Math.min(...kept.map(c => c.y)), x1: Math.max(...kept.map(c => c.x)), y1: Math.max(...kept.map(c => c.y)) };
-      if (best.letters < 15) return null;
-      const pad = CELL;
-      const cx = Math.max(0, Math.round((best.x0 * CELL - pad) / k)), cy = Math.max(0, Math.round((best.y0 * CELL - pad) / k));
-      const cw = Math.min(src.width - cx, Math.round(((best.x1 + 1) * CELL + pad) / k) - cx);
-      const ch = Math.min(src.height - cy, Math.round(((best.y1 + 1) * CELL + pad) / k) - cy);
-      return { cx, cy, cw, ch, letters: best.letters };
-    }
-
-    // The photo cut down to the paper, so the tilt is measured on the
-    // receipt's own text and not on the table around it
-    function cropPaper(img) {
-      const MAX = 1500;
-      let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
-      const s = Math.min(1, MAX / Math.max(w, h));
-      w = Math.round(w * s); h = Math.round(h * s);
-      const src = document.createElement('canvas');
-      src.width = w; src.height = h;
-      src.getContext('2d').drawImage(img, 0, 0, w, h);
-      const { cx, cy, cw, ch } = findTextBox(src) || findPaperBox(src);
-      const out = document.createElement('canvas');
-      out.width = cw; out.height = ch;
-      out.getContext('2d').drawImage(src, cx, cy, cw, ch, 0, 0, cw, ch);
-      return out;
-    }
-
+    // Reads what was chosen (photos, PDF pages, files) with the reading engine
+    // (leitura.js) and shows one tab per paper
     async function executeOCR() {
       ocrProgressWrap.style.display = 'flex';
       ocrProgressBar.style.width = '10%';
       ocrPercentText.textContent = '10%';
-      ocrStatusText.textContent = 'Preparando OCR...';
+      ocrStatusText.textContent = 'Preparando a leitura...';
 
-      let list = [];
+      let list;
       try {
-        const T = await loadTesseractLibrary();
-        ocrStatusText.textContent = 'Lendo caracteres...';
-
-        const worker = await T.createWorker('por', 1, {
-          workerPath: OCR_BASE + 'worker.min.js',
-          corePath: OCR_BASE,
-          langPath: OCR_BASE,
-          logger: m => {
-            if (m.status === 'recognizing text') {
-              const p = Math.round((m.progress || 0) * 100);
-              ocrProgressBar.style.width = `${Math.max(15, p)}%`;
-              ocrPercentText.textContent = `${p}%`;
-            }
-          }
+        list = await Leitura.ler(sources, {
+          tipo: currentDocType,
+          rotacao: currentRotation,
+          aviso: text => { ocrStatusText.textContent = text; },
+          progresso: p => { ocrProgressBar.style.width = `${Math.max(15, p)}%`; ocrPercentText.textContent = `${p}%`; }
         });
-
-        // Every photo or page, and every paper cut out of it, is read on its own
-        for (const src of sources) {
-          const boxes = src.boxes || [null];
-          for (let i = 0; i < boxes.length; i++) {
-            const label = src.name ? src.name + (src.boxes ? ` · papel ${i + 1}` : '') : (src.boxes ? `Papel ${i + 1}` : '');
-            ocrStatusText.textContent = `Lendo ${label || 'o papel'}...`;
-            const paper = await readPaper(boxes[i] ? cropBox(src.img, boxes[i]) : src.img, worker, currentRotation, label ? label + ': ' : '');
-            list.push(Object.assign(paper, { label, img: src.img }));
-          }
-        }
-        await worker.terminate();
-
       } catch (err) {
-        console.warn('OCR falhou, usando o texto de exemplo ou um analisador interno:', err);
-        for (let p = 20; p <= 100; p += 20) {
-          await new Promise(r => setTimeout(r, 80));
-          ocrProgressBar.style.width = `${p}%`;
-          ocrPercentText.textContent = `${p}%`;
+        console.warn('OCR falhou:', err);
+        // The demo receipts carry their own text. A real photo never gets
+        // made-up fields: better nothing than a wrong amount.
+        const preset = sources.length === 1 && sources[0].img && sources[0].img._presetText;
+        if (!preset) {
+          ocrProgressWrap.style.display = 'none';
+          showToast(navigator.onLine ? 'Não consegui ler. Tente de novo.'
+            : 'Sem internet, e o leitor de fotos ainda não está guardado neste aparelho. Com internet, abra Ajustes → Usar sem internet → Guardar tudo.', 'err', 8000);
+          return;
         }
-        const text = currentImage._presetText || generateFallbackFromCanvas();
-        const lines = text.split('\n').map(t => ({ text: t.trim(), conf: 90 })).filter(l => l.text);
-        const readings = [{ text, conf: 0, words: [], lines }, { text, conf: 0, words: [], lines }];
-        list = [{ readings, tipo: currentDocType === 'auto' ? detectDocType(readings) : currentDocType, codes: [], label: '', img: currentImage }];
+        const lines = preset.split('\n').map(t => ({ text: t.trim(), conf: 90 })).filter(l => l.text);
+        const readings = [{ text: preset, conf: 0, words: [], lines }, { text: preset, conf: 0, words: [], lines }];
+        const p = { readings, tipo: currentDocType === 'auto' ? Leitura.texto.detectDocType(readings) : currentDocType, codes: [], label: '', img: currentImage, fonte: sources[0] };
+        p.result = Leitura.resultado(p);
+        list = [p];
       }
 
       ocrProgressBar.style.width = '100%';
@@ -2570,543 +2040,24 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         ocrProgressWrap.style.display = 'none';
       }, 500);
 
-      list.forEach(p => { p.result = buildResult(p.readings, p.tipo, p.codes); p.edited = null; });
+      list.forEach(p => { p.edited = null; });
       papers = list;
-      const pairs = linkSamePurchase(papers);
+      const { pares, divisoes } = Leitura.relacionar(papers);
       showPaper(0);
 
       const first = papers[0].result;
       if (papers.length > 1) {
         const ok = papers.filter(p => p.result.valor !== null).length;
-        showToast(`${papers.length} papéis lidos, ${ok} com valor confirmado. Confira cada aba.`, ok === papers.length ? 'ok' : 'warn', 5000);
-        pairs.forEach(([a, b]) => showToast(`Papéis ${a} e ${b} parecem a mesma compra.`, 'ok', 5000));
-      } else if (!first.expectsValue) showToast('Texto lido. Confira os campos.', 'ok');
+        const money = papers.filter(p => p.result.expectsValue).length;
+        showToast(`${papers.length} papéis lidos${money ? `, ${ok} com valor confirmado` : ''}. Confira cada aba.`, ok === money ? 'ok' : 'warn', 5000);
+        pares.forEach(([a, b]) => showToast(`Papéis ${a} e ${b} parecem a mesma compra.`, 'ok', 5000));
+        divisoes.forEach(d => showToast(`Conta paga em partes: veja ${papers[d.conta].label || 'o papel ' + (d.conta + 1)}.`, 'ok', 6000));
+      } else if (first.itens) showToast(`${first.itens.length} lançamentos lidos.`, 'ok');
+      else if (!first.expectsValue) showToast('Texto lido. Confira os campos.', 'ok');
       else if (first.valor !== null) showToast('Comprovante processado com sucesso!', 'ok');
       else if (first.candidates.length) showToast('Não tenho certeza do valor. Toque no valor certo.', 'warn');
       else showToast('Não consegui ler o valor. Digite no campo em vermelho.', 'warn');
       if (first.far) showToast('O texto está pequeno na foto. Tire mais de perto.', 'warn', 5000);
-    }
-
-    function generateFallbackFromCanvas() {
-      // High-quality fallback pattern for receipts when external worker fails
-      return `
-        AUTO POSTO CENTRAL LTDA
-        CNPJ: 05.892.114/0001-30
-        AV PAULISTA 1000 - BELA VISTA
-        COMPROVANTE DE PAGAMENTO
-        VIA CLIENTE
-        DATA: 15/10/2024 HORA: 16:42
-        MASTERCARD CREDITO
-        A VISTA
-        TERMINAL: POS44901
-        NSU: 092415
-        AUTORIZACAO: 928301
-        AID: A0000000041010
-        VALOR TOTAL: R$ 85,00
-      `;
-    }
-
-    /* =========================================================
-       OCR TEXT EXTRACTION & REGEX HEURISTICS
-       ========================================================= */
-
-    // Reads one paper (the photo, or one paper cut out of it): several
-    // readings, the search for the right position when the first comes out
-    // bad, and the QR codes and barcodes. Returns { readings, tipo, codes }.
-    async function readPaper(img, worker, rotation, label) {
-      let readings = [];
-      let tipo = currentDocType;
-      const read = async (rot, bin, size, region = null) => {
-        const canvas = buildOcrCanvas(img, rot, bin, size, region);
-        const res = await worker.recognize(canvas);
-        const f = canvas.frame;
-        const lines = (res.data.lines || []).map(l => ({ text: (l.text || '').trim(), conf: l.confidence || 0 })).filter(l => l.text);
-        return { text: res.data.text || '', conf: res.data.confidence || 0, words: res.data.words || [], lines, rot, bin, size, region: { cx: f.cx, cy: f.cy, cw: f.cw, ch: f.ch }, frame: f };
-      };
-      const started = Date.now();
-
-      // Straighten the photo automatically: the app measures how tilted the
-      // receipt is instead of assuming it was photographed square
-      const tilt = estimateAngles(cropPaper(img));
-      lastTilt = tilt[0];
-      let base = rotation + tilt[0];
-      readings.push(await read(base, false, 1000));
-
-      // Sideways or upside-down photo, or paper the app failed to find: the
-      // first reading comes out as gibberish. Then read the whole frame in
-      // every position (the measured tilt and its quarter turns, plus the
-      // plain quarter turns in case the tilt was misjudged), keep the
-      // position the engine reads with confidence, and crop to where the
-      // confident words are.
-      let region = null;
-      if (goodWords(readings[0]) < 8) {
-        ocrStatusText.textContent = label + 'Procurando a posição certa...';
-        let best = null;
-        const near = (a, b) => Math.abs(((a - b) % 360 + 540) % 360 - 180) < 6;
-        const probes = [base, base + 180, base + 90, base - 90, rotation, rotation + 90, rotation + 180, rotation + 270]
-          .filter((r, i, all) => all.findIndex(q => near(q, r)) === i);
-        const probing = Date.now();
-        for (const rot of probes) {
-          const probe = await read(rot, false, 900, 'ink');
-          const q = goodWords(probe);
-          if (!best || q > best.q) best = { rot, q, probe };
-          if (q >= 12 || Date.now() - probing > 12000) break;   // bom o bastante, ou já demorou
-        }
-        if (best && best.q > goodWords(readings[0]) + 2) {
-          base = best.rot;
-          region = textRegion(best.probe) || best.probe.region;
-          readings = [region === best.probe.region ? best.probe : await read(base, false, 1000, region)];
-        }
-      }
-
-      // More readings of the same photo: as photographed, larger, with
-      // reinforced contrast. The amount is only accepted when two readings
-      // agree on it (see agreedValue), so a money document gets at least
-      // two readings; free text stops at the first.
-      const done = p => readings.some(r => r.rot === p[0] && r.bin === p[1] && r.size === p[2]);
-      const passes = [[rotation, false, 1000, null], [base, false, 1400, region], [base, true, 1000, region]].filter(p => !done(p));
-      let next = 0;
-      while (true) {
-        tipo = currentDocType === 'auto' ? detectDocType(readings) : currentDocType;
-        const wantsValue = DOC_TYPES[tipo].vitais.includes('Valor');
-        if (!wantsValue && (currentDocType !== 'auto' || readings.length >= 2)) break;
-        if (wantsValue && agreedValue(readings, tipo) !== null) break;
-        if (next >= passes.length) break;
-        if (readings.length >= 2 && Date.now() - started > 20000) break;   // não prender a pessoa
-        ocrStatusText.textContent = label + 'Conferindo com outra leitura...';
-        readings.push(await read(...passes[next++]));
-      }
-
-      ocrStatusText.textContent = label + 'Procurando QR code e código de barras...';
-      const codes = img._presetText ? [] : await readCodes(img);
-      return { readings, tipo, codes };
-    }
-
-    // The access key of a nota fiscal (NF-e/NFC-e): 44 digits in groups of 4,
-    // with a check digit (modulo 11) that tells a correct reading from a
-    // wrong one. It carries the issuer's CNPJ, the month of issue and the
-    // number of the nota.
-    function parseChave(text) {
-      const re = /(?:\d{4}[\s|.-]{0,3}){10}\d{4}/g;
-      let m;
-      while ((m = re.exec(text || '')) !== null) {
-        const digits = m[0].replace(/\D/g, '');
-        if (digits.length !== 44) continue;
-        let sum = 0, w = 2;
-        for (let i = 42; i >= 0; i--) { sum += +digits[i] * w; w = w === 9 ? 2 : w + 1; }
-        const dv = (11 - (sum % 11)) % 11;
-        if (dv > 9 || dv !== +digits[43]) continue;
-        const modelo = digits.slice(20, 22);
-        if (modelo !== '55' && modelo !== '65') continue;
-        const c = digits.slice(6, 20);
-        return {
-          chave: digits,
-          cnpj: `${c.slice(0, 2)}.${c.slice(2, 5)}.${c.slice(5, 8)}/${c.slice(8, 12)}-${c.slice(12)}`,
-          ano: '20' + digits.slice(2, 4), mes: digits.slice(4, 6),
-          numero: String(+digits.slice(25, 34)), modelo
-        };
-      }
-      return null;
-    }
-
-    // The establishment's name: among the lines of every reading, the one the
-    // engine read with confidence that looks like a business name (LTDA,
-    // RESTAURANTE, POSTO...), comes after "COMPRA" (Stone) or sits next to
-    // the CNPJ, and is not an address, a city, a card brand or a label.
-    const ESTAB_SKIP = /VIA\s?CLIENTE|VIA DO CLIENTE|COMPROVANTE|CUPOM|DANFE|NFC-?E|DOCU|AUXILIAR|NOTA FISCAL|FISCAL|ELETR[OÔ]NIC|PROTOCOLO|CONSUMIDOR|CONSULTE|CHAVE|\bCPF\b|\bCEP\b|TELEFONE|\bTEL\b|FONE|CR[EÉ]DITO|D[EÉ]BITO|MASTERCARD|\bVISA\b|\bELO\b|AMEX|HIPERCARD|CART[AÃ]O|\bAUT\b|\bNSU\b|\bDOC\b|TERMINAL|SERIAL|\bAID\b|ARQC|VALOR|TOTAL|SUBTOTAL|TROCO|DESCONTO|\bITE[MN]|\bQTD|\bDATA\b|HORA|EMISS|PARCELA|SENHA|APROVAD|OBRIGADO|VOLTE SEMPRE|EXTRATO|RESUMO|PEDIDO|\bMESA\b|ATENDENTE|OPERADOR|\bOPE\b|CAIXA|\bPDV\b|ORDER|CASHIER|SERVER|RECEIPT|SURVEY|CHECK|GUEST|WELCOME|THANK|CUSTOMER|MERCHANT|\b(?:RUA|R\.|AV\.?|AVENIDA|ALAMEDA|AL\.|PRA[CÇ]A|ROD\.?|RODOVIA|ESTRADA|TRAVESSA|TV\.|LARGO|PKWY|PARKWAY|STREET|SUITE)\b|^\d|\b[A-Z]{3,}\/[A-Z]{2}\b|\b(?:SP|RJ|MG|RS|PR|SC|BA|PE|CE|GO|DF|ES|MT|MS|PA|AM|MA|PB|RN|PI|AL|SE|RO|TO|AC|AP|RR)\b\s*$/;
-    const ESTAB_ACQUIRER = /^(?:STONE|GETNET|CIELO|REDE|PAGSEGURO|PAGBANK|INFINITEPAY|SUMUP|SAFRAPAY|MERCADO PAGO|VERO|BIN|ELAVON|GLOBAL PAYMENTS)\s*$/;
-    const ESTAB_CLUE = /LTDA|\bS\.?A\.?\b|\bS\/A\b|EIRELI|\bME\b|\bEPP\b|COM[EÉ]RCIO|RESTAURANTE|LANCHONETE|LANCHES|\bBAR\b|PIZZARIA|PADARIA|CAFE|CAF[EÉ]|POSTO|FARM[AÁ]CIA|DROGARIA|SUPERMERCADO|MERCADO|VAREJ[AÃ]O|LOJA|CL[IÍ]NICA|HOSPITAL|ESTACIONAMENTO|KITCHEN|GRILL|BURGER|HOTEL|ACADEMIA|PET|ATACAD/;
-    function pickEstablishment(readings) {
-      let best = null;
-      readings.forEach(r => {
-        const lines = r.lines || [];
-        lines.forEach((l, i) => {
-          let text = l.text.toUpperCase();
-          let score = l.conf / 25;                     // 0 a 4
-          if (/CNPJ|\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2}/.test(text)) {
-            text = text.replace(/\s*[-:]*\s*CNPJ.*$/, '').replace(/\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2}/, '');
-            score += 1.5;
-          }
-          text = text.replace(/^[^A-ZÀ-Ú0-9]+|[^A-ZÀ-Ú0-9.&)]+$/g, '').replace(/\s+[\d\s#\-]+$/, '');
-          if (/\d+[.,]\d{2}\b/.test(text)) return;   // a price: an item line, not a name
-          const m = text.match(/^(?:COMPRA|ESTABELECIMENTO|LOJA)\s*[:\-]?\s+(.{3,})$/);
-          if (m) { text = m[1]; score += 2; }
-          const letters = (text.match(/[A-ZÀ-Ú]/g) || []).length;
-          if (text.length < 4 || text.length > 48 || letters < 0.6 * text.length) return;
-          const tokens = text.split(/\s+/);
-          const wordy = tokens.filter(t => /^[A-ZÀ-Ú&.'-]{2,}$/.test(t) && /[AEIOUÀ-Ú]/.test(t)).length;
-          if (wordy < Math.max(1, Math.ceil(tokens.length * 0.6))) return;   // mostly garbage
-          if (ESTAB_SKIP.test(text) || ESTAB_ACQUIRER.test(text)) return;
-          if (ESTAB_CLUE.test(text)) score += 2;
-          const near = [lines[i + 1], lines[i + 2], lines[i - 1]].filter(Boolean).map(x => x.text.toUpperCase());
-          if (near.some(x => /CNPJ|\d{2}\.\d{3}\.\d{3}\/\d{4}/.test(x))) score += 1.5;
-          if (i < 8) score += 1;
-          if (tokens.length === 1 && text.length < 6) score -= 1;
-          if (!best || score > best.score) best = { text, score };
-        });
-      });
-      return best ? best.text : '';
-    }
-
-    // Guesses the document type from the words that give it away
-    function detectDocType(readings) {
-      const text = readings.map(r => r.text).join('\n').toUpperCase();
-      let best = 'livre', bestScore = 2;   // fewer than 3 signs: free text
-      ['nfce', 'cartao', 'conta'].forEach(key => {
-        const score = (text.match(DOC_TYPES[key].sinais) || []).length;
-        if (score > bestScore) { best = key; bestScore = score; }
-      });
-      return best;
-    }
-
-    // Among all readings, the value most often read for a field (Data, Hora)
-    function mostCommon(parsed, key, fallback) {
-      const counts = {};
-      parsed.forEach(p => { const f = p.fields.find(x => x.key === key); if (f) counts[f.val] = (counts[f.val] || 0) + 1; });
-      const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-      return keys.length && (!fallback || counts[keys[0]] > counts[fallback]) ? keys[0] : fallback;
-    }
-
-    // The amount two differently processed readings agree on, or null. Two
-    // readings of the same crop at the same size and rotation make the same
-    // mistakes, so they do not confirm each other.
-    function agreedValue(readings, tipo) {
-      const bests = readings.map(r => { const c = parseDocument(r.text, tipo).candidatos[0]; return c ? c.num : null; });
-      for (let i = 0; i < readings.length; i++) {
-        if (bests[i] === null) continue;
-        for (let j = i + 1; j < readings.length; j++) {
-          if (bests[j] !== bests[i]) continue;
-          const a = readings[i], b = readings[j];
-          if (a.size !== b.size || a.bin !== b.bin || a.rot !== b.rot || a.size === undefined) return bests[i];
-        }
-      }
-      return null;
-    }
-
-    // Where the text is, from the word boxes of a reading: the box around the
-    // confident words, ignoring stray ones far from the rest, with a margin.
-    // Returned in the rotated frame of that reading, ready for buildOcrCanvas.
-    function textRegion(reading) {
-      const f = reading.frame;
-      let ws = (reading.words || []).filter(w => w.confidence >= 50 && w.text && w.text.replace(/[^0-9A-Za-zÀ-ÿ]/g, '').length >= 2 && w.bbox);
-      if (ws.length < 3) return null;
-      const cxs = ws.map(w => (w.bbox.x0 + w.bbox.x1) / 2), cys = ws.map(w => (w.bbox.y0 + w.bbox.y1) / 2);
-      const med = a => { const b = a.slice().sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
-      const mx = med(cxs), my = med(cys);
-      const dist = ws.map((w, i) => Math.hypot(cxs[i] - mx, cys[i] - my));
-      const limit = Math.max(3 * med(dist), 80);
-      ws = ws.filter((w, i) => dist[i] <= limit);
-      let x0 = Math.min(...ws.map(w => w.bbox.x0)), y0 = Math.min(...ws.map(w => w.bbox.y0));
-      let x1 = Math.max(...ws.map(w => w.bbox.x1)), y1 = Math.max(...ws.map(w => w.bbox.y1));
-      const pad = Math.max(20, 0.08 * Math.max(x1 - x0, y1 - y0));
-      x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
-      // back to the rotated frame
-      const cx = Math.max(0, Math.round(f.cx + x0 / f.scale)), cy = Math.max(0, Math.round(f.cy + y0 / f.scale));
-      const cw = Math.min(f.width - cx, Math.round((x1 - x0) / f.scale)), ch = Math.min(f.height - cy, Math.round((y1 - y0) / f.scale));
-      if (cw < 40 || ch < 40) return null;
-      return { cx, cy, cw, ch };
-    }
-
-    // How many words the engine read with confidence: the measure of a
-    // reading being right side up
-    function goodWords(reading) {
-      return (reading.words || []).filter(w => w.confidence >= 60 && w.text && w.text.replace(/[^0-9A-Za-zÀ-ÿ]/g, '').length >= 3).length;
-    }
-
-    // Printed text comes out as confident, word-like tokens; handwriting
-    // comes out as low-confidence gibberish. This only labels the photo,
-    // the person confirms.
-    function classifyTextKind(words) {
-      const ws = (words || []).filter(w => w.text && w.text.replace(/[^0-9A-Za-zÀ-ÿ]/g, '').length >= 3);
-      if (ws.length < 5) return { label: 'Pouco texto', good: 0 };
-      const good = ws.filter(w => w.confidence >= 70).length / ws.length;
-      const pct = Math.round(good * 100);
-      if (good >= 0.6) return { label: 'Texto impresso', good: pct };
-      if (good <= 0.3) return { label: 'Parece escrito à mão ou apagado', good: pct };
-      return { label: 'Impresso com partes à mão ou apagadas', good: pct };
-    }
-
-    function formatBRL(num) {
-      return 'R$ ' + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    // Decides the final result from the readings of one photo: the amount
-    // only when two readings agree, otherwise the candidates are offered as
-    // buttons; every other field comes from the best reading.
-    // Decides the result of one paper from its readings: the amount only
-    // when two readings agree, otherwise the candidates are offered as
-    // buttons; every other field comes from the best reading. Returns the
-    // result object that renderFieldsEditor shows.
-    function buildResult(readings, tipo, codes) {
-      const def = DOC_TYPES[tipo] || DOC_TYPES.livre;
-      const expectsValue = def.vitais.includes('Valor');
-      const parsed = readings.map(r => parseDocument(r.text, tipo));
-      const valor = expectsValue ? agreedValue(readings, tipo) : null;
-      const candidates = expectsValue && valor === null
-        ? [...new Set(parsed.map(p => p.candidatos[0] ? p.candidatos[0].num : null).filter(n => n !== null))]
-        : [];
-
-      // The other fields come from the reading that found the agreed amount,
-      // or from the most confident one
-      let bestIdx = 0;
-      readings.forEach((r, i) => {
-        const has = valor !== null && parsed[i].candidatos.some(c => c.num === valor);
-        const bestHas = valor !== null && parsed[bestIdx].candidatos.some(c => c.num === valor);
-        if ((has && !bestHas) || (has === bestHas && r.conf > readings[bestIdx].conf)) bestIdx = i;
-      });
-      const fields = parsed[bestIdx].fields.slice();
-      (codes || []).forEach(c => {
-        fields.push(c.format === 'QR_CODE' ? { key: 'QR code', val: c.text } : { key: 'Código de barras', val: `${c.text} (${c.format.replace(/_/g, ' ')})` });
-      });
-      if (tipo !== 'livre') {
-        const chave = readings.map(r => parseChave(r.text)).find(Boolean) || (codes || []).map(c => parseChave(c.text)).find(Boolean);
-        if (chave) {
-          const set = (key, val) => { const f = fields.find(x => x.key === key); if (f) f.val = val; else fields.push({ key, val }); };
-          set('CNPJ', chave.cnpj);
-          set('Nota', chave.numero);
-          set('Chave', chave.chave);
-          // the key says the month of issue: keep a date only if it agrees
-          const ok = d => d && d.slice(3, 5) === chave.mes && d.slice(6) === chave.ano;
-          const f = fields.find(x => x.key === 'Data');
-          if (f && !ok(f.val)) {
-            const alt = parsed.flatMap(p => p.fields.filter(x => x.key === 'Data').map(x => x.val)).find(ok);
-            if (alt) f.val = alt; else fields.splice(fields.indexOf(f), 1);
-          }
-        }
-        const estab = pickEstablishment(readings);
-        const f = fields.find(x => x.key === 'Estabelecimento');
-        if (estab && f) f.val = estab;
-        else if (estab) fields.unshift({ key: 'Estabelecimento', val: estab });
-        else if (f) fields.splice(fields.indexOf(f), 1);
-      }
-      ['Data', 'Hora'].forEach(key => {
-        const f = fields.find(x => x.key === key);
-        const common = mostCommon(parsed, key, f ? f.val : null);
-        if (common && f) f.val = common;
-        else if (common) fields.push({ key, val: common });
-      });
-      if (valor !== null) {
-        const at = fields.findIndex(f => ORDERED_FIELD_KEYS.indexOf(f.key) > ORDERED_FIELD_KEYS.indexOf('Valor'));
-        fields.splice(at === -1 ? fields.length : at, 0, { key: 'Valor', val: formatBRL(valor) });
-      }
-
-      let status;
-      if (!expectsValue) status = { cls: 'neutral', text: 'Texto lido' };
-      else if (valor !== null) status = { cls: 'ok', text: 'Valor confirmado em 2 leituras' };
-      else if (candidates.length) status = { cls: 'warn', text: 'Valor incerto: confira' };
-      else status = { cls: 'bad', text: 'Valor não lido' };
-
-      // Suggest another type when the text looks like something else
-      const detected = detectDocType(readings);
-      const hint = (detected !== tipo && detected !== 'livre') ? detected : null;
-      const textKind = classifyTextKind(readings[bestIdx].words);
-      const far = readings.every(r => goodWords(r) < 8) && readings.some(r => r.region && r.frame && r.region.cw < 0.4 * r.frame.width);
-
-      // Debug info for the console and the test script (testes/medir.js)
-      const allText = readings.map(r => r.text).join('\n').toUpperCase();
-      const sinais = {};
-      ['nfce', 'cartao', 'conta'].forEach(k => { sinais[k] = (allText.match(DOC_TYPES[k].sinais) || []).length; });
-      const debug = {
-        tipo, detected, sinais, valor, candidates, textKind, tilt: lastTilt, codes: codes || [],
-        readings: readings.map((r, i) => ({ text: r.text, conf: r.conf, words: r.words.length, good: goodWords(r), rot: r.rot, bin: r.bin, size: r.size, region: r.region, candidatos: parsed[i].candidatos }))
-      };
-
-      return { fields, tipo, expectsValue, valor, candidates, status, hint, textKind, far, debug };
-    }
-
-    function parseDocument(rawText, tipo) {
-      const def = DOC_TYPES[tipo] || DOC_TYPES.livre;
-      const textUpper = (rawText || '').toUpperCase();
-      const lines = textUpper.split('\n').map(l => l.trim()).filter(Boolean);
-
-      const fieldsMap = {};
-
-      // 1. CNPJ: \d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2} -> 00.000.000/0000-00
-      const cnpjMatch = textUpper.match(/\b(\d{2})[\.\s]?(\d{3})[\.\s]?(\d{3})[\/\s]?(\d{4})[-\s]?(\d{2})\b/);
-      if (cnpjMatch) {
-        fieldsMap['CNPJ'] = `${cnpjMatch[1]}.${cnpjMatch[2]}.${cnpjMatch[3]}/${cnpjMatch[4]}-${cnpjMatch[5]}`;
-      }
-
-      // 2. Valor: candidates ranked by findMoney; which one is shown is
-      // decided by agreedValue, when two readings agree
-      const candidatos = def.vitais.includes('Valor') ? findMoney(lines, def) : [];
-
-      // 3. Data: dd/mm/aaaa ou dd/mm/aa, only real dates; the most repeated wins
-      const dates = {};
-      const dateRe = /\b(\d{2})[\/\.-](\d{2})[\/\.-](\d{2,4})\b/g;
-      let dm;
-      while ((dm = dateRe.exec(textUpper)) !== null) {
-        let yr = dm[3];
-        if (yr.length === 3) continue;
-        if (yr.length === 2) yr = '20' + yr;
-        const d = +dm[1], mo = +dm[2], y = +yr;
-        const minYear = def.vitais.includes('Valor') ? 2010 : 1900;
-        if (d < 1 || d > 31 || mo < 1 || mo > 12 || y < minYear || y > new Date().getFullYear() + 1) continue;
-        const key = `${dm[1]}/${dm[2]}/${yr}`;
-        const lineStart = textUpper.lastIndexOf('\n', dm.index) + 1;
-        const line = textUpper.slice(lineStart, textUpper.indexOf('\n', dm.index) === -1 ? undefined : textUpper.indexOf('\n', dm.index));
-        dates[key] = (dates[key] || 0) + (/EMISS|\bDATA\b|COMPRA|VENDA|PAGAMENTO/.test(line) ? 2 : 1);
-      }
-      const dateKeys = Object.keys(dates).sort((a, b) => dates[b] - dates[a]);
-      if (dateKeys.length) fieldsMap['Data'] = dateKeys[0];
-
-      // 4. Hora: hh:mm ou 14H26, preferably on the same line as the date
-      const timeRe = /\b([01]?\d|2[0-3])[:Hh]([0-5]\d)\b/;
-      const dateLine = fieldsMap['Data'] ? lines.find(l => l.includes(fieldsMap['Data'].slice(0, 5))) : null;
-      const timeMatch = (dateLine && dateLine.match(timeRe)) || textUpper.match(timeRe);
-      if (timeMatch) fieldsMap['Hora'] = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
-
-      if (tipo === 'cartao') {
-        // 5. Bandeira: MASTERCARD, VISA, ELO, AMEX, AMERICAN EXPRESS, HIPERCARD, DINERS
-        const flags = [
-          ['AMERICAN EXPRESS', 'AMEX'],
-          ['AMEX', 'AMEX'],
-          ['MASTERCARD', 'MASTERCARD'],
-          ['VISA', 'VISA'],
-          ['ELO', 'ELO'],
-          ['HIPERCARD', 'HIPERCARD'],
-          ['DINERS', 'DINERS']
-        ];
-        for (const [pattern, label] of flags) {
-          if (textUpper.includes(pattern)) {
-            fieldsMap['Bandeira'] = label;
-            break;
-          }
-        }
-
-        // 6. Modalidade: Crédito / Débito / Pix / Parcelado
-        let mod = '';
-        if (textUpper.includes('PIX')) {
-          mod = 'Pix';
-        } else if (textUpper.includes('CREDITO') || textUpper.includes('CRÉDITO')) {
-          if (textUpper.includes('PARCELADO') || textUpper.includes('PARC')) {
-            mod = 'Crédito Parcelado';
-          } else {
-            mod = 'Crédito à Vista';
-          }
-        } else if (textUpper.includes('DEBITO') || textUpper.includes('DÉBITO')) {
-          mod = 'Débito';
-        }
-        if (mod) fieldsMap['Modalidade'] = mod;
-
-        // 7. Terminal: (TERMINAL|POS)\s*[:\.]?\s*([A-Z0-9]{4,12})
-        const termMatch = textUpper.match(/(?:TERMINAL|POS)\s*[:\.]?\s*([A-Z0-9]{4,12})/);
-        if (termMatch) fieldsMap['Terminal'] = termMatch[1];
-
-        // 8. NSU/DOC: (NSU|DOC\w*)\s*[:\.]?\s*(\d{4,})
-        const nsuMatch = textUpper.match(/(?:NSU|DOC\w*)\s*[:\.]?\s*(\d{4,})/);
-        if (nsuMatch) fieldsMap['NSU/DOC'] = nsuMatch[1];
-
-        // 9. Autorização: the number after AUT, AUTH or AUTORIZACAO (never "AUTO POSTO")
-        const authMatch = textUpper.match(/\bAUT(?:H|ORIZA[CÇ][AÃ]O)?\s*[:=.]?\s*(\d{5,})/);
-        if (authMatch) fieldsMap['Autorização'] = authMatch[1];
-
-        // 10. AID: \bA0000[0-9A-F]{10,12}\b
-        const aidMatch = textUpper.match(/\b(A0000[0-9A-F]{10,12})\b/);
-        if (aidMatch) fieldsMap['AID'] = aidMatch[1];
-
-        // 11. Via: VIA CLIENTE ou VIA ESTABELECIMENTO
-        if (textUpper.includes('VIA CLIENTE') || textUpper.includes('CLIENTE')) {
-          fieldsMap['Via'] = 'VIA CLIENTE';
-        } else if (textUpper.includes('VIA ESTABELECIMENTO')) {
-          fieldsMap['Via'] = 'VIA ESTABELECIMENTO';
-        } else {
-          fieldsMap['Via'] = 'VIA CLIENTE';
-        }
-      }
-
-      if (tipo !== 'livre') {
-        // 12. Estabelecimento: line after ESTABELECIMENTO, or first containing S.A./LTDA/COMERCIO/RESTAURANTE/POSTO/LOJA
-        let estab = '';
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].includes('ESTABELECIMENTO') && lines[i + 1]) {
-            estab = lines[i + 1];
-            break;
-          }
-        }
-        if (!estab) {
-          for (const line of lines) {
-            if (/(?:S\.A\.|LTDA|COMERCIO|COMÉRCIO|RESTAURANTE|POSTO|LOJA|DROGARIA|FARMACIA|PADARIA)/.test(line)) {
-              estab = line;
-              break;
-            }
-          }
-        }
-        if (!estab && lines.length > 0) {
-          estab = lines[0];
-        }
-        if (estab) {
-          fieldsMap['Estabelecimento'] = estab.replace(/CNPJ.*$/, '').trim();
-        }
-      } else {
-        // Free text: everything that was read, to be kept as is
-        fieldsMap['Texto'] = (rawText || '').trim();
-      }
-
-      // Order fields according to prompt specification
-      const orderedResult = [];
-      ORDERED_FIELD_KEYS.forEach(key => {
-        if (fieldsMap[key]) {
-          orderedResult.push({ key, val: fieldsMap[key] });
-        }
-      });
-
-      // Add any additional extracted fields not in standard order
-      Object.keys(fieldsMap).forEach(key => {
-        if (!ORDERED_FIELD_KEYS.includes(key)) {
-          orderedResult.push({ key, val: fieldsMap[key] });
-        }
-      });
-
-      return { fields: orderedResult, candidatos };
-    }
-
-    // Every money-looking number in the text, ranked. Lines that never hold
-    // the amount (items, taxes, tips, change...) are skipped; "R$" and words
-    // like TOTAL add points; a number seen on more than one line gets a
-    // bonus. Only numbers with "R$" or a keyword can win: a bare number is
-    // never shown as the amount.
-    function findMoney(lines, def) {
-      const seen = {};
-      let lineNo = 0;
-      const add = (num, score) => {
-        const k = num.toFixed(2);
-        if (!seen[k]) seen[k] = { num, score: 0, lines: new Set() };
-        seen[k].score = Math.max(seen[k].score, score);
-        seen[k].lines.add(lineNo);
-      };
-      lines.forEach(raw => {
-        lineNo++;
-        const line = raw.replace(/\b(?:R|H|K|P)\s?[$S5§&]{1,2}(?=\s*[:\d])/g, 'R$');   // R$ mal lido (RS, R5, H$...)
-        if (def.ignorar && def.ignorar.test(line)) return;
-        const clean = line
-          .replace(/\d{2}[.,\s]?\d{3}[.,\s]?\d{3}\s?\/\s?\d{4}\s?-?\s?\d{2}/g, ' ')   // CNPJ
-          .replace(/\d{1,2}\s?[\/-]\s?\d{1,2}\s?[\/-]\s?\d{2,4}/g, ' ')                // datas
-          .replace(/\b\d{1,2}\s?[:H]\s?\d{2}(?:\s?:\s?\d{2})?/g, ' ')                  // horas
-          .replace(/\*+\s?\d+/g, ' ');                                                 // cartão ****9458
-        // "1otal" and "T0TAL" still count as TOTAL
-        const keyword = def.palavras.test(clean.replace(/1/g, 'I').replace(/0/g, 'O'));
-        const re = /((?:R|US)?\$\s?)?(\d{1,3}(?:[.,\s]\d{3})*|\d+)\s?[.,]\s?(\d{2})(?![\d\/])/g;
-        let m, found = false;
-        while ((m = re.exec(clean)) !== null) {
-          const before = clean[m.index - 1];
-          if (!m[1] && before && /[\d.\/-]/.test(before)) continue;
-          const num = parseFloat(m[2].replace(/[.,\s]/g, '') + '.' + m[3]);
-          if (!(num > 0 && num < 100000)) continue;
-          found = true;
-          add(num, (m[1] ? 4 : 0) + (keyword ? 3 : 0));
-        }
-        // "R$35096" (vírgula perdida na leitura): só vale com palavra-chave
-        // na linha, e ainda precisa de outra leitura concordando
-        if (!found && keyword) {
-          const glued = clean.match(/R\$\s?(\d{3,7})(?![\d.,])/);
-          if (glued) add(parseInt(glued[1], 10) / 100, 3);
-        }
-      });
-      return Object.values(seen)
-        .map(c => ({ num: c.num, score: c.score + (c.lines.size > 1 ? 1 : 0) }))
-        .filter(c => c.score >= 3)
-        .sort((a, b) => b.score - a.score || b.num - a.num);
     }
 
     /* =========================================================
@@ -3127,6 +2078,25 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
       list.forEach(f => {
         const row = createFieldRow(f.key, f.val, f.missing);
+        // A card slip: "this card is mine" teaches the app the person's card
+        // (only the last 4 digits, kept on this device), to tell her part of a
+        // bill paid by several people
+        const last4 = f.key === 'Cartão' && (String(f.val).match(/\d{4}$/) || [])[0];
+        if (last4 && !Leitura.meusCartoes().includes(last4)) {
+          const mine = document.createElement('button');
+          mine.type = 'button';
+          mine.className = 'btn btn-secondary btn-sm card-mine-btn';
+          mine.textContent = `💳 O cartão final ${last4} é meu`;
+          mine.addEventListener('click', () => {
+            Leitura.marcarCartaoMeu(last4);
+            showToast(`Cartão final ${last4} guardado como seu (só neste aparelho).`, 'ok');
+            if (!papers.length) { mine.remove(); return; }
+            stashEdits();
+            Leitura.relacionar(papers);
+            showPaper(currentPaper);
+          });
+          fieldsListContainer.appendChild(mine);
+        }
         // Readings that disagreed: offer each amount as a button
         if (f.key === 'Valor' && f.missing && result.candidates.length) {
           const box = document.createElement('div');
@@ -3149,10 +2119,20 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         }
       });
 
-      docTypeLabel.textContent = '📄 ' + (DOC_TYPES[result.tipo] || DOC_TYPES.livre).nome;
+      // Transactions of a bank statement or card bill (OFX, CSV or spreadsheet)
+      const items = result.itens || [];
+      itemsBox.style.display = items.length ? '' : 'none';
+      const MAX_ITEMS = 200;
+      itemsBox.innerHTML = items.length ? `<table class="items-table"><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>${
+        items.slice(0, MAX_ITEMS).map(i => `<tr><td>${escapeHtml(i.data)}</td><td>${escapeHtml(i.descricao)}</td><td class="${i.valor < 0 ? 'neg' : ''}">${escapeHtml((i.valor < 0 ? '-' : '') + formatBRL(Math.abs(i.valor)))}</td></tr>`).join('')
+      }</tbody></table>${items.length > MAX_ITEMS ? `<p>e mais ${items.length - MAX_ITEMS} lançamentos (todos são guardados ao salvar)</p>` : ''}` : '';
+
+      // Category and type: "Saúde › Pedido de exame"
+      const shownType = Leitura.tipo(result.tipo), family = Leitura.catalogo.familia(shownType.familia);
+      docTypeLabel.textContent = '📄 ' + (family && shownType.id !== 'livre' ? family.pt + ' › ' : '') + shownType.nome;
       textKindLabel.textContent = '✍️ ' + result.textKind.label;
       if (result.hint) {
-        docTypeHintText.textContent = 'Parece ser: ' + DOC_TYPES[result.hint].nome + '.';
+        docTypeHintText.textContent = 'Parece ser: ' + Leitura.tipo(result.hint).nome + '.';
         btnUseDetectedType.dataset.tipo = result.hint;
         docTypeHint.style.display = 'flex';
       } else {
@@ -3203,7 +2183,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       stashEdits();
       // One record per paper; empty fields (an amount not typed in) are left out
       const records = papers.length
-        ? papers.map(p => ({ tipo: p.tipo, fields: (p.edited || p.result.fields).filter(f => f.val).map(f => ({ key: f.key, val: f.val })) }))
+        ? papers.map(p => ({ tipo: p.tipo, fields: (p.edited || p.result.fields).filter(f => f.val).map(f => ({ key: f.key, val: f.val })), itens: p.result.itens }))
         : [{ tipo: lastTipo, fields: readFieldRows().filter(f => f.val).map(f => ({ key: f.key, val: f.val })) }];
 
       if (records.every(r => r.fields.length === 0)) {
@@ -3224,7 +2204,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       } else {
         const now = Date.now();
         records.filter(r => r.fields.length).forEach((r, i) => {
-          list.unshift({ id: 'rec_' + (now + i), savedAt: new Date().toISOString(), tipo: r.tipo, fields: r.fields });
+          list.unshift(Object.assign({ id: 'rec_' + (now + i), savedAt: new Date().toISOString(), tipo: r.tipo, fields: r.fields }, r.itens ? { itens: r.itens } : {}));
         });
         showToast(records.length > 1 ? `${records.length} comprovantes salvos!` : 'Comprovante salvo com sucesso!', 'ok');
       }
@@ -3253,94 +2233,53 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       fileInputGallery.value = '';
     }
 
-    function loadImageFile(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.onerror = () => reject(new Error('imagem inválida'));
-          img.src = e.target.result;
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-    }
-
-    // Opens a PDF with pdf.js (in libs/) and draws its pages, up to 10, as images
-    let pdfjs = null;
-    async function pdfToImages(file, maxPages = 10) {
-      if (!pdfjs) {
-        pdfjs = await import('./libs/pdfjs/pdf.min.mjs');
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL('libs/pdfjs/pdf.worker.min.mjs', location.href).href;
-      }
-      const doc = await pdfjs.getDocument({
-        data: await file.arrayBuffer(),
-        standardFontDataUrl: new URL('libs/pdfjs/standard_fonts/', location.href).href,
-        wasmUrl: new URL('libs/pdfjs/wasm/', location.href).href
-      }).promise;
-      const images = [];
-      for (let n = 1; n <= Math.min(doc.numPages, maxPages); n++) {
-        const page = await doc.getPage(n);
-        const base = page.getViewport({ scale: 1 });
-        const viewport = page.getViewport({ scale: Math.min(4, 2200 / Math.max(base.width, base.height)) });
-        const c = document.createElement('canvas');
-        c.width = Math.round(viewport.width); c.height = Math.round(viewport.height);
-        const ctx = c.getContext('2d');
-        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        images.push(c);
-      }
-      return { images, pages: doc.numPages };
-    }
-
-    // Photos and PDFs chosen by the person: each photo and each PDF page is a source
+    // Photos and files chosen by the person: the engine opens each one (photos,
+    // PDF pages, TXT, CSV, OFX, spreadsheets, Word) and says which it could not
     async function handleFiles(fileList) {
       const files = Array.from(fileList || []).filter(Boolean);
       if (!files.length) return;
-      const jobs = [];
-      try {
-        for (let i = 0; i < files.length; i++) {
-          const f = files[i];
-          if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
-            ocrProgressWrap.style.display = 'flex';
-            ocrStatusText.textContent = 'Abrindo o PDF...';
-            const { images, pages } = await pdfToImages(f);
-            const prefix = files.length > 1 ? `Arquivo ${i + 1}, p` : 'P';
-            images.forEach((c, k) => jobs.push({ img: c, name: pages > 1 || files.length > 1 ? `${prefix}ágina ${k + 1}` : '' }));
-            if (pages > images.length) showToast(`O PDF tem ${pages} páginas; li as ${images.length} primeiras.`, 'warn', 5000);
-          } else {
-            jobs.push({ img: await loadImageFile(f), name: files.length > 1 ? `Foto ${i + 1}` : '' });
-          }
-        }
-      } catch (err) {
-        console.warn('Não abriu o arquivo:', err);
-        ocrProgressWrap.style.display = 'none';
-        showToast('Não consegui abrir esse arquivo.', 'err');
-        return;
-      }
+      ocrProgressWrap.style.display = 'flex';
+      const { fontes, recusados } = await Leitura.abrir(files, text => { ocrStatusText.textContent = text; });
       ocrProgressWrap.style.display = 'none';
-      startReading(jobs);
+      recusados.forEach(r => showToast(`${r.nome}: ${r.motivo}.`, r.parcial ? 'warn' : 'err', 6000));
+      if (fontes.length) startReading(fontes);
     }
 
-    async function startReading(jobs) {
-      currentImage = jobs[0].img;
+    async function startReading(fontes) {
+      const firstPhoto = fontes.find(f => f.img);
+      currentImage = firstPhoto ? firstPhoto.img : textPreview(fontes[0]);
       currentRotation = 0;
       processImageToCanvas(currentImage, 0);
-      // Ask what the photo is before reading, so the right fields are expected
-      const tipo = await askDocType();
+      // Ask what the document is before reading, so the right fields are
+      // expected; an OFX file already says it is a statement or a card bill
+      const suggested = [...new Set(fontes.map(f => f.tipoSugerido))];
+      const tipo = suggested.length === 1 && suggested[0] ? suggested[0] : await askDocType();
       if (!tipo) { resetPhotoState(); return; }
       currentDocType = tipo;
       // Several papers in a photo? Show them and ask before reading apart
-      for (const job of jobs) {
-        job.boxes = null;
-        if (tipo === 'livre') continue;
-        const boxes = findPapers(job.img);
-        if (boxes.length >= 2 && await askPapers(job.img, boxes, job.name)) job.boxes = boxes;
+      for (const fonte of fontes) {
+        fonte.boxes = null;
+        if (tipo === 'livre' || !fonte.img) continue;
+        const boxes = await Leitura.acharPapeis(fonte.img);
+        if (boxes.length >= 2 && await askPapers(fonte.img, boxes, fonte.nome)) fonte.boxes = boxes;
       }
-      sources = jobs;
-      btnRotate.style.display = jobs.length > 1 ? 'none' : '';   // turning one photo at a time only
+      sources = fontes;
+      btnRotate.style.display = fontes.length > 1 || !firstPhoto ? 'none' : '';   // turning one photo at a time only
       executeOCR();
+    }
+
+    // A file without a picture (PDF with text, TXT, spreadsheet...): its first
+    // lines drawn on the preview, so the person sees what was opened
+    function textPreview(fonte) {
+      const text = fonte.texto || (fonte.linhas || []).map(l => l.join('  ')).join('\n');
+      const lines = text.split('\n').filter(l => l.trim()).slice(0, 40);
+      const c = document.createElement('canvas');
+      c.width = 900; c.height = Math.max(200, 30 + lines.length * 22);
+      const x = c.getContext('2d');
+      x.fillStyle = '#ffffff'; x.fillRect(0, 0, c.width, c.height);
+      x.fillStyle = '#111111'; x.font = '16px monospace';
+      lines.forEach((l, k) => x.fillText(l.slice(0, 90), 16, 28 + k * 22));
+      return c;
     }
 
     // On a computer the camera is a live preview; on the phone the camera app opens
@@ -3372,7 +2311,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       c.width = cameraVideo.videoWidth; c.height = cameraVideo.videoHeight;
       c.getContext('2d').drawImage(cameraVideo, 0, 0);
       closeLiveCamera();
-      startReading([{ img: c, name: '' }]);
+      startReading([{ img: c, nome: '' }]);
     });
 
     btnCamera.addEventListener('click', () => hasLiveCamera() ? openLiveCamera() : fileInputCamera.click());
@@ -3434,13 +2373,58 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
     function renderOfflineStatus() {
       const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-      if (offlineReady) offlineStatus.textContent = `Versão ${APP_VERSION} guardada neste aparelho: o app abre e lê sem internet.`;
+      if (offlineReady) offlineStatus.textContent = `Versão ${APP_VERSION} guardada neste aparelho: o app abre sem internet. Para ler sem internet, as partes abaixo precisam estar guardadas.`;
       else if (offlineStatus.textContent === 'Verificando...') offlineStatus.textContent = 'Guardando os arquivos do app neste aparelho...';
       btnInstallApp.style.display = installPrompt ? '' : 'none';
       installHint.textContent = standalone ? 'Você está usando o app instalado.'
         : installPrompt ? 'Instalar cria um ícone na tela inicial, como um aplicativo.'
         : 'Para ter um ícone na tela inicial: no Chrome, menu ⋮ → "Adicionar à tela inicial"; no iPhone, botão Compartilhar → "Adicionar à Tela de Início".';
+      renderOfflineParts();
     }
+
+    // The heavy parts of the reading engine (photo reader, PDF, codes) are kept
+    // on the device the first time they are used, or all at once here
+    const HEAVY_PARTS = ['foto', 'pdf', 'codigos'];
+    async function partSaved(id) {
+      if (!('caches' in window)) return false;
+      for (const f of Leitura.catalogo.capacidades[id].pesados) {
+        // a list inside the list: alternatives, the device uses one of them
+        const any = [].concat(f);
+        let saved = false;
+        for (const g of any) if (await caches.match(Leitura.url(g))) saved = true;
+        if (!saved) return false;
+      }
+      return true;
+    }
+    async function renderOfflineParts() {
+      let missing = 0;
+      const rows = [];
+      for (const id of HEAVY_PARTS) {
+        const c = Leitura.catalogo.capacidades[id];
+        const ok = await partSaved(id);
+        if (!ok) missing += c.mb;
+        rows.push(`<li>${ok ? '✅' : '⬜'} ${escapeHtml(c.pt)} <small>(${String(c.mb).replace('.', ',')} MB, ${ok ? 'guardado' : 'baixa na primeira vez que for usado'})</small></li>`);
+      }
+      offlineParts.innerHTML = `<ul>${rows.join('')}</ul>`;
+      btnSaveAllOffline.style.display = offlineReady && missing ? '' : 'none';
+      if (!btnSaveAllOffline.disabled) btnSaveAllOffline.querySelector('span').textContent = `⬇️ Guardar tudo para usar sem internet (${missing.toFixed(1).replace('.', ',')} MB)`;
+    }
+    btnSaveAllOffline.addEventListener('click', async () => {
+      btnSaveAllOffline.disabled = true;
+      try {
+        for (const id of HEAVY_PARTS) for (const f of Leitura.catalogo.capacidades[id].pesados.flat()) {
+          btnSaveAllOffline.querySelector('span').textContent = 'Guardando ' + f.split('/').pop() + '...';
+          const r = await fetch(Leitura.url(f));
+          if (!r.ok) throw new Error(f);
+          await r.arrayBuffer();   // sw.js keeps a copy as it passes
+        }
+        showToast('Tudo guardado: o app lê fotos, PDF e códigos sem internet.', 'ok', 5000);
+      } catch (err) {
+        showToast('Não consegui guardar tudo. Confira a internet e tente de novo.', 'err');
+      }
+      btnSaveAllOffline.disabled = false;
+      renderOfflineParts();
+    });
 
     window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; renderOfflineStatus(); });
     window.addEventListener('appinstalled', () => { installPrompt = null; renderOfflineStatus(); showToast('App instalado! Procure o ícone na tela inicial.', 'ok', 5000); });
@@ -3476,7 +2460,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         currentImage = img;
         currentRotation = 0;
         currentDocType = 'cartao';
-        sources = [{ img, name: '', boxes: null }];
+        sources = [{ img, nome: '', boxes: null }];
         processImageToCanvas(img, 0);
         executeOCR();
       };
@@ -3569,7 +2553,7 @@ VALOR TOTAL: R$ 68,90
         const data = map['Data'] || '';
         const band = map['Bandeira'] || '';
         const mod = map['Modalidade'] || '';
-        const tipoNome = item.tipo && DOC_TYPES[item.tipo] ? DOC_TYPES[item.tipo].nome : '';
+        const tipoNome = item.tipo && Leitura.catalogo.tipo(item.tipo) ? Leitura.catalogo.tipo(item.tipo).pt : '';
 
         const card = document.createElement('div');
         card.className = 'history-card-item';

@@ -1,61 +1,76 @@
-// Guarda o app inteiro neste aparelho, para abrir e ler sem internet.
+// Guarda o app neste aparelho, para abrir e ler sem internet.
 // VERSAO precisa acompanhar APP_VERSION no index.html: é a mudança dela que
 // faz o navegador baixar a versão nova e jogar a antiga fora
 // (testes/medir.js e testes/offline.js avisam quando as duas diferem).
-const VERSAO = '0.6.1';
+const VERSAO = '0.7.0';
 // Todos os apps do solverone.com.br dividem o mesmo endereço e, por isso, as mesmas
 // cópias guardadas: o nome leva o app, e só as cópias deste app são apagadas.
 const PREFIXO = 'dgo-leitor-ocr-';
 const CACHE = PREFIXO + VERSAO;
+// As partes pesadas (motor de OCR, leitor de PDF, leitores de código: pastas
+// tesseract/ e libs/) não baixam sozinhas: ficam guardadas na primeira vez que
+// são usadas, ou quando a pessoa toca em "Guardar tudo" (Ajustes). Moram numa
+// cópia própria, que passa de uma versão para a outra sem baixar tudo de novo.
+const CACHE_PESADO = PREFIXO + 'pesado-1';
+const PASTAS_PESADAS = ['tesseract/', 'libs/'];
+// O básico: telas e o motor de leitura sem as partes pesadas (arquivo novo do app entra aqui)
 const ARQUIVOS = [
   './',
+  './formatos/csv.js',
+  './formatos/docx.js',
+  './formatos/ofx.js',
+  './formatos/pdf.js',
+  './formatos/texto.js',
+  './formatos/xlsx.js',
+  './formatos/zip.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/maskable-192.png',
   './icons/maskable-512.png',
   './index.html',
-  './libs/jsQR.js',
-  './libs/pdfjs/pdf.min.mjs',
-  './libs/pdfjs/pdf.worker.min.mjs',
-  './libs/pdfjs/standard_fonts/FoxitDingbats.pfb',
-  './libs/pdfjs/standard_fonts/FoxitFixed.pfb',
-  './libs/pdfjs/standard_fonts/FoxitFixedBold.pfb',
-  './libs/pdfjs/standard_fonts/FoxitFixedBoldItalic.pfb',
-  './libs/pdfjs/standard_fonts/FoxitFixedItalic.pfb',
-  './libs/pdfjs/standard_fonts/FoxitSerif.pfb',
-  './libs/pdfjs/standard_fonts/FoxitSerifBold.pfb',
-  './libs/pdfjs/standard_fonts/FoxitSerifBoldItalic.pfb',
-  './libs/pdfjs/standard_fonts/FoxitSerifItalic.pfb',
-  './libs/pdfjs/standard_fonts/FoxitSymbol.pfb',
-  './libs/pdfjs/standard_fonts/LiberationSans-Bold.ttf',
-  './libs/pdfjs/standard_fonts/LiberationSans-BoldItalic.ttf',
-  './libs/pdfjs/standard_fonts/LiberationSans-Italic.ttf',
-  './libs/pdfjs/standard_fonts/LiberationSans-Regular.ttf',
-  './libs/pdfjs/wasm/jbig2.wasm',
-  './libs/pdfjs/wasm/openjpeg.wasm',
-  './libs/pdfjs/wasm/qcms_bg.wasm',
-  './libs/zxing.min.js',
+  './leitores/cartao.js',
+  './leitores/conta.js',
+  './leitores/extrato.js',
+  './leitores/nfce.js',
+  './leitura.js',
+  './leitura/catalogo.js',
+  './leitura/codigos.js',
+  './leitura/foto.js',
+  './leitura/relacoes.js',
+  './leitura/texto.js',
   './manifest.webmanifest',
-  './tesseract/por.traineddata.gz',
-  './tesseract/tesseract-core-lstm.wasm.js',
-  './tesseract/tesseract-core-simd-lstm.wasm.js',
-  './tesseract/tesseract.min.js',
-  './tesseract/worker.min.js',
 ];
+
+const pesado = url => PASTAS_PESADAS.some(p => url.startsWith(new URL(p, self.registration.scope).href));
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARQUIVOS)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys()
-    .then(keys => Promise.all(keys.filter(k => k !== CACHE && (k.startsWith(PREFIXO) || k.startsWith('leitor-ocr-'))).map(k => caches.delete(k))))
-    .then(() => self.clients.claim()));
+  e.waitUntil((async () => {
+    const pes = await caches.open(CACHE_PESADO);
+    for (const k of await caches.keys()) {
+      if (k === CACHE || k === CACHE_PESADO || !(k.startsWith(PREFIXO) || k.startsWith('leitor-ocr-'))) continue;
+      // Cópia de uma versão antiga: o que for pesado passa para a cópia que fica
+      const velho = await caches.open(k);
+      for (const req of await velho.keys()) if (pesado(req.url)) await pes.put(req, await velho.match(req));
+      await caches.delete(k);
+    }
+    await self.clients.claim();
+  })());
 });
 
-// Tudo que é do app sai da cópia guardada; só o que não está nela vai à rede
+// Tudo que é do app sai da cópia guardada; o que não está nela vai à rede, e o
+// que for pesado fica guardado ao passar
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
-  e.respondWith(caches.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req)));
+  e.respondWith((async () => {
+    const hit = await caches.match(req, { ignoreSearch: true });
+    if (hit) return hit;
+    const res = await fetch(req);
+    if (res.ok && pesado(req.url)) await (await caches.open(CACHE_PESADO)).put(req, res.clone());
+    return res;
+  })());
 });
