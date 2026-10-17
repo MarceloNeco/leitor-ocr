@@ -20,6 +20,9 @@
 // aí o certo é o campo ficar vazio. "estab" pode ser uma lista.
 // "incerto" = o app não bateu o martelo e ofereceu botões com os valores lidos;
 // conta como "incerto-ok" quando o certo estava entre eles.
+// "tipoEsperado" (lista de ids do catálogo) mede a detecção automática: com
+// "tipo": "auto", conta as fotos em que o tipo descoberto está na lista.
+// Campo sem "valores", "datas" ou "estab" no gabarito não recebe nota.
 //
 // As fotos e o gabarito têm dados pessoais: ficam FORA do repositório.
 // O resultado completo (com o texto lido) é gravado na pasta das fotos.
@@ -76,11 +79,11 @@ function grade(fields, chips, expected) {
   const valores = list(expected.valores).map(money), datas = list(expected.datas), estabs = list(expected.estab).filter(Boolean);
   const v = money(g('Valor')), d = g('Data'), e = norm(g('Estabelecimento'));
   const judge = (read, ok) => ok.length === 0 ? (read ? 'errado' : 'certo') : (!read ? 'vazio' : ok.includes(read) ? 'certo' : 'errado');
-  let valor = judge(v, valores);
+  let valor = expected.valores === undefined ? '-' : judge(v, valores);
   if (valor === 'vazio' && chips.length) valor = chips.some(c => valores.includes(money(c))) ? 'incerto-ok' : 'incerto';
   return {
     valor,
-    data: judge(d, datas),
+    data: expected.datas === undefined ? '-' : judge(d, datas),
     estab: estabs.length === 0 ? '-' : (estabs.some(x => e.includes(norm(x))) ? 'certo' : 'nao')
   };
 }
@@ -175,6 +178,12 @@ function grade(fields, chips, expected) {
     console.log(`| data | ${count('data', 'certo')} | - | - | ${count('data', 'vazio')} | ${count('data', 'errado')} |`);
     console.log(`| estab | ${count('estab', 'certo')} | - | - | - | ${count('estab', 'nao')} |`);
     const firsts = results.filter(r => r.papel === 1);
+    const comTipo = firsts.filter(r => gabarito[r.file] && gabarito[r.file].tipoEsperado);
+    if (comTipo.length) {
+      const certos = comTipo.filter(r => gabarito[r.file].tipoEsperado.includes(r.tipoLido));
+      console.log(`Tipo descoberto certo: ${certos.length} de ${comTipo.length} fotos`);
+      comTipo.filter(r => !certos.includes(r)).forEach(r => console.log(`   ${r.file}: descobriu ${r.tipoLido}, esperado ${gabarito[r.file].tipoEsperado.join(' ou ')}`));
+    }
     const secs = firsts.reduce((a, r) => a + r.secs, 0) / Math.max(1, firsts.length);
     console.log(`Tempo médio por foto: ${secs.toFixed(1)}s`);
   }

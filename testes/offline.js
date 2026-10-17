@@ -12,6 +12,7 @@
 // 3. PDF com texto (2 páginas, lido sem OCR) e PDF escaneado (lido com OCR).
 // 4. Duas fotos de uma vez: 2 abas, cada uma com seu valor.
 // 5. TXT, CSV (de banco, em Windows-1252), OFX de fatura, XLSX e DOCX.
+//    Detecção automática: uma receita médica fictícia vira "Saúde › Receita médica".
 // 6. Arquivo em formato antigo (.xls): recusado com o motivo.
 // 7. Pagamento dividido: uma conta e duas vias de cartão; "O cartão final ...
 //    é meu" mostra a minha parte.
@@ -140,6 +141,7 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     + `<w:tbl><w:tr><w:tc>${p('VIA CLIENTE')}</w:tc><w:tc>${p('CREDITO A VISTA')}</w:tc></w:tr><w:tr><w:tc>${p('MASTERCARD')}</w:tc><w:tc>${p('NSU 123456')}</w:tc></w:tr></w:tbl>`
     + `${p('DATA 11/10/2026')}${p('VALOR TOTAL R$ 99,90')}</w:body></w:document>` }));
   const xls = file('velho.xls', 'nao e uma planilha de verdade');
+  const receita = file('receita.txt', 'CONSULTORIO EXEMPLO\nRECEITUARIO\nUSO ORAL\nREMEDIO EXEMPLO 500 MG\nTOMAR 1 COMPRIMIDO DE 8 EM 8 HORAS POR 5 DIAS\nDRA. EXEMPLO - CRM 000000\n');
 
   // ---------- ajudantes ----------
   const logs = [];
@@ -266,6 +268,11 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   page = await open();
   const r9 = await send(page, [docx], 'auto');
   check(r9.values[0] === 'R$ 99,90', `DOCX: Valor=${r9.values[0]}`);
+  await page.close();
+  page = await open();
+  await send(page, [receita], 'auto');
+  const tipoReceita = await page.$eval('#docTypeLabel', e => e.textContent);
+  check(tipoReceita.includes('Saúde') && tipoReceita.includes('Receita médica'), `detecção automática: "${tipoReceita}"`);
   await page.close();
 
   // 6. formato antigo

@@ -99,6 +99,14 @@
       const score = (text.match(L.leitores[key].sinais) || []).length;
       if (score > bestScore) { best = key; bestScore = score; }
     });
+    if (best !== 'livre') return best;
+    // No money reader recognized the paper (they come first, because they
+    // read the amount): the other types of the catalog by their own signs, so
+    // the category is found even before each type has its own reader
+    L.catalogo.comSinais().forEach(t => {
+      const score = (text.match(t.sinais) || []).length;
+      if (score > bestScore) { best = t.id; bestScore = score; }
+    });
     return best;
   }
 

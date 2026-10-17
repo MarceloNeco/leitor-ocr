@@ -2127,7 +2127,9 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         items.slice(0, MAX_ITEMS).map(i => `<tr><td>${escapeHtml(i.data)}</td><td>${escapeHtml(i.descricao)}</td><td class="${i.valor < 0 ? 'neg' : ''}">${escapeHtml((i.valor < 0 ? '-' : '') + formatBRL(Math.abs(i.valor)))}</td></tr>`).join('')
       }</tbody></table>${items.length > MAX_ITEMS ? `<p>e mais ${items.length - MAX_ITEMS} lançamentos (todos são guardados ao salvar)</p>` : ''}` : '';
 
-      docTypeLabel.textContent = '📄 ' + Leitura.tipo(result.tipo).nome;
+      // Category and type: "Saúde › Pedido de exame"
+      const shownType = Leitura.tipo(result.tipo), family = Leitura.catalogo.familia(shownType.familia);
+      docTypeLabel.textContent = '📄 ' + (family && shownType.id !== 'livre' ? family.pt + ' › ' : '') + shownType.nome;
       textKindLabel.textContent = '✍️ ' + result.textKind.label;
       if (result.hint) {
         docTypeHintText.textContent = 'Parece ser: ' + Leitura.tipo(result.hint).nome + '.';

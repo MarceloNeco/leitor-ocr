@@ -53,9 +53,16 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 3. `Leitura.ler(fontes, { tipo, aviso, progresso })` → **papéis**, um por documento, cada um com `result` (`fields`, `valor`, `candidates`, `status`, `itens`...). Foto passa pelo OCR (várias leituras; o valor só vale quando duas leituras diferentes concordam). Texto de arquivo é exato: uma leitura basta.
 4. `Leitura.relacionar(papeis)` acrescenta os campos de relação.
 
+## Detecção automática da categoria e do tipo
+
+- **Tipo de arquivo**: pela extensão e pelo tipo que o navegador informa (`L.formatoDe`); formato antigo é recusado com o motivo.
+- **Tipo de documento** ("Não sei, descobrir", `detectDocType` em `leitura/texto.js`): primeiro os leitores de dinheiro (cartão, nota, conta), pelos `sinais` de cada um, porque são eles que leem o valor; se nenhum reconhece o papel, os outros tipos do catálogo, pelas palavras de `SINAIS` em `leitura/catalogo.js` (3 ou mais no texto; ganha o que tiver mais). O tipo descoberto vem com a categoria ("Saúde › Pedido de exame") e já fica no registro, mesmo antes de o tipo ter leitor próprio (aí ele é lido como texto livre).
+- **Arquivo que já diz o que é**: OFX é extrato ou fatura; CSV e planilha com colunas de data e valor viram lançamentos.
+- A pessoa sempre confere e pode trocar o tipo; quando o texto parece outro tipo, aparece "Parece ser: ...".
+
 ## Ensinar um tipo novo de documento
 
-1. Ver se ele já está em `leitura/catalogo.js` (quase todos estão, ainda sem leitor). Sem leitor, ele é lido como texto livre e o registro já guarda o tipo.
+1. Ver se ele já está em `leitura/catalogo.js` (quase todos estão, ainda sem leitor, mas já com as palavras que o denunciam em `SINAIS`). Sem leitor, ele é lido como texto livre e o registro já guarda o tipo.
 2. Criar `leitores/<id>.js` chamando `Leitura.registrarLeitor({...})` com:
    - `id`, `vitais` (campos que ficam em vermelho quando faltam, ex. `['Valor']`);
    - `sinais` (regex com `/g`: palavras que denunciam o tipo; 3 ou mais = é esse tipo), `palavras` (o que acompanha o valor), `ignorar` (linhas que nunca têm o valor);
