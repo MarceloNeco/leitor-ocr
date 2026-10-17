@@ -10,7 +10,8 @@
 //    guardado), desliga a internet e lê de novo: tem que ler pelo OCR.
 // 2. Ajustes → "Guardar tudo": o leitor de PDF e o de códigos ficam guardados.
 // 3. PDF com texto (2 páginas, lido sem OCR) e PDF escaneado (lido com OCR).
-// 4. Duas fotos de uma vez: 2 abas, cada uma com seu valor.
+// 4. Duas fotos de uma vez: 2 abas, cada uma com seu valor. Espiada rápida e
+//    app certo: um comprovante espiado "dentro do HyperNutry" manda para o MoneyTRIO.
 // 5. TXT, CSV (de banco, em Windows-1252), OFX de fatura, XLSX e DOCX.
 //    Detecção automática: uma receita médica fictícia vira "Saúde › Receita médica".
 // 6. Arquivo em formato antigo (.xls): recusado com o motivo.
@@ -239,6 +240,13 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   page = await open();
   const r4 = await send(page, fotos, 'cartao');
   check(r4.tabs.length === 2 && r4.values[0] === 'R$ 23,50' && r4.values[1] === 'R$ 47,90', `2 fotos de uma vez: abas=${JSON.stringify(r4.tabs)} valores=${JSON.stringify(r4.values)}`);
+  const espiada = await page.evaluate(async data => {
+    const img = new Image(); await new Promise(ok => { img.onload = ok; img.src = data; });
+    const tipo = await Leitura.espiar({ img });
+    return { tipo, onde: (Leitura.ondeLer(tipo, 'hypernutry') || {}).texto, rotulo: Leitura.ondeLer('nutricional', 'hypernutry') };
+  }, 'data:image/png;base64,' + fs.readFileSync(fotos[0]).toString('base64'));
+  check(espiada.tipo === 'cartao' && /MoneyTRIO/.test(espiada.onde || '') && espiada.rotulo === null,
+    `espiada rápida no HyperNutry: ${espiada.tipo}, "${espiada.onde}"; rótulo no HyperNutry: sem aviso`);
   await page.close();
 
   // 5. TXT, CSV, OFX, XLSX, DOCX

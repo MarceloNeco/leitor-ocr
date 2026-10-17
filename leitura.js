@@ -17,7 +17,9 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.0.0';
+  L.versao = '1.1.0';
+  // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
+  L.app = L.app || null;
 
   // Os outros arquivos do motor são procurados a partir da pasta deste arquivo,
   // para o motor funcionar copiado para qualquer app
@@ -168,6 +170,34 @@
     const lines = texto.split('\n').map(t => ({ text: t.trim(), conf: 100 })).filter(l => l.text);
     const reading = { text: texto, conf: 100, words: [], lines, exato: true };
     return Object.assign(papel, { readings: [reading], tipo: tipoPedido === 'auto' ? L.texto.detectDocType([reading]) : tipoPedido });
+  };
+
+  /* ---------- Documento no app certo ---------- */
+
+  // Os apps da SolverONE que cuidam deste tipo de documento: [{ id, nome, url }]
+  L.appsDoTipo = id => {
+    const t = L.catalogo.tipo(id);
+    return ((t && t.apps) || []).map(a => ({ id: a, nome: L.catalogo.apps[a].nome, url: `https://solverone.com.br/${L.catalogo.apps[a].pasta}/` }));
+  };
+
+  // Este documento é para o app que está lendo (L.app)? Se for, ou se não dá
+  // para saber, null; se não for, para onde mandar e o aviso pronto, ex.:
+  // "Isto parece Fatura de cartão de crédito (Dinheiro e compras). Ela fica no MoneyTRIO."
+  L.ondeLer = (tipo, app = L.app) => {
+    if (!app || !tipo || tipo === 'auto' || tipo === 'livre') return null;
+    const apps = L.appsDoTipo(tipo);
+    if (!apps.length || apps.some(a => a.id === app)) return null;
+    const t = L.tipo(tipo), familia = L.catalogo.familia(t.familia);
+    return { tipo, apps, texto: `Isto parece ${t.nome} (${familia ? familia.pt : 'outros'}). Fica no ${apps.map(a => a.nome).join(' ou ')}.` };
+  };
+
+  // Espiada rápida: o tipo mais provável com uma leitura só (foto) ou pelo
+  // texto (arquivo), antes da leitura completa. Serve para o app avisar logo,
+  // sem gastar a leitura inteira, quando o documento é de outro app.
+  L.espiar = async fonte => {
+    if (!fonte.img) return L.lerArquivo(fonte, 'auto').tipo;
+    await L.precisa('foto');
+    return L.foto.espiar(fonte.img);
   };
 
   // O resultado de um papel: campos, valor e situação (leitura/texto.js e leitores/)

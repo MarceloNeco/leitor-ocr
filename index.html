@@ -1501,7 +1501,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.7.0';
+    const APP_VERSION = '0.7.1';
     const APP_UPDATED = '17/10/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
@@ -2129,7 +2129,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
       // Category and type: "Saúde › Pedido de exame"
       const shownType = Leitura.tipo(result.tipo), family = Leitura.catalogo.familia(shownType.familia);
-      docTypeLabel.textContent = '📄 ' + (family && shownType.id !== 'livre' ? family.pt + ' › ' : '') + shownType.nome;
+      const homes = Leitura.appsDoTipo(shownType.id).map(a => a.nome);
+      docTypeLabel.textContent = '📄 ' + (family && shownType.id !== 'livre' ? family.pt + ' › ' : '') + shownType.nome + (homes.length ? ' · ' + homes.join(', ') : '');
       textKindLabel.textContent = '✍️ ' + result.textKind.label;
       if (result.hint) {
         docTypeHintText.textContent = 'Parece ser: ' + Leitura.tipo(result.hint).nome + '.';
