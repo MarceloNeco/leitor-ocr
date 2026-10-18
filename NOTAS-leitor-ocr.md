@@ -280,7 +280,14 @@ Detecção nas 52 fotos de 17/10: 25 → 27 certas (duas telas de tabela nutrici
 
 Valores errados mostrados: **5 → 0**. Ficam como antes: o PDF "impresso" (vira imagem, o OCR quase não lê), o OFC antigo de uma linha por número e o .xls (recusados com o motivo), os extratos de fundo que são imagem (sem lançamentos) e a carta da contabilidade (texto livre).
 
-**Regressão**: nas 52 fotos de tipos, nas 15 de remédio e latas e nos 4 prints de notificação, nenhuma diferença papel por papel; `testes/offline.js` 30 de 30 (novos: boleto fictício com as partes do valor, e com um número trocado na linha, que deixa o valor vazio).
+**Regressão** (nenhuma diferença papel por papel em tipo, valor, data e estabelecimento):
+
+| Conjunto | Valor certo | Incerto, certo entre as opções | Incerto | Vazio | Errado |
+|---|---|---|---|---|---|
+| 37 fotos das etapas 2 a 5 (43 papéis), antes e depois | 28 | 5 | 1 | 9 | 0 |
+| 14 fotos com vários papéis (27 papéis), antes e depois | 18 | 3 | 0 | 6 | 0 |
+
+Nas 52 fotos de tipos (27 certas), nas 15 de remédio e latas (8 certas) e nos 4 prints de notificação (12 compras certas), também nenhuma diferença. `testes/offline.js`: 30 de 30 (novos: boleto fictício com as partes do valor, e o mesmo boleto com um número trocado na linha, que deixa o valor vazio). Um print de e-mail de aviso de vencimento de boleto sai como boleto, com o valor confirmado nas duas leituras e o vencimento.
 
 ## Pendências conhecidas (ninguém pediu ainda)
 
