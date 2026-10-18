@@ -22,8 +22,15 @@
 // 6. Arquivo em formato antigo (.xls): recusado com o motivo.
 // 7. Pagamento dividido: uma conta e duas vias de cartão; "O cartão final ...
 //    é meu" mostra a minha parte.
-// 8. Câmera de computador (câmera falsa do Chromium).
-// 9. Versão nova do app (o sw.js servido muda): a faixa "Nova versão pronta"
+// 8. Lançamentos: o mesmo leitor para extrato, fatura e print, de qualquer
+//    banco. Documentos de mentira, cada um com uma forma: valor na linha de
+//    baixo (com saldo no fim, e pagamento e estorno do mesmo dia, que ficam
+//    anulados), débito e crédito em colunas (sem saldo), fatura com parcela
+//    3/10, print com uma compra, soma que não fecha com o saldo (aparece
+//    assim mesmo, para conferir) e extrato sem lançamento (mostra o texto e
+//    diz por quê). Todo lançamento sai no formato combinado (ARQUITETURA.md).
+// 9. Câmera de computador (câmera falsa do Chromium).
+// 10. Versão nova do app (o sw.js servido muda): a faixa "Nova versão pronta"
 //    não aparece na primeira visita; quando a versão nova assume no meio de
 //    uma leitura, espera a leitura terminar; recebe o toque: "Depois" fecha e
 //    "Atualizar" recarrega.
@@ -181,6 +188,29 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const scanned = path.join(tmp, 'escaneado.pdf');
   await gen.pdf({ path: scanned, width: '640px', height: '700px' });
   const split = [await shot(bill, 'conta.png'), await shot(slip('MASTERCARD', '1234', '60,00'), 'via1.png'), await shot(slip('VISA', '5678', '40,00'), 'via2.png')];
+  // extratos e fatura de mentira, cada um com uma forma
+  const folha = async (nome, inner) => {
+    await gen.setContent(`<body style="margin:0"><div style="font:14px Arial;padding:30px;line-height:1.5">${inner}</div></body>`);
+    const f = path.join(tmp, nome); await gen.pdf({ path: f, width: '700px', height: '600px' }); return f;
+  };
+  const linhas = ls => ls.map(l => `<div>${l}</div>`).join('');
+  const abaixo = await folha('abaixo.pdf', linhas(['BANCO EXEMPLO S.A.', 'EXTRATO DE CONTA CORRENTE', 'Período: 01/10/2026 a 31/10/2026', 'Data Histórico Valor',
+    '01/10/2026 SALDO ANTERIOR 1.000,00', '05/10/2026 PADARIA PAO DOURADO', '-25,90', '06/10/2026 SALARIO EMPRESA FICTICIA', '3.500,00',
+    '07/10/2026 PAGAMENTO CONTA DE LUZ', '-150,00', '07/10/2026 ESTORNO PAGAMENTO CONTA DE LUZ', '150,00', '10/10/2026 POSTO MODELO', '-200,00',
+    '31/10/2026 SALDO FINAL 4.274,10']));
+  const td = (t, d) => `<td style="text-align:${d ? 'right' : 'left'}">${t}</td>`;
+  const colunas = await folha('colunas.pdf', linhas(['BANCO EXEMPLO S.A.', 'EXTRATO DE CONTA CORRENTE'])
+    + `<table style="font:14px Arial;width:640px"><tr>${td('Data')}${td('Histórico')}${td('Débito', 1)}${td('Crédito', 1)}</tr>`
+    + `<tr>${td('02/10/2026')}${td('LOJA EXEMPLO')}${td('89,90', 1)}${td('')}</tr><tr>${td('03/10/2026')}${td('TED FULANO FICTICIO')}${td('')}${td('500,00', 1)}</tr>`
+    + `<tr>${td('04/10/2026')}${td('FARMACIA MODELO')}${td('45,00', 1)}${td('')}</tr></table>`);
+  const fatura = await folha('fatura.pdf', linhas(['CARTAO EXEMPLO', 'FATURA DO CARTAO DE CREDITO', 'Vencimento: 15/11/2026', 'Saldo fatura anterior R$ 500,00',
+    'Total desta fatura R$ 370,00', 'Lançamentos: compras e saques', 'FULANO FICTICIO (final 0001)', '10/08 LOJA DE MOVEIS EXEMPLO 3/10 250,00',
+    '12/10 RESTAURANTE MODELO 120,00', '20/10 PAGAMENTO EFETUADO -500,00']));
+  const naoFecha = await folha('nao-fecha.pdf', linhas(['BANCO EXEMPLO S.A.', 'EXTRATO', '01 OUT SALDO ANTERIOR 100,00', '02 OUT LOJA UM 30,00 D',
+    '03 OUT LOJA DOIS (20,00)', '05 OUT SALDO FINAL 40,00']));
+  const vazio = await folha('vazio.pdf', linhas(['BANCO EXEMPLO S.A.', 'EXTRATO DE CONTA CORRENTE', 'Período: 01/10/2026 a 31/10/2026', 'Não há movimentações no período.']));
+  const printUm = await shot(`<div style="width:520px;padding:24px;border-radius:18px;background:#fff;font:22px Arial;color:#111;line-height:1.4"><b>Banco Exemplo</b> · agora<br>`
+    + '<b>Compra aprovada</b><br>Compra de R$ 37,50 aprovada em PADARIA EXEMPLO em 12/10, às 13h25. Cartão final 0001.</div>', 'print.png');
   await gen.close();
 
   const txt = file('recibo.txt', 'LOJA EXEMPLO LTDA\nCNPJ 12.345.678/0001-90\nVIA CLIENTE\nCREDITO A VISTA\nMASTERCARD ************4321\nDATA 09/10/2026 14:22\nVALOR TOTAL R$ 42,50\n');
@@ -407,7 +437,45 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   check(via['Quem pagou'] === 'Você' && conta['Minha parte'] === 'R$ 60,00', `"O cartão final 1234 é meu": quem pagou=${via['Quem pagou']}, minha parte=${conta['Minha parte']}`);
   await page.close();
 
-  // 8. câmera ao vivo (computador)
+  // 8. lançamentos: um leitor só, documentos de mentira com formas diferentes
+  const lancados = async (arquivo, tipo) => {
+    page = await open();
+    const r = await send(page, [arquivo], tipo);
+    const res = await page.evaluate(() => papers[0].result);
+    const riscados = await page.$$eval('.items-table tbody tr.anulado', t => t.length);
+    const tipoLido = await page.$eval('#docTypeLabel', e => e.textContent);
+    await page.close();
+    return Object.assign(r, { res, itens: res.itens || [], riscados, tipoLido });
+  };
+  const vals = x => x.itens.map(i => i.valor).join('|');
+  const l1 = await lancados(abaixo, 'auto');
+  check(l1.tipoLido.includes('Extrato') && vals(l1) === '-25.9|3500|-150|150|-200' && l1.itens.every(i => i.conferido) && /confere com o saldo/.test(l1.status)
+    && l1.itens.filter(i => i.anulado).map(i => i.valor).join('|') === '-150|150' && l1.riscados === 2,
+    `valor na linha de baixo, saldo no fim: ${vals(l1)} (${l1.status}); pagamento e estorno do mesmo dia anulados e riscados: ${l1.riscados}`);
+  const l2 = await lancados(colunas, 'extrato');
+  check(vals(l2) === '-89.9|500|-45' && l2.itens.every(i => i.conferido === false) && /não há saldo/.test(l2.status),
+    `débito e crédito em colunas, sem saldo: ${vals(l2)} (${l2.status})`);
+  const l3 = await lancados(fatura, 'fatura'), p3 = l3.itens[0] || {};
+  check(vals(l3) === '-250|-120|500' && JSON.stringify(p3.parcela) === '{"n":3,"de":10}' && p3.data === '10/08/2026'
+    && l3.itens.every(i => i.cartaoFinal === '0001' && i.conferido) && /confere com o total da fatura/.test(l3.status),
+    `fatura com parcela 3/10: ${vals(l3)}, parcela ${JSON.stringify(p3.parcela)} comprada em ${p3.data} (${l3.status})`);
+  const l4 = await lancados(naoFecha, 'extrato');
+  check(vals(l4) === '-30|-20' && l4.itens.every(i => i.conferido === false) && l4.res.conferido === false && (l4.itens[0] || {}).data.startsWith('02/10/')
+    && l4.status.includes('a soma não fecha com o saldo (diferença de R$ 10,00)'),
+    `a soma não fecha: os lançamentos aparecem assim mesmo, para conferir: ${vals(l4)} (${l4.status})`);
+  const l5 = await lancados(vazio, 'extrato');
+  check(!l5.itens.length && /^Não achei lançamentos: .+\. O texto lido está abaixo\.$/.test(l5.status) && (l5.fields[0].Texto || '').includes('Não há movimentações'),
+    `extrato sem lançamento: mostra o texto e diz por quê ("${l5.status}")`);
+  const l6 = await lancados(printUm, 'notificacao'), p6 = l6.itens[0] || {};
+  check(l6.itens.length === 1 && p6.valor === -37.5 && p6.data.startsWith('12/10/') && p6.hora === '13:25' && p6.cartaoFinal === '0001' && p6.tipo === 'compra',
+    `print com uma compra: ${l6.itens.length} lançamento de ${p6.valor} em ${p6.data} às ${p6.hora}`);
+  const TIPOS = ['compra', 'pagamento', 'estorno', 'encargo', 'anuidade', 'transferencia', 'outro'];
+  const todos = [l1, l2, l3, l4, l6].flatMap(x => x.itens);
+  check(todos.length === 14 && todos.every(i => ['data', 'descricao', 'valor', 'moeda', 'entrada', 'tipo', 'conferido', 'origem'].every(k => k in i)
+    && i.entrada === i.valor > 0 && i.moeda === 'BRL' && TIPOS.includes(i.tipo) && typeof i.origem.papel === 'string'),
+    `os ${todos.length} lançamentos saem no formato combinado (data, descrição, valor, moeda, entrada, tipo, conferido, origem)`);
+
+  // 9. câmera ao vivo (computador)
   page = await open();
   await page.click('#btnCamera');
   const live = await page.waitForFunction(() => document.getElementById('cameraDialog').open && document.getElementById('cameraVideo').videoWidth > 0, null, { timeout: 15000 }).then(() => true).catch(() => false);
@@ -417,7 +485,7 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   check(asked, '"Tirar foto" manda a foto para leitura (pergunta o tipo)');
   await page.close();
 
-  // 9. versão nova: a faixa de atualização (celular: toque)
+  // 10. versão nova: a faixa de atualização (celular: toque)
   const tela = await browser.newContext({ hasTouch: true, viewport: { width: 390, height: 760 } });
   await tela.route(() => true, route => {
     const url = route.request().url();

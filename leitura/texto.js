@@ -269,7 +269,8 @@
     };
 
     const r = { fields, tipo, expectsValue, valor, candidates, status, hint, textKind, far, debug };
-    if (codigo && codigo.itens) r.itens = codigo.itens;   // the parts of the amount (boleto)
+    // the parts of the amount (boleto), in the same format as every transaction
+    if (codigo && codigo.itens) r.itens = codigo.itens.map(i => L.leitores.extrato.contrato(i, { tipo, conferido: true, papel: '' }));
     return r;
   }
 

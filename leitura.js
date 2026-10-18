@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.3.0';
+  L.versao = '1.4.0';
   // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
   L.app = L.app || null;
 
@@ -170,7 +170,12 @@
       const a = juntos[juntos.length - 1];
       const junta = q => q && q.fonte.formato === 'pdf' && q.fonte.texto && L.tipo(q.tipo).leitor === 'extrato';
       if (junta(a) && junta(p) && a.fonte.arquivo === p.fonte.arquivo && a.tipo === p.tipo) {
-        const fonte = Object.assign({}, a.fonte, { texto: a.fonte.texto + '\n' + p.fonte.texto, nome: a.fonte.nome.replace(/,? ?[Pp]ágina \d+$/, '') });
+        const inicio = a.fonte.texto.split('\n').length;
+        const fonte = Object.assign({}, a.fonte, {
+          texto: a.fonte.texto + '\n' + p.fonte.texto, nome: a.fonte.nome.replace(/,? ?[Pp]ágina \d+$/, ''),
+          posicoes: (a.fonte.posicoes || []).concat(p.fonte.posicoes || []),
+          paginas: (a.fonte.paginas || [{ n: a.fonte.pagina, inicio: 0 }]).concat([{ n: p.fonte.pagina, inicio }])
+        });
         juntos[juntos.length - 1] = L.lerArquivo(fonte, a.tipo);
       } else juntos.push(p);
     });
@@ -190,7 +195,8 @@
     }
     const texto = fonte.texto || (fonte.linhas || []).map(l => l.join('  ')).join('\n');
     const lines = texto.split('\n').map(t => ({ text: t.trim(), conf: 100 })).filter(l => l.text);
-    const reading = { text: texto, conf: 100, words: [], lines, exato: true };
+    // posicoes (PDF): onde fica cada pedaço de cada linha, para as colunas; paginas: onde começa cada página
+    const reading = { text: texto, conf: 100, words: [], lines, exato: true, posicoes: fonte.posicoes, paginas: fonte.paginas || (fonte.pagina ? [{ n: fonte.pagina, inicio: 0 }] : undefined) };
     return Object.assign(papel, { readings: [reading], tipo: tipoPedido === 'auto' ? L.texto.detectDocType([reading]) : tipoPedido });
   };
 
@@ -223,13 +229,13 @@
   };
 
   // O resultado de um papel: campos, valor e situação (leitura/texto.js e leitores/).
-  // Lançamentos vêm do arquivo (OFX, CSV, planilha) ou do texto lido, quando o
-  // leitor do tipo os tira dele (print de notificação); mudam se o tipo mudar.
+  // Lançamentos vêm do arquivo (OFX, CSV, planilha) ou do texto lido (extrato,
+  // fatura e print, pelo leitor de lançamentos); mudam se o tipo mudar.
   L.resultado = papel => {
     if (!papel.readings.length) return L.leitores.extrato.resultado(papel);
     const base = L.texto.buildResult(papel.readings, papel.tipo, papel.codes, papel.tilt);
     const leitor = L.leitores[L.tipo(papel.tipo).leitor];
     const lidos = leitor && leitor.itens ? leitor.itens(papel.readings, papel.tipo) : null;
-    return lidos && (lidos.itens.length || lidos.campos) ? L.leitores.extrato.resultado(Object.assign({}, papel, { itens: lidos.itens }), base, lidos) : base;
+    return lidos ? L.leitores.extrato.resultado(Object.assign({}, papel, { itens: lidos.itens }), base, lidos) : base;
   };
 })();
