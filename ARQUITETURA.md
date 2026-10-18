@@ -37,12 +37,12 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 | `leitura/foto.js` | Inclinação, papéis na foto (`findPapers`), recorte, limpeza do fundo, as várias leituras com o Tesseract (`readPaper`, `lerFotos`). |
 | `leitura/codigos.js` | `readCodes`: QR e códigos de barras (ZXing + jsQR). |
 | `leitura/relacoes.js` | `Leitura.relacionar(papeis)`: mesma compra, pagamento dividido, quem pagou e "minha parte" (cartões da pessoa pelos 4 últimos dígitos, em `localStorage` `leitor_meus_cartoes`). |
-| `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce` (também o total do DANFE, conferido pela soma da nota), `conta`, `transferencia` (Pix, TED), `boleto` (valor e vencimento da linha digitável, conferidos pelos dígitos verificadores; as partes do valor; o valor pago no comprovante), `arrecadacao` (conta de luz, água, gás, telefone, imposto e multa pelo código de 48 números), `extrato` (lançamentos de OFX, CSV, planilha, TXT e de fatura e extrato em PDF com texto, só quando fecham com o total ou o saldo), `notificacao` (as compras de um print de notificação viram lançamentos). |
+| `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce` (também o total do DANFE, conferido pela soma da nota), `conta`, `transferencia` (Pix, TED), `boleto` (valor e vencimento da linha digitável, conferidos pelos dígitos verificadores; as partes do valor; o valor pago no comprovante), `arrecadacao` (conta de luz, água, gás, telefone, imposto e multa pelo código de 48 números), `extrato` (o **leitor de lançamentos**: um só para extrato, fatura e print de notificação, de qualquer banco; ver "Lançamentos"). |
 | `formatos/*.js` | Um arquivo por tipo de arquivo. |
 | `index.html` | Telas: capturar, abas dos papéis, campos para conferir, histórico, exportar, ajustes. Janelas: `detailDialog`, `confirmDialog`, `docTypeDialog`, `cameraDialog`, `papersDialog`, `passwordDialog` (todas `<dialog>` nativo). |
 | `sw.js` | Uso sem internet. `VERSAO` acompanha `APP_VERSION` do `index.html`. Arquivo novo do app entra em `ARQUIVOS`. A versão nova assume na hora (skipWaiting + clients.claim); a tela mostra a faixa "Nova versão pronta" (Atualizar / Depois) quando ela assume (`controllerchange`), nunca na primeira visita, e espera a leitura em andamento terminar. |
 | `testes/medir.js` | Mede a leitura em fotos reais (fora do repositório) contra um gabarito. |
-| `testes/offline.js` | Testa sem dados pessoais: uso sem internet, partes pesadas por demanda, PDF (com senha também), TXT, CSV, OFX, XLSX, DOCX, várias fotos, pagamento dividido, câmera. |
+| `testes/offline.js` | Testa sem dados pessoais: uso sem internet, partes pesadas por demanda, PDF (com senha também), TXT, CSV, OFX, XLSX, DOCX, várias fotos, pagamento dividido, lançamentos de extratos, fatura e print de mentira, câmera, faixa de versão nova. |
 | `NOTAS-leitor-ocr.md` | Como a leitura funciona, por que cada decisão foi tomada, os números de cada etapa e as pendências. |
 | `ESTRATEGIA-leitura.md`, `PEDIDOS.md` | O plano do motor único para todos os apps e os pedidos que chegam dos outros apps. |
 
@@ -50,7 +50,7 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 
 1. `Leitura.abrir(arquivos, aviso, pedirSenha)` → **fontes**. Cada foto, página de PDF, aba de planilha ou texto vira uma fonte: `{ nome, img }` (ler como foto), `{ nome, texto }` (texto pronto), `{ nome, linhas }` (tabela) ou `{ nome, itens, info }` (lançamentos de OFX). Arquivo que não abre volta em `recusados`, com o motivo, sem atrapalhar os outros. PDF com senha (fatura e extrato de banco costumam ter): o motor chama `pedirSenha(nome, errou)`, que o app responde com a senha digitada (ou nada, para pular o arquivo); a senha só abre o arquivo naquele momento e não é guardada. Sem `pedirSenha`, o PDF com senha volta em `recusados`.
 2. A tela pergunta o tipo (o OFX já diz que é extrato ou fatura) e, em foto, se há vários papéis (`Leitura.acharPapeis`).
-3. `Leitura.ler(fontes, { tipo, aviso, progresso })` → **papéis**, um por documento, cada um com `result` (`fields`, `valor`, `candidates`, `status`, `itens`...). Foto passa pelo OCR (várias leituras; o valor só vale quando duas leituras diferentes concordam). Texto de arquivo é exato: uma leitura basta. Lançamentos (`result.itens`: `{ data, hora?, descricao, valor }`) vêm do arquivo (OFX, CSV, planilha) ou do texto lido, quando o leitor do tipo tem `itens(readings)` (print de notificação: cada compra do print é um lançamento; o que as duas leituras não confirmam fica de fora, com aviso).
+3. `Leitura.ler(fontes, { tipo, aviso, progresso })` → **papéis**, um por documento, cada um com `result` (`fields`, `valor`, `candidates`, `status`, `itens`...). Foto passa pelo OCR (várias leituras; o valor só vale quando duas leituras diferentes concordam). Texto de arquivo é exato: uma leitura basta. Lançamentos (`result.itens`, no formato da seção "Lançamentos") vêm do arquivo (OFX, CSV, planilha) ou do texto lido (extrato, fatura e print), pelo leitor de lançamentos.
 4. `Leitura.relacionar(papeis)` acrescenta os campos de relação.
 
 ## Detecção automática da categoria e do tipo
@@ -86,10 +86,46 @@ if (outro) avisar(outro.texto + ' Ler aqui mesmo?', outro.apps[0].url);
    - `campos(textUpper, fieldsMap)` para campos só dele (ex.: o cartão tem bandeira, NSU, final do cartão);
    - `exato(readings, codes)` → `{ valor, campos, itens?, status }` quando o valor pode ser conferido (código com dígito verificador no `boleto` e na `arrecadacao`; soma da nota no `nfce`): esse valor ganha do texto; `soCodigo: true` no leitor impede de tirar o valor do texto quando o código não vem;
    - ou `daTabela(linhas)` e `resultado(papel)` quando o documento é uma lista (ex.: `extrato`);
-   - ou `itens(readings, tipo)` → `{ itens, duvidas, confirmados }` (ou `{ itens, campos, conferido }`) quando a lista sai do texto lido (ex.: `notificacao`, fatura e extrato em PDF); o resumo é o do `extrato`.
+   - documento que é uma lista de lançamentos (extrato, fatura, carteira digital, print) não ganha leitor próprio: usa `leitor: 'extrato'`, o leitor de lançamentos (ver "Lançamentos").
 3. No catálogo: `leitor: '<id>'` no tipo e o id em `leitores` (a ordem é a da detecção).
 4. Pôr o `<script src="leitores/<id>.js">` no `index.html` e o arquivo na lista do `sw.js`.
 5. Medir com fotos reais e gabarito (`testes/medir.js`) antes e depois, e contar o resultado numa tabela.
+
+## Lançamentos: um leitor só e um formato só
+
+**Um leitor para todo extrato e fatura** (`leitores/extrato.js`): conta corrente, poupança, cartão de crédito e carteira digital, de qualquer banco, em PDF com texto, PDF escaneado, foto ou print de notificação. Não existe código nem arquivo por banco.
+
+- **Pelo jeito das linhas.** Um lançamento é data + descrição + valor + sinal. Datas "dd/mm", "dd/mm/aaaa", "12 out"; valores com ou sem R$, com ou sem ponto de milhar (e "1,234.56" em conta em dólar). O sinal vem de D/C, de + e −, de parênteses, das colunas de débito e crédito ou, sem nada escrito, do costume do papel (quando só a saída tem sinal, sem sinal é entrada) e das palavras (pagamento, estorno, compra, crédito). O valor pode estar na linha da data, na de cima ou na de baixo; a descrição, na mesma linha ou nas vizinhas (o histórico em cima e o detalhe embaixo). Em PDF com texto, o `formatos/pdf.js` entrega também onde fica cada pedaço da linha (`posicoes`): por ela o leitor acha a coluna de débito e a de crédito, e lê a fatura impressa em duas colunas uma coluna de cada vez (o que também dá o cartão de cada compra). Na foto, as duas leituras são alinhadas: o lançamento lido igual nas duas fica confirmado, o lido com valor diferente fica de fora, e linha com duas colunas misturadas não entra.
+- **Dica de banco é só dado.** A tabela `DICAS` diz, para um banco, as palavras do cabeçalho, onde fica o histórico e como ele marca o sinal. Sem dica que bata, o leitor faz igual: a dica só desempata o que o papel não deixa claro.
+- **A soma confere, não esconde.** Extrato: o saldo de antes mais os lançamentos tem que dar o saldo depois do último. Fatura: os lançamentos dão um total impresso (as compras, os lançamentos de um cartão) ou o saldo da fatura anterior mais os lançamentos dá o total. Sinal em dúvida ("LOJA - 75,00") e encargo sem data (IOF) entram do jeito que fecha a soma. Quando nada fecha, os lançamentos aparecem assim mesmo, com `conferido: false` e o aviso "a soma não fecha com o saldo (diferença de R$ X)", para a pessoa corrigir na tela. O valor principal do papel segue a regra do projeto: vazio em vermelho antes de errado.
+- **Nada inventado.** Sem nenhum lançamento confiável, a tela mostra o texto lido e diz numa frase por quê ("Não achei lançamentos: nenhuma linha começa com uma data").
+- **Pagamento e estorno do mesmo valor no mesmo dia** não somem nem se juntam: os dois ficam, com `anulado: true` (a tela mostra riscado). O app que importa (MoneyTRIO) decide se esconde.
+
+**O lançamento**: o mesmo formato para todo tipo de documento e todo app. Os campos de antes (`data`, `descricao`, `valor`) não mudaram; os outros são acréscimos.
+
+| Campo | O que é |
+|---|---|
+| `data` | "dd/mm/aaaa". Na compra parcelada, o dia da compra |
+| `hora` | "hh:mm", quando o papel diz (print de notificação) |
+| `descricao` | como está no papel |
+| `valor` | número com sinal: negativo é saída, positivo é entrada |
+| `moeda` | "BRL", "USD", "EUR"... |
+| `entrada` | `true` quando o dinheiro entra (`valor > 0`) |
+| `tipo` | "compra", "pagamento", "estorno", "encargo", "anuidade", "transferencia" ou "outro" (pelas palavras) |
+| `parcela` | `{ n, de }` na compra parcelada ("3/10" → `{ n: 3, de: 10 }`) |
+| `cartaoFinal` | os últimos números do cartão (fatura e print), nunca o número inteiro |
+| `conferido` | `true` quando a soma fechou com o saldo ou o total impresso, ou quando veio de arquivo de dados do banco (OFX, CSV, planilha); `false` = a pessoa confere |
+| `anulado` | `true` no pagamento e no estorno do mesmo valor no mesmo dia |
+| `origem` | `{ papel, pagina?, linha? }`: o papel (nome do arquivo ou da aba), a página do PDF e a linha |
+
+```js
+{ data: '10/08/2026', descricao: 'LOJA DE MOVEIS EXEMPLO 3/10', valor: -250, moeda: 'BRL', entrada: false, tipo: 'compra',
+  parcela: { n: 3, de: 10 }, cartaoFinal: '0001', conferido: true, origem: { papel: 'fatura.pdf', pagina: 1, linha: 8 } }
+```
+
+No papel: `result.itens` (a lista), `result.conferido` e, quando a soma não fecha, `result.diferenca` (em reais).
+
+**Copiar o motor para os outros apps fica para depois**: MoneyTRIO, HyperNutry e OmniLife recebem esta versão do motor cada um no seu próprio PR.
 
 ## Abrir um formato novo de arquivo
 

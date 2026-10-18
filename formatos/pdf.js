@@ -8,19 +8,25 @@
   const MAX_PAGINAS = 10;
   let pdfjs = null;
 
-  // As palavras da página em linhas, de cima para baixo e da esquerda para a direita
+  // As palavras da página em linhas, de cima para baixo e da esquerda para a
+  // direita. Junto, onde cada pedaço de cada linha começa e acaba (de 0 a 1 da
+  // largura da página): o leitor de lançamentos acha por ela as colunas
+  // (débito e crédito, ou a fatura impressa em duas colunas).
   async function textoDaPagina(page) {
     const { items } = await page.getTextContent();
+    const largura = page.getViewport({ scale: 1 }).width || 1;
     const linhas = [];
     items.filter(i => i.str && i.str.trim()).forEach(i => {
       const x = i.transform[4], y = i.transform[5], h = Math.abs(i.transform[3]) || 10;
       let l = linhas.find(q => Math.abs(q.y - y) < h * 0.5);
       if (!l) linhas.push(l = { y, partes: [] });
-      l.partes.push({ x, s: i.str });
+      l.partes.push({ x, w: i.width || 0, s: i.str });
     });
-    return linhas.sort((a, b) => b.y - a.y)
-      .map(l => l.partes.sort((a, b) => a.x - b.x).map(p => p.s).join(' ').replace(/\s+/g, ' ').trim())
-      .join('\n');
+    linhas.sort((a, b) => b.y - a.y).forEach(l => l.partes.sort((a, b) => a.x - b.x));
+    return {
+      texto: linhas.map(l => l.partes.map(p => p.s).join(' ').replace(/\s+/g, ' ').trim()).join('\n'),
+      posicoes: linhas.map(l => l.partes.map(p => ({ x0: p.x / largura, x1: (p.x + p.w) / largura, s: p.s.replace(/\s+/g, ' ').trim() })))
+    };
   }
 
   // PDF com senha (fatura e extrato de banco costumam ter): pedirSenha(nome,
@@ -54,8 +60,8 @@
     const fontes = [];
     for (let n = 1; n <= Math.min(doc.numPages, MAX_PAGINAS); n++) {
       const page = await doc.getPage(n);
-      const texto = await textoDaPagina(page);
-      if (texto.replace(/[^0-9A-Za-zÀ-ÿ]/g, '').length >= 20) { fontes.push({ parte: 'Página ' + n, texto }); continue; }
+      const { texto, posicoes } = await textoDaPagina(page);
+      if (texto.replace(/[^0-9A-Za-zÀ-ÿ]/g, '').length >= 20) { fontes.push({ parte: 'Página ' + n, pagina: n, texto, posicoes }); continue; }
       const base = page.getViewport({ scale: 1 });
       const viewport = page.getViewport({ scale: Math.min(4, 2200 / Math.max(base.width, base.height)) });
       const c = document.createElement('canvas');
@@ -63,7 +69,7 @@
       const ctx = c.getContext('2d');
       ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
       await page.render({ canvasContext: ctx, viewport }).promise;
-      fontes.push({ parte: 'Página ' + n, img: c });
+      fontes.push({ parte: 'Página ' + n, pagina: n, img: c });
     }
     if (doc.numPages > MAX_PAGINAS) fontes.aviso = `o PDF tem ${doc.numPages} páginas; li as ${MAX_PAGINAS} primeiras`;
     return fontes;

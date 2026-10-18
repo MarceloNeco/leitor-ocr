@@ -1023,6 +1023,18 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
     .items-table td.neg { color: var(--danger); }
 
+    /* Pagamento e estorno do mesmo valor no mesmo dia: ficam na lista, riscados */
+    .items-table tr.anulado td { color: var(--muted); text-decoration: line-through; }
+    .items-table .tag {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 0 4px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 10px;
+      text-decoration: none;
+    }
+
     .items-box p {
       font-size: 12px;
       color: var(--muted);
@@ -1529,12 +1541,11 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
   <script src="leitores/boleto.js"></script>
   <script src="leitores/arrecadacao.js"></script>
   <script src="leitores/extrato.js"></script>
-  <script src="leitores/notificacao.js"></script>
   <script>
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.7.4';
+    const APP_VERSION = '0.7.5';
     const APP_UPDATED = '18/10/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
@@ -2129,7 +2140,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         showToast(`${papers.length} papéis lidos${money ? `, ${ok} com valor confirmado` : ''}. Confira cada aba.`, ok === money ? 'ok' : 'warn', 5000);
         pares.forEach(([a, b]) => showToast(`Papéis ${a} e ${b} parecem a mesma compra.`, 'ok', 5000));
         divisoes.forEach(d => showToast(`Conta paga em partes: veja ${papers[d.conta].label || 'o papel ' + (d.conta + 1)}.`, 'ok', 6000));
-      } else if (first.itens && first.valor === null) showToast(`${first.itens.length} lançamentos lidos.`, 'ok');
+      } else if (first.itens && first.itens.length && first.valor === null) showToast(`${first.itens.length} lançamentos lidos.`, 'ok');
       else if (!first.expectsValue) showToast('Texto lido. Confira os campos.', 'ok');
       else if (first.valor !== null) showToast('Comprovante processado com sucesso!', 'ok');
       else if (first.candidates.length) showToast('Não tenho certeza do valor. Toque no valor certo.', 'warn');
@@ -2196,13 +2207,14 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         }
       });
 
-      // Transactions of a bank statement or card bill (OFX, CSV or spreadsheet),
-      // or the purchases of a notification screenshot
+      // Transactions of a bank statement or card bill (file, PDF or photo),
+      // or the purchases of a notification screenshot; a payment and its
+      // refund on the same day stay on the list, struck through
       const items = result.itens || [];
       itemsBox.style.display = items.length ? '' : 'none';
       const MAX_ITEMS = 200;
       itemsBox.innerHTML = items.length ? `<table class="items-table"><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>${
-        items.slice(0, MAX_ITEMS).map(i => `<tr><td>${escapeHtml(i.data + (i.hora ? ' ' + i.hora : ''))}</td><td>${escapeHtml(i.descricao)}</td><td class="${i.valor < 0 ? 'neg' : ''}">${escapeHtml((i.valor < 0 ? '-' : '') + (result.moeda ? result.moeda + ' ' + Math.abs(i.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : formatBRL(Math.abs(i.valor))))}</td></tr>`).join('')
+        items.slice(0, MAX_ITEMS).map(i => `<tr${i.anulado ? ' class="anulado"' : ''}><td>${escapeHtml(i.data + (i.hora ? ' ' + i.hora : ''))}</td><td>${escapeHtml(i.descricao)}${i.anulado ? '<small class="tag">anulado</small>' : ''}</td><td class="${i.valor < 0 ? 'neg' : ''}">${escapeHtml((i.valor < 0 ? '-' : '') + (result.moeda ? result.moeda + ' ' + Math.abs(i.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : formatBRL(Math.abs(i.valor))))}</td></tr>`).join('')
       }</tbody></table>${items.length > MAX_ITEMS ? `<p>e mais ${items.length - MAX_ITEMS} lançamentos (todos são guardados ao salvar)</p>` : ''}` : '';
 
       // Category and type: "Saúde › Pedido de exame"

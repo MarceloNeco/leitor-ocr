@@ -140,7 +140,7 @@
       t('regras', 'Regras da casa ou aviso', 'House rules or notice', { precisa: ['foto'] })
     ] },
     { id: 'telas', pt: 'Telas e mensagens', en: 'Screens and messages', apps: ['omnilife'], tipos: [
-      t('notificacao', 'Print de notificação (compra, banco)', 'Notification screenshot', { leitor: 'notificacao', apps: ['moneytrio'], precisa: ['foto'], privacidade: 'financeiro' }),
+      t('notificacao', 'Print de notificação (compra, banco)', 'Notification screenshot', { leitor: 'extrato', apps: ['moneytrio'], precisa: ['foto'], privacidade: 'financeiro' }),
       t('print', 'Print de tela', 'Screenshot', { precisa: ['foto'] }),
       t('email', 'E-mail', 'E-mail', { precisa: ['foto', 'pdf', 'texto'] }),
       t('recado', 'Recado ou bilhete', 'Note', { precisa: ['foto'] })
@@ -232,7 +232,7 @@
 
   L.catalogo = {
     capacidades, formatos, familias, apps,
-    leitores: ['nfce', 'cartao', 'conta', 'transferencia', 'boleto', 'arrecadacao', 'extrato', 'notificacao'],
+    leitores: ['nfce', 'cartao', 'conta', 'transferencia', 'boleto', 'arrecadacao', 'extrato'],
     tipo: id => tipos[id],
     familia: id => familias.find(f => f.id === id),
     // Tipos reconhecidos pelos sinais do catálogo (os leitores de dinheiro têm os próprios)
