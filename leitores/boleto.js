@@ -2,7 +2,8 @@
    vencimento estão dentro da linha digitável (47 números) e do código de barras
    (44): o leitor tira de lá, conferindo os dígitos verificadores. Número lido
    errado não fecha a conta, e aí o valor vem do texto ("Valor do documento")
-   como em qualquer papel, ou fica vazio, nunca errado.
+   como em qualquer papel, ou fica vazio, nunca errado. As partes do valor
+   (condomínio, água, gás...) viram itens só quando somam o valor exato.
    palavras e ignorar: para o valor no texto, quando o código não foi lido. */
 (function (L) {
   'use strict';
@@ -61,7 +62,26 @@
     return `${f(c1 + mod10(c1), 5)} ${f(c2 + mod10(c2), 5)} ${f(c3 + mod10(c3), 5)} ${b[4]} ${b.slice(5, 19)}`;
   }
 
-  // Valor e campos exatos, vindos do código; o beneficiário vem do texto
+  // As partes do valor ("Discriminação das verbas": condomínio, fundo de
+  // reserva, água, gás...), só quando somam exatamente o valor do código
+  function verbas(texto, centavos, data) {
+    const linhas = String(texto || '').split('\n');
+    const i = linhas.findIndex(l => /DISCRIMINA[CÇ][AÃ]O DAS VERBAS|COMPOSI[CÇ][AÃ]O DO (?:VALOR|BOLETO)/i.test(l));
+    if (i < 0) return null;
+    const itens = [];
+    let soma = 0;
+    for (const l of linhas.slice(i + 1, i + 25)) {
+      const m = l.match(/^(.*?[A-Za-zÀ-ÿ].*?)\s+(\d{1,3}(?:\.\d{3})*,\d{2})(?!\d)/);
+      if (!m) continue;
+      const c = +m[2].replace(/\D/g, '');
+      soma += c;
+      itens.push({ data, descricao: m[1].trim(), valor: -c / 100 });
+      if (soma >= centavos) break;
+    }
+    return soma === centavos && itens.length > 1 ? itens : null;
+  }
+
+  // Valor e campos exatos, vindos do código; o beneficiário e as partes do valor vêm do texto
   function exato(readings, codes) {
     let b = null;
     for (const r of readings) if ((b = achar(r.text, codes))) break;
@@ -75,8 +95,20 @@
       const nome = i >= 0 && (linhas[i + 1] || '').replace(/\s*CNPJ.*$|\s*CPF.*$/i, '').trim();
       if (nome && /[A-Za-zÀ-ÿ]{3}/.test(nome)) { campos.Estabelecimento = nome; break; }
     }
+    const itens = valor ? readings.map(r => verbas(r.text, Math.round(valor * 100), campos.Vencimento)).find(Boolean) : null;
     if (!campos.Vencimento) delete campos.Vencimento;
-    return { valor: valor || null, campos, status: 'Valor conferido pelo código do boleto' };
+    // Comprovante de pagamento do boleto: o que vale é o valor pago (pode ter
+    // desconto ou multa); o do código fica como "Valor do boleto". Sem o valor
+    // pago escrito, o campo Valor fica vazio em vez de mostrar o do boleto.
+    const recibo = readings.map(r => String(r.text || '')).find(t => /COMPROVANTE DE PAGAMENTO|PAGAMENTO (?:EFETUADO|REALIZADO)|VALOR PAGO/i.test(t));
+    if (recibo) {
+      const pago = recibo.match(/(?:VALOR (?:TOTAL )?PAGO|VALOR DO PAGAMENTO|TOTAL PAGO)\s*:?\s*(?:R\$)?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/i) || recibo.match(/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/);
+      const num = pago ? +pago[1].replace(/\./g, '').replace(',', '.') : null;
+      if (valor) campos['Valor do boleto'] = L.texto.formatBRL(valor);
+      return { valor: num, campos, itens: null, semTexto: true,
+        status: num === valor ? 'Valor conferido pelo código do boleto' : 'Valor pago, lido do comprovante (o do boleto está abaixo)' };
+    }
+    return { valor: valor || null, campos, itens, status: 'Valor conferido pelo código do boleto' };
   }
 
   L.registrarLeitor({

@@ -95,12 +95,23 @@
   // Guesses the document type from the words that give it away
   function detectDocType(readings) {
     const text = readings.map(r => r.text).join('\n').toUpperCase();
-    // A card bill talks about card, credit and debit all the time, like a
-    // card slip, but no slip says "pagamento mínimo" or "total da fatura":
-    // with many signs of a bill, it is a bill (and has no single amount)
-    if ((text.match(L.catalogo.tipo('fatura').sinais) || []).length >= 6) return 'fatura';
-    // A bank slip's code line has check digits: one that checks out is a boleto
+    // A bank slip's code line has check digits: one that checks out is a
+    // boleto, even on a page that also has the condo's report or the bill
     if (L.leitores.boleto && readings.some(r => L.leitores.boleto.achar(r.text))) return 'boleto';
+    // The same for the collection code of utility bills, taxes and fines (48
+    // digits starting with 8): its 2nd digit says which of them it is
+    const arrecadacao = L.leitores.arrecadacao && readings.map(r => L.leitores.arrecadacao.achar(r.text)).find(Boolean);
+    if (arrecadacao && L.leitores.arrecadacao.tipoDe(arrecadacao)) return L.leitores.arrecadacao.tipoDe(arrecadacao);
+    // A card bill or a condo's financial report talks about credit and debit
+    // all the time, like a card slip, but no slip says "pagamento mínimo" or
+    // "posição financeira": with 6 or more of their own signs, they come
+    // before the money readers (and have no single amount)
+    let forte = null, forteScore = 5;
+    L.catalogo.comSinais().forEach(t => {
+      const score = t.forte ? (text.match(t.sinais) || []).length : 0;
+      if (score > forteScore) { forte = t.id; forteScore = score; }
+    });
+    if (forte) return forte;
     let best = 'livre', bestScore = 2;   // fewer than 3 signs: free text
     L.detectaveis().forEach(key => {
       const score = (text.match(L.leitores[key].sinais) || []).length;
@@ -180,7 +191,7 @@
     const parsed = readings.map(r => parseDocument(r.text, tipo));
     // A value carried by a code with check digits (boleto) is exact and wins
     const codigo = def.exato ? def.exato(readings, codes) : null;
-    const valor = codigo && codigo.valor ? codigo.valor : expectsValue ? agreedValue(readings, tipo) : null;
+    const valor = codigo && codigo.valor ? codigo.valor : expectsValue && !def.soCodigo && !(codigo && codigo.semTexto) ? agreedValue(readings, tipo) : null;
     const candidates = expectsValue && valor === null
       ? [...new Set(parsed.map(p => p.candidatos[0] ? p.candidatos[0].num : null).filter(n => n !== null))]
       : [];
@@ -257,7 +268,9 @@
       readings: readings.map((r, i) => ({ text: r.text, conf: r.conf, words: r.words.length, good: goodWords(r), rot: r.rot, bin: r.bin, size: r.size, region: r.region, candidatos: parsed[i].candidatos }))
     };
 
-    return { fields, tipo, expectsValue, valor, candidates, status, hint, textKind, far, debug };
+    const r = { fields, tipo, expectsValue, valor, candidates, status, hint, textKind, far, debug };
+    if (codigo && codigo.itens) r.itens = codigo.itens;   // the parts of the amount (boleto)
+    return r;
   }
 
   function parseDocument(rawText, tipo) {

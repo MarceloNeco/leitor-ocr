@@ -15,8 +15,9 @@
 // 4. Duas fotos de uma vez: 2 abas, cada uma com seu valor. Espiada rápida e
 //    app certo: um comprovante espiado "dentro do HyperNutry" manda para o MoneyTRIO.
 // 5. TXT, CSV (de banco, em Windows-1252), OFX de fatura, XLSX e DOCX.
-//    Boleto: valor e vencimento da linha digitável; com um número trocado,
-//    o código não vale e o valor fica vazio.
+//    Boleto: valor e vencimento da linha digitável e as partes do valor
+//    (que somam o total); com um número trocado, o código não vale e o
+//    valor fica vazio.
 //    Detecção automática: uma receita médica fictícia vira "Saúde › Receita médica".
 // 6. Arquivo em formato antigo (.xls): recusado com o motivo.
 // 7. Pagamento dividido: uma conta e duas vias de cartão; "O cartão final ...
@@ -203,7 +204,7 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     + `${p('DATA 11/10/2026')}${p('VALOR TOTAL R$ 99,90')}</w:body></w:document>` }));
   const xls = file('velho.xls', 'nao e uma planilha de verdade');
   const linha = linhaBoleto('10/11/2026', 45678);
-  const boleto = file('boleto.txt', `BANCO EXEMPLO S.A.  237-2  ${linha}\nBeneficiário\nESCOLA EXEMPLO LTDA CNPJ: 12.345.678/0001-90\nVencimento 10/11/2026\nValor do Documento R$ 456,78\n(+) Mora / Multa R$ 9,13\n`);
+  const boleto = file('boleto.txt', `BANCO EXEMPLO S.A.  237-2  ${linha}\nBeneficiário\nESCOLA EXEMPLO LTDA CNPJ: 12.345.678/0001-90\nVencimento 10/11/2026\nValor do Documento R$ 456,78\n(+) Mora / Multa R$ 9,13\nDiscriminação das Verbas\nMENSALIDADE OUTUBRO 400,00\nMATERIAL ESCOLAR 56,78\n`);
   const trocado = linha.slice(0, 2) + (linha[2] === '1' ? '2' : '1') + linha.slice(3);
   const boletoErrado = file('boleto-errado.txt', `BANCO EXEMPLO S.A.\nBeneficiário\nESCOLA EXEMPLO LTDA\nNosso Número 123\nPagável em qualquer banco\nVencimento 10/11/2026\n${trocado}\n`);
   const SENHA = '73915';
@@ -361,8 +362,10 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   page = await open();
   const r9b = await send(page, [boleto], 'auto');
   const f9b = r9b.fields[0], tipo9b = await page.$eval('#docTypeLabel', e => e.textContent);
-  check(tipo9b.includes('Boleto') && f9b.Valor === 'R$ 456,78' && f9b.Vencimento === '10/11/2026' && f9b.Estabelecimento === 'ESCOLA EXEMPLO LTDA' && r9b.status === 'Valor conferido pelo código do boleto',
-    `boleto: "${tipo9b}", Valor=${f9b.Valor}, Vencimento=${f9b.Vencimento}, Beneficiário=${f9b.Estabelecimento} (${r9b.status})`);
+  const partes9b = await page.$$eval('.items-table tbody tr', t => t.map(r => r.children[2].textContent));
+  check(tipo9b.includes('Boleto') && f9b.Valor === 'R$ 456,78' && f9b.Vencimento === '10/11/2026' && f9b.Estabelecimento === 'ESCOLA EXEMPLO LTDA' && r9b.status === 'Valor conferido pelo código do boleto'
+    && partes9b.join('|') === '-R$ 400,00|-R$ 56,78',
+    `boleto: "${tipo9b}", Valor=${f9b.Valor}, Vencimento=${f9b.Vencimento}, Beneficiário=${f9b.Estabelecimento}, partes=${partes9b.join(' + ')} (${r9b.status})`);
   await page.close();
   page = await open();
   const r9c = await send(page, [boletoErrado], 'auto');
