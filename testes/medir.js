@@ -3,7 +3,8 @@
 //   node testes/medir.js /caminho/da/pasta-de-fotos [foto1.jpg foto2.jpg ...]
 //
 // Abre o index.html num Chromium invisível (Playwright), envia cada foto (ou
-// PDF) pelo botão "Fotos ou PDF" e lê os campos que apareceram na tela. Nada sai para a
+// arquivo: PDF, OFX, CSV, XLSX, DOCX, TXT) pelo botão "Fotos ou PDF" e lê os
+// campos que apareceram na tela. Nada sai para a
 // internet: todo pedido fora do servidor local é bloqueado e listado.
 //
 // Se a pasta tiver um gabarito.json, imprime a tabela certo/incerto/vazio/errado:
@@ -96,7 +97,7 @@ function grade(fields, chips, expected) {
   const base = `http://127.0.0.1:${server.address().port}/`;
   const gabaritoFile = path.join(PHOTOS, 'gabarito.json');
   const gabarito = fs.existsSync(gabaritoFile) ? JSON.parse(fs.readFileSync(gabaritoFile, 'utf8')) : null;
-  const files = ONLY.length ? ONLY : fs.readdirSync(PHOTOS).filter(f => /\.(jpe?g|png|pdf)$/i.test(f) && !f.startsWith('_')).sort();
+  const files = ONLY.length ? ONLY : fs.readdirSync(PHOTOS).filter(f => /\.(jpe?g|png|pdf|ofx|ofc|csv|xlsx|docx|txt)$/i.test(f) && !f.startsWith('_')).sort();
   checkVersions();
 
   const browser = await chromium.launch();
@@ -123,9 +124,10 @@ function grade(fields, chips, expected) {
     await page.setInputFiles('#fileInputGallery', path.join(PHOTOS, f));
     let ok = true, askedPapers = 0;
     try {
-      // the app asks what the photo is; answer with the type from the gabarito
-      await page.waitForSelector('#docTypeDialog[open]', { timeout: 30000 });
-      await page.click(`#docTypeDialog button[data-tipo="${tipo}"]`);
+      // the app asks what the photo is (a file that says it, like OFX, goes
+      // straight to the reading); answer with the type from the gabarito
+      await page.waitForFunction(() => document.getElementById('docTypeDialog').open || document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 30000 });
+      if (await page.$eval('#docTypeDialog', d => d.open)) await page.click(`#docTypeDialog button[data-tipo="${tipo}"]`);
       // then it may ask whether to read several papers apart: answer as the gabarito says
       await page.waitForFunction(() => document.getElementById('papersDialog').open || document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 600000 });
       if (await page.$eval('#papersDialog', d => d.open)) {

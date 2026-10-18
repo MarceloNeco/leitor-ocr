@@ -17,7 +17,9 @@
      → MoneyTRIO). O Leitor OCR aceita todos.
    - leitores: os leitores prontos, na ordem em que o tipo é procurado no texto.
    - SINAIS: as palavras que denunciam cada tipo sem leitor próprio, para a
-     detecção automática da categoria e do tipo.
+     detecção automática da categoria e do tipo. "forte": documento de contas
+     (fatura, prestação de contas) que fala de crédito e débito como um
+     comprovante; com 6 ou mais sinais dele, ganha dos leitores de dinheiro.
 
    Para ensinar um tipo novo: criar leitores/<id>.js (ver ARQUITETURA.md),
    pôr "leitor: '<id>'" no tipo aqui e o id em "leitores".
@@ -49,7 +51,7 @@
     { id: 'pdf', ext: ['pdf'], mime: /^application\/pdf$/, capacidade: 'pdf' },
     { id: 'texto', ext: ['txt', 'text', 'md', 'log'], mime: /^text\/plain$/, capacidade: 'texto' },
     { id: 'csv', ext: ['csv', 'tsv'], mime: /^text\/(csv|tab-separated-values)$/, capacidade: 'csv' },
-    { id: 'ofx', ext: ['ofx', 'qfx'], capacidade: 'ofx' },
+    { id: 'ofx', ext: ['ofx', 'qfx', 'ofc'], capacidade: 'ofx' },
     { id: 'xlsx', ext: ['xlsx', 'xlsm'], mime: /spreadsheetml/, capacidade: 'planilha' },
     { id: 'docx', ext: ['docx'], mime: /wordprocessingml/, capacidade: 'word' },
     // Formatos antigos: dizer como resolver em vez de falhar calado
@@ -72,15 +74,18 @@
       t('cartao', 'Comprovante de maquininha', 'Card receipt', { leitor: 'cartao', precisa: ['foto'] }),
       t('nfce', 'Nota fiscal / cupom', 'Invoice / receipt', { leitor: 'nfce', precisa: ['foto', 'codigos'] }),
       t('conta', 'Conta de restaurante', 'Restaurant bill', { leitor: 'conta', precisa: ['foto'] }),
-      t('extrato', 'Extrato bancário', 'Bank statement', { leitor: 'extrato', precisa: ['ofx', 'csv', 'planilha', 'pdf', 'tabela'] }),
-      t('fatura', 'Fatura de cartão de crédito', 'Credit card bill', { leitor: 'extrato', precisa: ['ofx', 'csv', 'planilha', 'pdf', 'tabela'] }),
-      t('boleto', 'Boleto', 'Bank slip (boleto)', { precisa: ['foto', 'codigos'] }),
-      t('consumo', 'Conta de luz, água, gás ou internet', 'Utility bill', { precisa: ['foto', 'codigos', 'pdf'] }),
-      t('imposto', 'Imposto ou taxa (IPVA, IPTU, IRPF, ITBI)', 'Tax or fee', { precisa: ['foto', 'codigos', 'pdf'] }),
-      t('multa', 'Multa', 'Traffic fine', { precisa: ['foto', 'codigos'] }),
+      t('transferencia', 'Comprovante de Pix ou transferência', 'Pix or transfer receipt', { leitor: 'transferencia', precisa: ['foto', 'pdf'] }),
+      t('extrato', 'Extrato bancário', 'Bank statement', { leitor: 'extrato', forte: true, precisa: ['ofx', 'csv', 'planilha', 'pdf', 'tabela'] }),
+      t('fatura', 'Fatura de cartão de crédito', 'Credit card bill', { leitor: 'extrato', forte: true, precisa: ['ofx', 'csv', 'planilha', 'pdf', 'tabela'] }),
+      t('boleto', 'Boleto', 'Bank slip (boleto)', { leitor: 'boleto', precisa: ['foto', 'codigos'] }),
+      t('consumo', 'Conta de luz, água, gás ou internet', 'Utility bill', { leitor: 'arrecadacao', precisa: ['foto', 'codigos', 'pdf'] }),
+      t('imposto', 'Imposto ou taxa (IPVA, IPTU, IRPF, ITBI)', 'Tax or fee', { leitor: 'arrecadacao', precisa: ['foto', 'codigos', 'pdf'] }),
+      t('multa', 'Multa', 'Traffic fine', { leitor: 'arrecadacao', precisa: ['foto', 'codigos'] }),
       t('orcamento', 'Orçamento', 'Quote', { precisa: ['foto', 'pdf'] }),
       t('recibo', 'Recibo', 'Receipt (handwritten or simple)', { precisa: ['foto'] }),
-      t('investimento', 'Histórico de investimentos', 'Investment history', { precisa: ['pdf', 'planilha', 'tabela'] }),
+      t('informe-ir', 'Imposto de Renda: informe, demonstrativo ou declaração', 'Income tax: statement or return', { leitor: 'extrato', forte: true, precisa: ['pdf', 'tabela'] }),
+      t('investimento', 'Extrato de investimento ou previdência', 'Investment or pension statement', { leitor: 'extrato', forte: true, precisa: ['pdf', 'planilha', 'tabela'] }),
+      t('seguro', 'Apólice de seguro', 'Insurance policy', { leitor: 'extrato', forte: true, precisa: ['pdf'] }),
       t('ingresso', 'Ingresso ou ticket', 'Ticket', { precisa: ['foto', 'codigos'] })
     ] },
     { id: 'saude', pt: 'Saúde', en: 'Health', privacidade: 'saude', apps: ['riseone'], tipos: [
@@ -131,6 +136,7 @@
       t('esteira', 'Esteira ou bicicleta (distância, tempo)', 'Treadmill or bike display', { apps: ['riseone'], precisa: ['foto', 'visor'] }),
       t('placa', 'Placa de rua ou de estabelecimento', 'Street or shop sign', { precisa: ['foto'] }),
       t('garagem', 'Mapa de garagem', 'Parking map', { precisa: ['foto'] }),
+      t('prestacao-contas', 'Prestação de contas do condomínio', 'Condo financial report', { leitor: 'extrato', forte: true, precisa: ['pdf', 'tabela'] }),
       t('regras', 'Regras da casa ou aviso', 'House rules or notice', { precisa: ['foto'] })
     ] },
     { id: 'telas', pt: 'Telas e mensagens', en: 'Screens and messages', apps: ['omnilife'], tipos: [
@@ -152,15 +158,19 @@
   // é esse tipo (ganha o que tiver mais). Os leitores de dinheiro (cartão, nota,
   // conta) são procurados antes e têm a vez, porque eles leem o valor.
   const SINAIS = {
+    transferencia: /\bPIX\b|COMPROVANTE DE TRANSA[CÇ][AÃ]O|TRANSFER[EÊ]NCIA (?:EFETUADA|REALIZADA|ENVIADA)|TIPO DE TRANSFER[EÊ]NCIA|CHAVE PIX|ID DA TRANSA[CÇ][AÃ]O|\bTED\b|CONTA DEBITADA|QUEM RECEBEU|QUEM PAGOU|\bE2E\b|FAVORECIDO|RECEBEDOR|INSTITUI[CÇ][AÃ]O|AG[EÊ]NCIA|AUTENTICA[CÇ][AÃ]O/g,
     boleto: /LINHA DIGIT[AÁ]VEL|BENEFICI[AÁ]RIO|NOSSO N[UÚ]MERO|PAG[AÁ]VEL (?:EM|PREFERENCIAL)|C[OÓ]D(?:IGO)?\.? DO BANCO|VENCIMENTO|CEDENTE|SACADO|AUTENTICA[CÇ][AÃ]O MEC|FICHA DE COMPENSA|RECIBO DO PAGADOR/g,
     consumo: /\bENEL\b|SABESP|COMG[AÁ]S|CONSIGAZ|\bCPFL\b|CEMIG|COPEL|CELESC|ULTRAGAZ|\bKWH\b|CONSUMO|LEITURA (?:ATUAL|ANTERIOR)|MEDIDOR|BANDEIRA TARIF|FATURA DE (?:ENERGIA|[AÁ]GUA|G[AÁ]S)|CONTA DE (?:LUZ|[AÁ]GUA|G[AÁ]S)|BANDA LARGA|FIBRA [OÓ]PTICA/g,
     imposto: /\bIPVA\b|\bIPTU\b|\bIRPF\b|\bITBI\b|\bDARF\b|\bGARE\b|GUIA DE (?:RECOLHIMENTO|ARRECADA)|SECRETARIA DA FAZENDA|EXERC[IÍ]CIO|IMPOSTO|LAN[CÇ]AMENTO TRIBUT|RENAVAM/g,
     multa: /AUTO DE INFRA[CÇ][AÃ]O|NOTIFICA[CÇ][AÃ]O DE (?:AUTUA|PENALIDADE)|INFRA[CÇ][AÃ]O|RENAINF|ENQUADRAMENTO|VELOCIDADE (?:MEDIDA|PERMITIDA|CONSIDERADA)|RADAR|PONTOS NA CNH|\bAIT\b/g,
     orcamento: /OR[CÇ]AMENTO|PROPOSTA|VALIDADE DA PROPOSTA|PRAZO DE ENTREGA|CONDI[CÇ][OÕ]ES DE PAGAMENTO|M[AÃ]O DE OBRA/g,
     recibo: /\bRECIBO\b|RECEBI(?:EMOS)? DE|A IMPORT[AÂ]NCIA DE|REFERENTE A|POR SER VERDADE|QUITA[CÇ][AÃ]O/g,
-    investimento: /INVESTIMENTO|RENDIMENTO|APLICA[CÇ][AÃ]O|RESGATE|\bCDB\b|\bLCI\b|\bLCA\b|TESOURO DIRETO|RENTABILIDADE|COTAS?\b/g,
+    'informe-ir': /IMPOSTO (?:DE|SOBRE A) RENDA|INFORME DE RENDIMENTOS|COMPROVANTE DE RENDIMENTOS|ANO[- ]BASE|ANO[- ]CALEND[AÁ]RIO|DECLARA[CÇ][AÃ]O DE AJUSTE|RENDIMENTOS (?:TRIBUT|ISENTOS|SUJEITOS)|IMPOSTO (?:SOBRE A RENDA )?RETIDO|FONTE PAGADORA|BENS E DIREITOS|RECEITA FEDERAL|\bDIRF\b|\bIRPF\b/g,
+    // aplicação e resgate não contam: aparecem todo dia no extrato da conta que aplica sozinha
+    investimento: /INVESTIMENTO|RENDIMENTO|\bCDB\b|\bLCI\b|\bLCA\b|TESOURO DIRETO|RENTABILIDADE|COTAS?\b|PREVID[EÊ]NCIA|\bPGBL\b|\bVGBL\b|SALDO BRUTO|PATRIM[OÔ]NIO L[IÍ]QUIDO|PORTABILIDADE|APORTE/g,
+    seguro: /AP[OÓ]LICE|SEGURADO|SEGURADORA|PR[EÊ]MIO (?:L[IÍ]QUIDO|TOTAL)|PRE[CÇ]O TOTAL DO SEGURO|COBERTURAS?\b|FRANQUIA|VIG[EÊ]NCIA|SINISTRO|CORRETOR|IMPORT[AÂ]NCIA SEGURADA|\bSUSEP\b/g,
     ingresso: /INGRESSO|MEIA[- ]ENTRADA|\bSETOR\b|ASSENTO|CADEIRA|PORT[AÃ]O|ARQUIBANCADA|CAMAROTE|\bTICKET|EVENTO|ID DO INGRESSO/g,
-    extrato: /EXTRATO|SALDO (?:ANTERIOR|DO DIA|DISPON[IÍ]VEL)|LAN[CÇ]AMENTOS|AG[EÊ]NCIA|CONTA CORRENTE|PIX (?:ENVIADO|RECEBIDO)|ESTORNO|TRANSFER[EÊ]NCIA/g,
+    extrato: /EXTRATO|SALDO (?:ANTERIOR|DO DIA|EM CONTA|(?:TOTAL )?DISPON)|LAN[CÇ]AMENTOS|AG[EÊ]NCIA|CONTA CORRENTE|PIX (?:ENVIADO|RECEBIDO)|ESTORNO|TRANSFER[EÊ]NCIA/g,
     fatura: /FATURA|PAGAMENTO M[IÍ]NIMO|LIMITE (?:DISPON|TOTAL)|ANUIDADE|MELHOR DIA DE COMPRA|COMPRAS PARCELADAS|ENCARGOS|TOTAL DA FATURA/g,
     'receita-medica': /RECEITU[AÁ]RIO|RECEITA M[EÉ]DICA|PRESCRI[CÇ][AÃ]O|NOME DO PACIENTE|\bPACIENTE\b|\bCRM\b|\bRQE\b|USO (?:ORAL|CONT[IÍ]NUO|T[OÓ]PICO|INTERNO|EXTERNO)|POSOLOGIA|\bTOMAR\b|COMPRIMIDOS?|C[AÁ]PSULAS?|\bGOTAS\b|AO DIA|EM \d+ HORAS|MANIPULA/g,
     // a caixa, a bula e o rótulo da farmácia de manipulação (a receita do médico tem os próprios sinais)
@@ -202,6 +212,7 @@
     esteira: /LIFE ?FITNESS|TECHNOGYM|PRECOR|MOVEMENT|ESTEIRA|TREADMILL|SPEED|VELOCIDADE|INCLIN|DIST[AÂ]NCIA|DISTANCE|CALORI|\bPACE\b|HEART|CARD[IÍ]ACA|\bBPM\b|WORKOUT|\bMETS?\b|\bLEVEL\b|ELAPSED|WEIGHT|PROGRAM/g,
     // endereço (rua, avenida) aparece em quase todo documento: não denuncia placa
     placa: /RODOVIA|PROIBIDO|\bSA[IÍ]DA\b|HOR[AÁ]RIO DE FUNCIONAMENTO|\bABERTO\b|\bFECHADO\b|\bPARE\b|SENTIDO|\bKM \d/g,
+    'prestacao-contas': /PRESTA[CÇ][AÃ]O DE CONTAS|RESUMO FINANCEIRO|POSI[CÇ][AÃ]O FINANCEIRA|SALDO (?:ANTERIOR|ATUAL) (?:CREDOR|DEVEDOR)|COTAS CONDOMINIAIS|FUNDO DE (?:RESERVA|OBRAS)|BALANCETE|DEMONSTRATIVO DE (?:RECEITAS|DESPESAS)|HONOR[AÁ]RIOS DE ADMINISTRA|S[IÍ]NDIC/g,
     garagem: /GARAGEM|\bVAGAS?\b|SUBSOLO|PAVIMENTO|\bBLOCO\b|ELEVADOR|RAMPA/g,
     regras: /\bREGRAS\b|[EÉ] PROIBIDO|N[AÃ]O [EÉ] PERMITIDO|OBRIGAT[OÓ]RIO|HOR[AÁ]RIO DE SIL[EÊ]NCIO|CONDOM[IÍ]NIO|REGULAMENTO|\bAVISO\b/g,
     notificacao: /COMPRA APROVADA|NOTIFICA[CÇ]|MARCAR COMO LIDA|\bRESPONDER\b|\bAGORA\b|\bAPAGAR\b|LIMPAR TUDO|MENSAGENS|VOC[EÊ] (?:USOU|RECEBEU|PAGOU|ATINGIU)|CONTROLE DE GASTOS|RECARGA APROVADA/g,
@@ -221,7 +232,7 @@
 
   L.catalogo = {
     capacidades, formatos, familias, apps,
-    leitores: ['nfce', 'cartao', 'conta', 'extrato', 'notificacao'],
+    leitores: ['nfce', 'cartao', 'conta', 'transferencia', 'boleto', 'arrecadacao', 'extrato', 'notificacao'],
     tipo: id => tipos[id],
     familia: id => familias.find(f => f.id === id),
     // Tipos reconhecidos pelos sinais do catálogo (os leitores de dinheiro têm os próprios)

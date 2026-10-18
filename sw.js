@@ -2,7 +2,7 @@
 // VERSAO precisa acompanhar APP_VERSION no index.html: é a mudança dela que
 // faz o navegador baixar a versão nova e jogar a antiga fora
 // (testes/medir.js e testes/offline.js avisam quando as duas diferem).
-const VERSAO = '0.7.2';
+const VERSAO = '0.7.3';
 // Todos os apps do solverone.com.br dividem o mesmo endereço e, por isso, as mesmas
 // cópias guardadas: o nome leva o app, e só as cópias deste app são apagadas.
 const PREFIXO = 'dgo-leitor-ocr-';
@@ -28,11 +28,14 @@ const ARQUIVOS = [
   './icons/maskable-192.png',
   './icons/maskable-512.png',
   './index.html',
+  './leitores/arrecadacao.js',
+  './leitores/boleto.js',
   './leitores/cartao.js',
   './leitores/conta.js',
   './leitores/extrato.js',
   './leitores/nfce.js',
   './leitores/notificacao.js',
+  './leitores/transferencia.js',
   './leitura.js',
   './leitura/catalogo.js',
   './leitura/codigos.js',

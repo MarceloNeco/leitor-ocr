@@ -53,6 +53,10 @@ O motor é o Tesseract.js 5.1.1 em português (`por`, modelo `4.0.0_best_int`). 
 21. **Compras de um print de notificação** (`leitores/notificacao.js`): cada valor "R$" do print é um aviso; o aviso vai do começo dele ("Compra aprovada", "Debitamos", "Você usou", "Pix recebido"...) até o próximo. Dele saem a data e a hora ("em 12/10, às 13h25"; sem ano, é o ano de hoje), a loja ("final 1234 - LOJA valor R$", "R$ 41,00 em LOJA no dia", "de FULANO") e o sinal (recebido, estorno e devolução entram como entrada). Valor de limite ou saldo não é lançamento. A foto é lida duas vezes; o mesmo aviso (mesma data e hora) com valores diferentes fica com o valor lido mais vezes e, empatado, fica de fora com aviso, para nunca entrar valor errado. O resultado é o mesmo do extrato (lançamentos, entradas, saídas), e a tela diz "confirmados em 2 leituras" ou "confira os valores".
 22. **Fatura reconhecida como fatura**: a fatura fala de cartão, crédito e débito o tempo todo e era tomada por comprovante de maquininha (página por página, e a página de simulação mostrava R$ 500,00 como valor). Agora, com 6 ou mais sinais de fatura ("pagamento mínimo", "total da fatura", "limite"...), é fatura antes dos leitores de dinheiro, e as outras páginas do mesmo PDF também. Fatura não tem um valor só: o leitor próprio (total, vencimento, lançamentos com a soma conferida) espera o PDF original do banco, com o texto dentro.
 23. **Tipo Remédio** (família Saúde, RiseONE): caixa, bula e rótulo da farmácia de manipulação, pelas palavras deles (bula, indicações, solução oral, uso adulto e pediátrico, mg/mL, farmacêutico responsável, CRF, "Prod.:", "Val.:"...). A receita do médico continua com os próprios sinais (receituário, paciente, CRM).
+24. **Valor conferido por conta, não por leitura** (motor 1.3.0, app 0.7.3): em documento de banco o valor pode ser conferido pela própria matemática do papel, e aí ele vale mesmo vindo de uma leitura só. Boleto: a linha digitável (47 números) e o código de barras (44) têm 4 dígitos verificadores; deles saem o valor, o vencimento (fator de vencimento, que voltou a 1000 em 22/02/2025) e o banco. Conta de consumo, imposto e multa: o código de arrecadação (48 números, começa com 8) traz o valor e, pelo 2º número, o tipo (luz e gás, água, telefone, prefeitura, multa). NF-e em PDF (DANFE): o total só vale quando produtos + frete + seguro + outras despesas + IPI + ICMS ST − desconto dá ele. Fatura de cartão: as compras só entram quando a soma bate com um total da própria fatura (as compras, ou o saldo anterior mais os lançamentos dando o total); um "- 75,00" que pode ser estorno ou o fim do nome da loja é decidido pela soma. Extrato de conta: o saldo anterior mais os lançamentos tem que dar um saldo impresso. Quando nada fecha, a lista não aparece e a tela diz por quê.
+25. **Documento de contas não é comprovante**: fatura, extrato, prestação de contas do condomínio, informe de Imposto de Renda, extrato de investimento ou previdência e apólice de seguro falam de crédito, débito e valor o tempo todo, e eram tomados por comprovante de maquininha, conta de restaurante ou nota (com valor errado: R$ 4.513,64 num boleto de R$ 1.322,66, R$ 9,90 num de R$ 2.496,20, R$ 800,00 num demonstrativo de reembolso). Agora cada um tem tipo próprio e, com 6 ou mais sinais dele, ganha dos leitores de dinheiro; num PDF de várias páginas o tipo vem do documento inteiro, e as páginas de um documento de contas viram um papel só.
+26. **Comprovante de pagamento de boleto**: traz a linha digitável, mas o valor pago pode ser outro (desconto, multa): o Valor é o pago e o do boleto fica em "Valor do boleto". **Comprovante de Pix**: tipo próprio, com o valor e para quem foi.
+27. **Moeda**: extrato OFX de conta internacional tem uma conta por moeda; cada uma vira uma aba com o símbolo dela (US$, €, £), e o registro guarda a moeda. Antes, os dólares apareciam como R$.
 17. **Leitura sem foto não inventa nada**: se o OCR falhar numa foto de verdade (ex.: sem internet antes de o leitor de fotos estar guardado), aparece um aviso e nenhum campo. Até a 0.6 o app preenchia os campos com um comprovante de exemplo inventado ("AUTO POSTO CENTRAL", R$ 85,00), como se tivesse lido a foto; só os três comprovantes de demonstração continuam com texto próprio.
 
 Cada comprovante salvo guarda o `tipo` (e os lançamentos, quando é extrato), e o histórico mostra o tipo no cartão. No console do navegador, `window.ocrDebug` tem as leituras, os candidatos e os sinais de tipo da última foto.
@@ -253,6 +257,37 @@ Passaram a acertar: a caixa e a bula do remédio, o pote da farmácia mais níti
 Detecção nas 52 fotos de 17/10: 25 → 27 certas (duas telas de tabela nutricional deixaram de sair como "Ingredientes"); nenhuma piorou.
 
 **`testes/offline.js`**: 28 verificações, todas certas, com a nova: um PDF fictício com senha (gerado na hora) pede a senha, avisa a errada, abre com a certa e a senha não fica no aparelho.
+
+## Resultado da 0.7.3 (boletos, contas, faturas e extratos em PDF, 18/10/2026)
+
+**Documentos novos de 18/10** (todos de verdade, fora do repositório; "Não sei, descobrir"):
+
+| Documento | 0.7.2 | 0.7.3 |
+|---|---|---|
+| Boleto de condomínio com a prestação de contas na mesma página | comprovante, **valor errado** (um número da prestação) | boleto, valor e vencimento pelo código, 3 partes do valor |
+| Boleto de condomínio com consumo de água, gás e luz | nota fiscal, **valor errado** (a taxa de 2ª via do rodapé) | boleto, valor pelo código, 7 partes (com "consumo de gás 5,1 m³") |
+| Conta de luz | "fatura", sem valor | conta de consumo, valor pelo código, vencimento |
+| Comprovante de pagamento de boleto (escola, com desconto) | sem valor | o valor pago, e o do boleto à parte |
+| NF-e de compra online (DANFE) | sem valor | total conferido pela soma da nota |
+| Comprovante de Pix | "rótulo", sem valor | Pix, valor e para quem |
+| 3 faturas de cartão em PDF (11, 91 e 96 compras) | uma aba por página, sem compras | um papel só, total, vencimento e todas as compras, soma conferida |
+| Extrato de conta em PDF | 6 abas, uma com **valor errado** (o IOF) | 133 lançamentos, conferidos pelo saldo, iguais aos do OFX |
+| Mesmo extrato em OFX / TXT / OFC 1.06 (Money e Quicken) | 133 / sem lançamentos / recusado | 133 / 144 / 144 (TXT e OFC trazem também os 11 agendados) |
+| 3 extratos OFX da conta internacional | dólares mostrados como **R$** | US$ |
+| Demonstrativo de reembolso de saúde para o IR | conta de restaurante, **valor errado** | Imposto de Renda, sem valor |
+| Apólice de seguro (10 páginas) | 10 abas, uma como comprovante com valor | Apólice de seguro, um papel |
+| Informes de rendimentos, recibo do IRPF, 3 extratos de previdência, prestação de contas | rótulo, nota, cartão, restaurante | Imposto de Renda, Investimento, Prestação de contas |
+
+Valores errados mostrados: **5 → 0**. Ficam como antes: o PDF "impresso" (vira imagem, o OCR quase não lê), o OFC antigo de uma linha por número e o .xls (recusados com o motivo), os extratos de fundo que são imagem (sem lançamentos) e a carta da contabilidade (texto livre).
+
+**Regressão** (nenhuma diferença papel por papel em tipo, valor, data e estabelecimento):
+
+| Conjunto | Valor certo | Incerto, certo entre as opções | Incerto | Vazio | Errado |
+|---|---|---|---|---|---|
+| 37 fotos das etapas 2 a 5 (43 papéis), antes e depois | 28 | 5 | 1 | 9 | 0 |
+| 14 fotos com vários papéis (27 papéis), antes e depois | 18 | 3 | 0 | 6 | 0 |
+
+Nas 52 fotos de tipos (27 certas), nas 15 de remédio e latas (8 certas) e nos 4 prints de notificação (12 compras certas), também nenhuma diferença. `testes/offline.js`: 30 de 30 (novos: boleto fictício com as partes do valor, e o mesmo boleto com um número trocado na linha, que deixa o valor vazio). Um print de e-mail de aviso de vencimento de boleto sai como boleto, com o valor confirmado nas duas leituras e o vencimento.
 
 ## Pendências conhecidas (ninguém pediu ainda)
 

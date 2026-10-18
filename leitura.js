@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.2.0';
+  L.versao = '1.3.0';
   // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
   L.app = L.app || null;
 
@@ -153,15 +153,29 @@
       if (f.img) papeis.push(...lidas.filter(p => p.fonte === f));
       else papeis.push(L.lerArquivo(f, o.tipo));
     });
-    // Um PDF de fatura ou extrato é um documento só: a página de simulação ou
-    // de avisos também é dele, e não um comprovante com valor
-    if (o.tipo === 'auto') papeis.forEach(p => {
-      if (p.fonte.formato !== 'pdf' || L.tipo(p.tipo).leitor === 'extrato') return;
-      const irma = papeis.find(q => q.fonte.formato === 'pdf' && q.fonte.arquivo === p.fonte.arquivo && L.tipo(q.tipo).leitor === 'extrato');
-      if (irma) p.tipo = irma.tipo;
+    // Um PDF de fatura, extrato ou informe é um documento só: o tipo vem do
+    // texto de todas as páginas juntas (a página das compras de uma fatura,
+    // sozinha, parece um extrato; a de simulação, um comprovante com valor).
+    // A página com um boleto (valor conferido pelo código) continua boleto.
+    if (o.tipo === 'auto') [...new Set(papeis.filter(p => p.fonte.formato === 'pdf').map(p => p.fonte.arquivo))].forEach(nome => {
+      const paginas = papeis.filter(p => p.fonte.formato === 'pdf' && p.fonte.arquivo === nome);
+      const tipo = paginas.length > 1 && L.texto.detectDocType(paginas.flatMap(p => p.readings));
+      if (!tipo || L.tipo(tipo).leitor !== 'extrato') return;
+      paginas.forEach(p => { const t = L.tipo(p.tipo); if (!(t.exato && t.exato(p.readings, p.codes))) p.tipo = tipo; });
     });
-    papeis.forEach(p => { p.result = L.resultado(p); });
-    return papeis;
+    // As páginas com texto de um PDF de fatura ou extrato viram um papel só:
+    // o total fica numa página e as compras em outras
+    const juntos = [];
+    papeis.forEach(p => {
+      const a = juntos[juntos.length - 1];
+      const junta = q => q && q.fonte.formato === 'pdf' && q.fonte.texto && L.tipo(q.tipo).leitor === 'extrato';
+      if (junta(a) && junta(p) && a.fonte.arquivo === p.fonte.arquivo && a.tipo === p.tipo) {
+        const fonte = Object.assign({}, a.fonte, { texto: a.fonte.texto + '\n' + p.fonte.texto, nome: a.fonte.nome.replace(/,? ?[Pp]ágina \d+$/, '') });
+        juntos[juntos.length - 1] = L.lerArquivo(fonte, a.tipo);
+      } else juntos.push(p);
+    });
+    juntos.forEach(p => { p.result = L.resultado(p); });
+    return juntos;
   };
 
   // Fonte que já traz o texto (PDF digital, TXT, DOCX) ou uma tabela (CSV,
@@ -215,7 +229,7 @@
     if (!papel.readings.length) return L.leitores.extrato.resultado(papel);
     const base = L.texto.buildResult(papel.readings, papel.tipo, papel.codes, papel.tilt);
     const leitor = L.leitores[L.tipo(papel.tipo).leitor];
-    const lidos = leitor && leitor.itens ? leitor.itens(papel.readings) : null;
-    return lidos && lidos.itens.length ? L.leitores.extrato.resultado(Object.assign({}, papel, { itens: lidos.itens }), base, lidos) : base;
+    const lidos = leitor && leitor.itens ? leitor.itens(papel.readings, papel.tipo) : null;
+    return lidos && (lidos.itens.length || lidos.campos) ? L.leitores.extrato.resultado(Object.assign({}, papel, { itens: lidos.itens }), base, lidos) : base;
   };
 })();

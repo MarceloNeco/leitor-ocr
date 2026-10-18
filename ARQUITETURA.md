@@ -37,7 +37,7 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 | `leitura/foto.js` | Inclinação, papéis na foto (`findPapers`), recorte, limpeza do fundo, as várias leituras com o Tesseract (`readPaper`, `lerFotos`). |
 | `leitura/codigos.js` | `readCodes`: QR e códigos de barras (ZXing + jsQR). |
 | `leitura/relacoes.js` | `Leitura.relacionar(papeis)`: mesma compra, pagamento dividido, quem pagou e "minha parte" (cartões da pessoa pelos 4 últimos dígitos, em `localStorage` `leitor_meus_cartoes`). |
-| `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce`, `conta`, `extrato`, `notificacao` (as compras de um print de notificação viram lançamentos). |
+| `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce` (também o total do DANFE, conferido pela soma da nota), `conta`, `transferencia` (Pix, TED), `boleto` (valor e vencimento da linha digitável, conferidos pelos dígitos verificadores; as partes do valor; o valor pago no comprovante), `arrecadacao` (conta de luz, água, gás, telefone, imposto e multa pelo código de 48 números), `extrato` (lançamentos de OFX, CSV, planilha, TXT e de fatura e extrato em PDF com texto, só quando fecham com o total ou o saldo), `notificacao` (as compras de um print de notificação viram lançamentos). |
 | `formatos/*.js` | Um arquivo por tipo de arquivo. |
 | `index.html` | Telas: capturar, abas dos papéis, campos para conferir, histórico, exportar, ajustes. Janelas: `detailDialog`, `confirmDialog`, `docTypeDialog`, `cameraDialog`, `papersDialog`, `passwordDialog` (todas `<dialog>` nativo). |
 | `sw.js` | Uso sem internet. `VERSAO` acompanha `APP_VERSION` do `index.html`. Arquivo novo do app entra em `ARQUIVOS`. |
@@ -57,8 +57,9 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 
 - **Tipo de arquivo**: pela extensão e pelo tipo que o navegador informa (`L.formatoDe`); formato antigo é recusado com o motivo.
 - **Tipo de documento** ("Não sei, descobrir", `detectDocType` em `leitura/texto.js`): primeiro os leitores de dinheiro (cartão, nota, conta), pelos `sinais` de cada um, porque são eles que leem o valor; se nenhum reconhece o papel, os outros tipos do catálogo, pelas palavras de `SINAIS` em `leitura/catalogo.js` (3 ou mais no texto; ganha o que tiver mais). O tipo descoberto vem com a categoria ("Saúde › Pedido de exame") e já fica no registro, mesmo antes de o tipo ter leitor próprio (aí ele é lido como texto livre).
-- **Fatura de cartão** fala de cartão, crédito e débito o tempo todo, como um comprovante, mas tem palavras que comprovante nenhum tem ("pagamento mínimo", "total da fatura"): com 6 ou mais sinais de fatura, é fatura, antes dos leitores de dinheiro. E um PDF de fatura ou extrato é um documento só: a página de simulação ou de avisos vira fatura também, e não um comprovante com valor.
-- **Arquivo que já diz o que é**: OFX é extrato ou fatura; CSV e planilha com colunas de data e valor viram lançamentos.
+- **Boleto e conta com código**: uma linha digitável (47 números) ou um código de barras (44) cujos dígitos verificadores conferem é boleto, antes de tudo; o código de arrecadação (48 números, começa com 8) diz pelo 2º número se é conta de consumo, imposto ou multa. O valor (e, no boleto, o vencimento e o banco) sai do código, não do texto em volta. Comprovante de pagamento de boleto mostra o valor pago; o do boleto fica em outro campo.
+- **Documento de contas** (`forte` no catálogo: fatura, extrato, prestação de contas do condomínio, Imposto de Renda, investimento, seguro): fala de crédito e débito como um comprovante; com 6 ou mais sinais dele, ganha dos leitores de dinheiro (o de mais sinais). Num PDF de várias páginas, o tipo vem do texto de todas as páginas juntas, e as páginas com texto de um documento de contas viram um papel só (o total fica numa página e as compras em outras).
+- **Arquivo que já diz o que é**: OFX (e OFC 1.06) é extrato ou fatura, uma aba por conta ou moeda, com o símbolo da moeda (US$, €...), nunca "R$" para outra moeda; CSV, planilha e TXT com ";" e colunas de data e valor viram lançamentos.
 - A pessoa sempre confere e pode trocar o tipo; quando o texto parece outro tipo, aparece "Parece ser: ...".
 
 ## Documento no app certo
@@ -83,8 +84,9 @@ if (outro) avisar(outro.texto + ' Ler aqui mesmo?', outro.apps[0].url);
    - `id`, `vitais` (campos que ficam em vermelho quando faltam, ex. `['Valor']`);
    - `sinais` (regex com `/g`: palavras que denunciam o tipo; 3 ou mais = é esse tipo), `palavras` (o que acompanha o valor), `ignorar` (linhas que nunca têm o valor);
    - `campos(textUpper, fieldsMap)` para campos só dele (ex.: o cartão tem bandeira, NSU, final do cartão);
+   - `exato(readings, codes)` → `{ valor, campos, itens?, status }` quando o valor pode ser conferido (código com dígito verificador no `boleto` e na `arrecadacao`; soma da nota no `nfce`): esse valor ganha do texto; `soCodigo: true` no leitor impede de tirar o valor do texto quando o código não vem;
    - ou `daTabela(linhas)` e `resultado(papel)` quando o documento é uma lista (ex.: `extrato`);
-   - ou `itens(readings)` → `{ itens, duvidas, confirmados }` quando a lista sai do texto lido (ex.: `notificacao`); o resumo é o do `extrato`.
+   - ou `itens(readings, tipo)` → `{ itens, duvidas, confirmados }` (ou `{ itens, campos, conferido }`) quando a lista sai do texto lido (ex.: `notificacao`, fatura e extrato em PDF); o resumo é o do `extrato`.
 3. No catálogo: `leitor: '<id>'` no tipo e o id em `leitores` (a ordem é a da detecção).
 4. Pôr o `<script src="leitores/<id>.js">` no `index.html` e o arquivo na lista do `sw.js`.
 5. Medir com fotos reais e gabarito (`testes/medir.js`) antes e depois, e contar o resultado numa tabela.
