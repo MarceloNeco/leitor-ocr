@@ -8,7 +8,7 @@
    precisa dela.
 
    A tela do app só fala com estas funções:
-     const { fontes, recusados } = await Leitura.abrir(arquivos);  // fotos, PDF, TXT, CSV, OFX, XLSX, DOCX
+     const { fontes, recusados } = await Leitura.abrir(arquivos, aviso, pedirSenha);  // fotos, PDF (com senha também), TXT, CSV, OFX, XLSX, DOCX
      const caixas = await Leitura.acharPapeis(fonte.img);           // vários papéis na mesma foto
      const papeis = await Leitura.ler(fontes, { tipo: 'auto' });    // um papel por documento, com .result
      Leitura.relacionar(papeis);                                    // mesma compra, pagamento dividido
@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.1.0';
+  L.versao = '1.2.0';
   // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
   L.app = L.app || null;
 
@@ -93,8 +93,9 @@
   // texto vira uma "fonte": { nome, img } para ler como foto, { nome, texto } para
   // texto pronto, { nome, linhas } para tabela e { nome, itens } para lançamentos.
   // Arquivo que o motor não abre vai para "recusados", com o motivo, sem
-  // atrapalhar os outros.
-  L.abrir = async (arquivos, aviso = () => {}) => {
+  // atrapalhar os outros. pedirSenha(nome, errou), se o app der, é chamada
+  // quando um PDF tem senha e devolve a senha digitada (ou nada para pular).
+  L.abrir = async (arquivos, aviso = () => {}, pedirSenha = null) => {
     const lista = Array.from(arquivos || []).filter(Boolean);
     const fontes = [], recusados = [];
     for (let i = 0; i < lista.length; i++) {
@@ -106,7 +107,7 @@
       try {
         aviso(`Abrindo ${arquivo.name || 'o arquivo'}...`);
         await L.precisa(formato.capacidade);
-        const partes = await L.formatos[formato.id](arquivo);
+        const partes = await L.formatos[formato.id](arquivo, { pedirSenha });
         partes.forEach(p => {
           p.arquivo = arquivo.name;
           p.formato = formato.id;
@@ -151,6 +152,13 @@
     fontes.forEach(f => {
       if (f.img) papeis.push(...lidas.filter(p => p.fonte === f));
       else papeis.push(L.lerArquivo(f, o.tipo));
+    });
+    // Um PDF de fatura ou extrato é um documento só: a página de simulação ou
+    // de avisos também é dele, e não um comprovante com valor
+    if (o.tipo === 'auto') papeis.forEach(p => {
+      if (p.fonte.formato !== 'pdf' || L.tipo(p.tipo).leitor === 'extrato') return;
+      const irma = papeis.find(q => q.fonte.formato === 'pdf' && q.fonte.arquivo === p.fonte.arquivo && L.tipo(q.tipo).leitor === 'extrato');
+      if (irma) p.tipo = irma.tipo;
     });
     papeis.forEach(p => { p.result = L.resultado(p); });
     return papeis;
@@ -200,8 +208,14 @@
     return L.foto.espiar(fonte.img);
   };
 
-  // O resultado de um papel: campos, valor e situação (leitura/texto.js e leitores/)
-  L.resultado = papel => papel.itens
-    ? L.leitores.extrato.resultado(papel)
-    : L.texto.buildResult(papel.readings, papel.tipo, papel.codes, papel.tilt);
+  // O resultado de um papel: campos, valor e situação (leitura/texto.js e leitores/).
+  // Lançamentos vêm do arquivo (OFX, CSV, planilha) ou do texto lido, quando o
+  // leitor do tipo os tira dele (print de notificação); mudam se o tipo mudar.
+  L.resultado = papel => {
+    if (!papel.readings.length) return L.leitores.extrato.resultado(papel);
+    const base = L.texto.buildResult(papel.readings, papel.tipo, papel.codes, papel.tilt);
+    const leitor = L.leitores[L.tipo(papel.tipo).leitor];
+    const lidos = leitor && leitor.itens ? leitor.itens(papel.readings) : null;
+    return lidos && lidos.itens.length ? L.leitores.extrato.resultado(Object.assign({}, papel, { itens: lidos.itens }), base, lidos) : base;
+  };
 })();

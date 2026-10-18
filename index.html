@@ -1484,6 +1484,25 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       </div>
     </dialog>
 
+    <!-- PDF COM SENHA: a senha só abre o arquivo agora, não fica guardada -->
+    <dialog id="passwordDialog">
+      <form method="dialog" id="passwordForm">
+        <div class="dialog-header">
+          <div class="dialog-title">🔒 PDF com senha</div>
+        </div>
+        <div class="dialog-body">
+          <p id="passwordDialogText" style="font-size:14px; color:var(--muted); line-height:1.5;"></p>
+          <input type="password" id="passwordInput" class="fld" autocomplete="off" placeholder="Senha do PDF" style="width:100%; margin-top:10px;">
+          <p id="passwordError" style="display:none; font-size:13px; color:var(--danger); font-weight:600; margin-top:6px;">Senha errada. Tente de novo.</p>
+          <p style="font-size:12px; color:var(--muted); margin-top:8px;">Fatura e extrato de banco costumam usar os primeiros números do CPF. A senha não fica guardada.</p>
+        </div>
+        <div class="dialog-footer">
+          <button type="button" id="btnPasswordSkip" class="btn btn-ghost" style="flex:1;">Pular este arquivo</button>
+          <button type="submit" id="btnPasswordOk" class="btn btn-primary" style="flex:1;">Abrir</button>
+        </div>
+      </form>
+    </dialog>
+
   </div>
 
   <!-- Motor de leitura (ver ARQUITETURA.md): a porta de entrada, o catálogo, o que
@@ -1497,12 +1516,13 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
   <script src="leitores/nfce.js"></script>
   <script src="leitores/conta.js"></script>
   <script src="leitores/extrato.js"></script>
+  <script src="leitores/notificacao.js"></script>
   <script>
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.7.1';
-    const APP_UPDATED = '17/10/2026';   // data desta versão
+    const APP_VERSION = '0.7.2';
+    const APP_UPDATED = '18/10/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
     const formatBRL = Leitura.texto.formatBRL;
@@ -1662,6 +1682,12 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     const papersPreview = document.getElementById('papersPreview');
     const btnPapersOne = document.getElementById('btnPapersOne');
     const btnPapersMany = document.getElementById('btnPapersMany');
+    const passwordDialog = document.getElementById('passwordDialog');
+    const passwordForm = document.getElementById('passwordForm');
+    const passwordDialogText = document.getElementById('passwordDialogText');
+    const passwordInput = document.getElementById('passwordInput');
+    const passwordError = document.getElementById('passwordError');
+    const btnPasswordSkip = document.getElementById('btnPasswordSkip');
     const cameraDialog = document.getElementById('cameraDialog');
     const cameraVideo = document.getElementById('cameraVideo');
     const btnCameraShot = document.getElementById('btnCameraShot');
@@ -1802,6 +1828,31 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     btnDocTypeCancel.addEventListener('click', cancelDocType);
     docTypeDialog.addEventListener('cancel', (e) => { e.preventDefault(); cancelDocType(); });
 
+    /* =========================================================
+       PDF COM SENHA: asked when the file needs it; the password is
+       only handed to the PDF reader, never saved
+       ========================================================= */
+    let passwordResolver = null;
+    function askPassword(nome, errou) {
+      return new Promise((resolve) => {
+        passwordResolver = resolve;
+        passwordDialogText.textContent = `${nome || 'Este arquivo'} tem senha. Digite a senha para abrir.`;
+        passwordError.style.display = errou ? '' : 'none';
+        passwordInput.value = '';
+        passwordDialog.showModal();
+        passwordInput.focus();
+      });
+    }
+    function closePassword(senha) {
+      if (passwordDialog.open) passwordDialog.close();
+      passwordInput.value = '';
+      const r = passwordResolver; passwordResolver = null;
+      if (r) r(senha || null);
+    }
+    passwordForm.addEventListener('submit', (e) => { e.preventDefault(); closePassword(passwordInput.value); });
+    btnPasswordSkip.addEventListener('click', () => closePassword(null));
+    passwordDialog.addEventListener('cancel', (e) => { e.preventDefault(); closePassword(null); });
+
     // Rebuilds the paper on screen with another type, without reading again
     function retype(tipo) {
       const p = papers[currentPaper];
@@ -1812,7 +1863,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       } else {
         const resolved = tipo === 'auto' ? Leitura.texto.detectDocType(p.readings) : tipo;
         // A money type needs two readings to confirm the amount: read again if there is only one
-        if (Leitura.tipo(resolved).vitais.length && p.readings.length < 2 && currentImage) { executeOCR(); return; }
+        if ((Leitura.tipo(resolved).vitais.length || Leitura.tipo(resolved).itens) && p.readings.length < 2 && currentImage) { executeOCR(); return; }
         p.tipo = resolved;
       }
       p.result = Leitura.resultado(p);
@@ -2119,12 +2170,13 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         }
       });
 
-      // Transactions of a bank statement or card bill (OFX, CSV or spreadsheet)
+      // Transactions of a bank statement or card bill (OFX, CSV or spreadsheet),
+      // or the purchases of a notification screenshot
       const items = result.itens || [];
       itemsBox.style.display = items.length ? '' : 'none';
       const MAX_ITEMS = 200;
       itemsBox.innerHTML = items.length ? `<table class="items-table"><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>${
-        items.slice(0, MAX_ITEMS).map(i => `<tr><td>${escapeHtml(i.data)}</td><td>${escapeHtml(i.descricao)}</td><td class="${i.valor < 0 ? 'neg' : ''}">${escapeHtml((i.valor < 0 ? '-' : '') + formatBRL(Math.abs(i.valor)))}</td></tr>`).join('')
+        items.slice(0, MAX_ITEMS).map(i => `<tr><td>${escapeHtml(i.data + (i.hora ? ' ' + i.hora : ''))}</td><td>${escapeHtml(i.descricao)}</td><td class="${i.valor < 0 ? 'neg' : ''}">${escapeHtml((i.valor < 0 ? '-' : '') + formatBRL(Math.abs(i.valor)))}</td></tr>`).join('')
       }</tbody></table>${items.length > MAX_ITEMS ? `<p>e mais ${items.length - MAX_ITEMS} lançamentos (todos são guardados ao salvar)</p>` : ''}` : '';
 
       // Category and type: "Saúde › Pedido de exame"
@@ -2240,7 +2292,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       const files = Array.from(fileList || []).filter(Boolean);
       if (!files.length) return;
       ocrProgressWrap.style.display = 'flex';
-      const { fontes, recusados } = await Leitura.abrir(files, text => { ocrStatusText.textContent = text; });
+      const { fontes, recusados } = await Leitura.abrir(files, text => { ocrStatusText.textContent = text; }, askPassword);
       ocrProgressWrap.style.display = 'none';
       recusados.forEach(r => showToast(`${r.nome}: ${r.motivo}.`, r.parcial ? 'warn' : 'err', 6000));
       if (fontes.length) startReading(fontes);

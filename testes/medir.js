@@ -23,6 +23,9 @@
 // "tipoEsperado" (lista de ids do catálogo) mede a detecção automática: com
 // "tipo": "auto", conta as fotos em que o tipo descoberto está na lista.
 // Campo sem "valores", "datas" ou "estab" no gabarito não recebe nota.
+// "lancamentos" (lista de valores, ex.: ["-250,80", "1.250,00"]) mede os
+// lançamentos lidos (extrato, fatura, print de notificação): certos, que
+// faltaram e lidos a mais.
 //
 // As fotos e o gabarito têm dados pessoais: ficam FORA do repositório.
 // O resultado completo (com o texto lido) é gravado na pasta das fotos.
@@ -140,6 +143,13 @@ function grade(fields, chips, expected) {
       const fields = ok ? await page.$$eval('#fieldsListContainer .field-row', rows => rows.map(r => ({
         key: r.querySelector('.fld-key').value, val: r.querySelector('.fld-val').value, missing: r.classList.contains('field-missing') }))) : [];
       const chips = ok ? await page.$$eval('.valor-chip', els => els.map(e => e.textContent)) : [];
+      const itens = ok ? await page.$$eval('.items-table tbody tr', trs => trs.filter(t => t.offsetParent !== null).map(t => [...t.children].map(c => c.textContent))) : [];
+      const lanc = gabarito && gabarito[f] && gabarito[f].lancamentos ? (() => {
+        const falta = list(gabarito[f].lancamentos).map(money), lidos = itens.map(i => money(i[2]));
+        let certos = 0;
+        const mais = lidos.filter(v => { const k = falta.indexOf(v); if (k < 0) return true; falta.splice(k, 1); certos++; return false; });
+        return { certos, faltam: falta.length, aMais: mais.length };
+      })() : null;
       const conf = ok ? await page.$eval('#confidenceVal', e => e.textContent) : '';
       const debug = (await page.evaluate(() => window.ocrDebug || null)) || {};
       const texts = (debug.readings || []).map(r => r.text);
@@ -152,8 +162,9 @@ function grade(fields, chips, expected) {
       const sinais = debug.sinais ? ` sinais=${debug.sinais.nfce}/${debug.sinais.cartao}/${debug.sinais.conta}` : '';
       const rots = (debug.readings || []).map(r => `${r.rot}${r.bin ? 'pb' : ''}${r.region ? 'rec' : ''}:${r.good}`).join(',') + (debug.tilt !== undefined ? ` incl=${debug.tilt}` : '');
       const label = papersFound > 1 ? `${f} [papel ${pi + 1}/${papersFound}]` : f;
-      results.push({ file: f, papel: pi + 1, papeis: papersFound, papeisEsperados: expectedPapers, papeisPerguntados: askedPapers, ok, secs, fallback, conf, passes, tipoEscolhido: tipo, tipoLido: debug.tipo, detectado: debug.detected, textKind: debug.textKind, chips, fields, nota: notaG, codes: debug.codes, readings: debug.readings, logs: logs.slice(0, 30) });
-      const tag = notaG ? `  [valor=${notaG.valor} data=${notaG.data} estab=${notaG.estab}]` : '';
+      results.push({ file: f, papel: pi + 1, papeis: papersFound, papeisEsperados: expectedPapers, papeisPerguntados: askedPapers, ok, secs, fallback, conf, passes, tipoEscolhido: tipo, tipoLido: debug.tipo, detectado: debug.detected, textKind: debug.textKind, chips, fields, itens, lanc, nota: notaG, codes: debug.codes, readings: debug.readings, logs: logs.slice(0, 30) });
+      const tag = (notaG ? `  [valor=${notaG.valor} data=${notaG.data} estab=${notaG.estab}]` : '')
+        + (itens.length ? `  lançamentos=${itens.length} (${conf})` : '') + (lanc ? `  [lançamentos certos=${lanc.certos} faltam=${lanc.faltam} a mais=${lanc.aMais}]` : '');
       const same = g('Mesma compra');
       console.log(`${label}  ${pi === 0 ? secs + 's' : ''}  leituras=${passes}${rots ? ' [' + rots + ']' : ''}${fallback ? ' FALLBACK' : ''}  tipo=${tipo}>${debug.tipo || '?'}${sinais}  Valor=${g('Valor')}${chips.length ? ' opções=' + chips.join('|') : ''}  Data=${g('Data')}  Hora=${g('Hora')}  Estab=${g('Estabelecimento').slice(0, 30)}${nota !== '-' ? '  Nota=' + nota : ''}${codes ? '  codigo=' + codes : ''}${same !== '-' ? '  mesma-compra=' + same : ''}  ${kind}${tag}`);
     }
@@ -177,6 +188,11 @@ function grade(fields, chips, expected) {
     console.log(`| valor | ${count('valor', 'certo')} | ${count('valor', 'incerto-ok')} | ${count('valor', 'incerto')} | ${count('valor', 'vazio')} | ${count('valor', 'errado')} |`);
     console.log(`| data | ${count('data', 'certo')} | - | - | ${count('data', 'vazio')} | ${count('data', 'errado')} |`);
     console.log(`| estab | ${count('estab', 'certo')} | - | - | - | ${count('estab', 'nao')} |`);
+    const comLanc = results.filter(r => r.lanc);
+    if (comLanc.length) {
+      const soma = k => comLanc.reduce((a, r) => a + r.lanc[k], 0);
+      console.log(`Lançamentos: ${soma('certos')} certos, ${soma('faltam')} faltaram, ${soma('aMais')} lidos a mais (${comLanc.length} papéis)`);
+    }
     const firsts = results.filter(r => r.papel === 1);
     const comTipo = firsts.filter(r => gabarito[r.file] && gabarito[r.file].tipoEsperado);
     if (comTipo.length) {
