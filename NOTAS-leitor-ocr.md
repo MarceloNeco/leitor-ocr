@@ -258,6 +258,30 @@ Detecção nas 52 fotos de 17/10: 25 → 27 certas (duas telas de tabela nutrici
 
 **`testes/offline.js`**: 28 verificações, todas certas, com a nova: um PDF fictício com senha (gerado na hora) pede a senha, avisa a errada, abre com a certa e a senha não fica no aparelho.
 
+## Resultado da 0.7.3 (boletos, contas, faturas e extratos em PDF, 18/10/2026)
+
+**Documentos novos de 18/10** (todos de verdade, fora do repositório; "Não sei, descobrir"):
+
+| Documento | 0.7.2 | 0.7.3 |
+|---|---|---|
+| Boleto de condomínio com a prestação de contas na mesma página | comprovante, **valor errado** (um número da prestação) | boleto, valor e vencimento pelo código, 3 partes do valor |
+| Boleto de condomínio com consumo de água, gás e luz | nota fiscal, **valor errado** (a taxa de 2ª via do rodapé) | boleto, valor pelo código, 7 partes (com "consumo de gás 5,1 m³") |
+| Conta de luz | "fatura", sem valor | conta de consumo, valor pelo código, vencimento |
+| Comprovante de pagamento de boleto (escola, com desconto) | sem valor | o valor pago, e o do boleto à parte |
+| NF-e de compra online (DANFE) | sem valor | total conferido pela soma da nota |
+| Comprovante de Pix | "rótulo", sem valor | Pix, valor e para quem |
+| 3 faturas de cartão em PDF (11, 91 e 96 compras) | uma aba por página, sem compras | um papel só, total, vencimento e todas as compras, soma conferida |
+| Extrato de conta em PDF | 6 abas, uma com **valor errado** (o IOF) | 133 lançamentos, conferidos pelo saldo, iguais aos do OFX |
+| Mesmo extrato em OFX / TXT / OFC 1.06 (Money e Quicken) | 133 / sem lançamentos / recusado | 133 / 144 / 144 (TXT e OFC trazem também os 11 agendados) |
+| 3 extratos OFX da conta internacional | dólares mostrados como **R$** | US$ |
+| Demonstrativo de reembolso de saúde para o IR | conta de restaurante, **valor errado** | Imposto de Renda, sem valor |
+| Apólice de seguro (10 páginas) | 10 abas, uma como comprovante com valor | Apólice de seguro, um papel |
+| Informes de rendimentos, recibo do IRPF, 3 extratos de previdência, prestação de contas | rótulo, nota, cartão, restaurante | Imposto de Renda, Investimento, Prestação de contas |
+
+Valores errados mostrados: **5 → 0**. Ficam como antes: o PDF "impresso" (vira imagem, o OCR quase não lê), o OFC antigo de uma linha por número e o .xls (recusados com o motivo), os extratos de fundo que são imagem (sem lançamentos) e a carta da contabilidade (texto livre).
+
+**Regressão**: nas 52 fotos de tipos, nas 15 de remédio e latas e nos 4 prints de notificação, nenhuma diferença papel por papel; `testes/offline.js` 30 de 30 (novos: boleto fictício com as partes do valor, e com um número trocado na linha, que deixa o valor vazio).
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **Arquivo único para copiar ao celular:** ver decisões da etapa 7.
