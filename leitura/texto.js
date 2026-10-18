@@ -13,6 +13,7 @@
     'CNPJ',
     'Nota',
     'Valor',
+    'Vencimento',
     'Data',
     'Hora',
     'Bandeira',
@@ -98,6 +99,8 @@
     // card slip, but no slip says "pagamento mínimo" or "total da fatura":
     // with many signs of a bill, it is a bill (and has no single amount)
     if ((text.match(L.catalogo.tipo('fatura').sinais) || []).length >= 6) return 'fatura';
+    // A bank slip's code line has check digits: one that checks out is a boleto
+    if (L.leitores.boleto && readings.some(r => L.leitores.boleto.achar(r.text))) return 'boleto';
     let best = 'livre', bestScore = 2;   // fewer than 3 signs: free text
     L.detectaveis().forEach(key => {
       const score = (text.match(L.leitores[key].sinais) || []).length;
@@ -175,7 +178,9 @@
     const def = L.tipo(tipo);
     const expectsValue = def.vitais.includes('Valor');
     const parsed = readings.map(r => parseDocument(r.text, tipo));
-    const valor = expectsValue ? agreedValue(readings, tipo) : null;
+    // A value carried by a code with check digits (boleto) is exact and wins
+    const codigo = def.exato ? def.exato(readings, codes) : null;
+    const valor = codigo && codigo.valor ? codigo.valor : expectsValue ? agreedValue(readings, tipo) : null;
     const candidates = expectsValue && valor === null
       ? [...new Set(parsed.map(p => p.candidatos[0] ? p.candidatos[0].num : null).filter(n => n !== null))]
       : [];
@@ -219,6 +224,13 @@
       if (common && f) f.val = common;
       else if (common) fields.push({ key, val: common });
     });
+    // Fields that came with the code (due date, bank) are exact too
+    if (codigo) Object.entries(codigo.campos).forEach(([key, val]) => {
+      const f = fields.find(x => x.key === key);
+      if (f) { f.val = val; return; }
+      const at = ORDERED_FIELD_KEYS.includes(key) ? fields.findIndex(x => ORDERED_FIELD_KEYS.indexOf(x.key) > ORDERED_FIELD_KEYS.indexOf(key)) : -1;
+      fields.splice(at === -1 ? fields.length : at, 0, { key, val });
+    });
     if (valor !== null) {
       const at = fields.findIndex(f => ORDERED_FIELD_KEYS.indexOf(f.key) > ORDERED_FIELD_KEYS.indexOf('Valor'));
       fields.splice(at === -1 ? fields.length : at, 0, { key: 'Valor', val: formatBRL(valor) });
@@ -226,7 +238,7 @@
 
     let status;
     if (!expectsValue) status = { cls: 'neutral', text: 'Texto lido' };
-    else if (valor !== null) status = { cls: 'ok', text: readings[0].exato ? 'Valor lido do arquivo' : 'Valor confirmado em 2 leituras' };
+    else if (valor !== null) status = { cls: 'ok', text: codigo && codigo.valor ? codigo.status : readings[0].exato ? 'Valor lido do arquivo' : 'Valor confirmado em 2 leituras' };
     else if (candidates.length) status = { cls: 'warn', text: 'Valor incerto: confira' };
     else status = { cls: 'bad', text: 'Valor não lido' };
 

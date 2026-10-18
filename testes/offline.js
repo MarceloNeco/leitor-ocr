@@ -15,6 +15,8 @@
 // 4. Duas fotos de uma vez: 2 abas, cada uma com seu valor. Espiada rápida e
 //    app certo: um comprovante espiado "dentro do HyperNutry" manda para o MoneyTRIO.
 // 5. TXT, CSV (de banco, em Windows-1252), OFX de fatura, XLSX e DOCX.
+//    Boleto: valor e vencimento da linha digitável; com um número trocado,
+//    o código não vale e o valor fica vazio.
 //    Detecção automática: uma receita médica fictícia vira "Saúde › Receita médica".
 // 6. Arquivo em formato antigo (.xls): recusado com o motivo.
 // 7. Pagamento dividido: uma conta e duas vias de cartão; "O cartão final ...
@@ -113,6 +115,20 @@ function pdfComSenha(linhas, senha) {
   return Buffer.concat(partes);
 }
 
+// Linha digitável fictícia que confere (banco 237), com o vencimento e o valor dados
+function linhaBoleto(venc, centavos) {
+  const mod10 = s => { let soma = 0, p = 2; for (let i = s.length - 1; i >= 0; i--) { const x = +s[i] * p; soma += x > 9 ? x - 9 : x; p = 3 - p; } return (10 - soma % 10) % 10; };
+  const [d, m, a] = venc.split('/').map(Number);
+  const fator = 1000 + Math.round((Date.UTC(a, m - 1, d) - Date.UTC(2025, 1, 22)) / 86400000);
+  const valor = String(centavos).padStart(10, '0'), livre = '1234567890123456789012345';
+  const barras = '2379' + fator + valor + livre;
+  let soma = 0;
+  for (let i = barras.length - 1, p = 2; i >= 0; i--, p = p === 9 ? 2 : p + 1) soma += +barras[i] * p;
+  const dv = 11 - soma % 11 >= 10 ? 1 : 11 - soma % 11;
+  const campo = (c, n) => c.slice(0, 5) + '.' + c.slice(5) + mod10(c);
+  return `${campo('2379' + livre.slice(0, 5))} ${campo(livre.slice(5, 15))} ${campo(livre.slice(15))} ${dv} ${fator}${valor}`;
+}
+
 const receipt = (loja, valor, data) => `<div style="width:520px;padding:40px 30px;font:bold 26px monospace;color:#111;background:#fff;line-height:1.6;">
   ${loja}<br>CNPJ 12.345.678/0001-90<br>COMPROVANTE DE PAGAMENTO<br>VIA CLIENTE<br>
   DATA ${data} 14:22<br>CREDITO A VISTA<br>TERMINAL POS1234<br>VALOR TOTAL R$ ${valor}<br>AUTORIZACAO 123456</div>`;
@@ -186,6 +202,10 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     + `<w:tbl><w:tr><w:tc>${p('VIA CLIENTE')}</w:tc><w:tc>${p('CREDITO A VISTA')}</w:tc></w:tr><w:tr><w:tc>${p('MASTERCARD')}</w:tc><w:tc>${p('NSU 123456')}</w:tc></w:tr></w:tbl>`
     + `${p('DATA 11/10/2026')}${p('VALOR TOTAL R$ 99,90')}</w:body></w:document>` }));
   const xls = file('velho.xls', 'nao e uma planilha de verdade');
+  const linha = linhaBoleto('10/11/2026', 45678);
+  const boleto = file('boleto.txt', `BANCO EXEMPLO S.A.  237-2  ${linha}\nBeneficiário\nESCOLA EXEMPLO LTDA CNPJ: 12.345.678/0001-90\nVencimento 10/11/2026\nValor do Documento R$ 456,78\n(+) Mora / Multa R$ 9,13\n`);
+  const trocado = linha.slice(0, 2) + (linha[2] === '1' ? '2' : '1') + linha.slice(3);
+  const boletoErrado = file('boleto-errado.txt', `BANCO EXEMPLO S.A.\nBeneficiário\nESCOLA EXEMPLO LTDA\nNosso Número 123\nPagável em qualquer banco\nVencimento 10/11/2026\n${trocado}\n`);
   const SENHA = '73915';
   const trancado = file('trancado.pdf', pdfComSenha(['LOJA FICTICIA LTDA', 'COMPROVANTE DE PAGAMENTO', 'VIA CLIENTE', 'DATA 12/10/2026 10:30', 'CREDITO A VISTA', 'VALOR TOTAL R$ 64,90'], SENHA));
   const receita = file('receita.txt', 'CONSULTORIO EXEMPLO\nRECEITUARIO\nUSO ORAL\nREMEDIO EXEMPLO 500 MG\nTOMAR 1 COMPRIMIDO DE 8 EM 8 HORAS POR 5 DIAS\nDRA. EXEMPLO - CRM 000000\n');
@@ -337,6 +357,17 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   page = await open();
   const r9 = await send(page, [docx], 'auto');
   check(r9.values[0] === 'R$ 99,90', `DOCX: Valor=${r9.values[0]}`);
+  await page.close();
+  page = await open();
+  const r9b = await send(page, [boleto], 'auto');
+  const f9b = r9b.fields[0], tipo9b = await page.$eval('#docTypeLabel', e => e.textContent);
+  check(tipo9b.includes('Boleto') && f9b.Valor === 'R$ 456,78' && f9b.Vencimento === '10/11/2026' && f9b.Estabelecimento === 'ESCOLA EXEMPLO LTDA' && r9b.status === 'Valor conferido pelo código do boleto',
+    `boleto: "${tipo9b}", Valor=${f9b.Valor}, Vencimento=${f9b.Vencimento}, Beneficiário=${f9b.Estabelecimento} (${r9b.status})`);
+  await page.close();
+  page = await open();
+  const r9c = await send(page, [boletoErrado], 'auto');
+  check(!r9c.values[0] && !r9c.fields[0].Vencimento && (await page.$eval('#docTypeLabel', e => e.textContent)).includes('Boleto'),
+    `boleto com um número trocado na linha: Valor=${r9c.values[0] || 'vazio'} (${r9c.status})`);
   await page.close();
   page = await open();
   await send(page, [receita], 'auto');

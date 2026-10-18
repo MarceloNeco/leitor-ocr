@@ -74,7 +74,7 @@
       t('conta', 'Conta de restaurante', 'Restaurant bill', { leitor: 'conta', precisa: ['foto'] }),
       t('extrato', 'Extrato bancário', 'Bank statement', { leitor: 'extrato', precisa: ['ofx', 'csv', 'planilha', 'pdf', 'tabela'] }),
       t('fatura', 'Fatura de cartão de crédito', 'Credit card bill', { leitor: 'extrato', precisa: ['ofx', 'csv', 'planilha', 'pdf', 'tabela'] }),
-      t('boleto', 'Boleto', 'Bank slip (boleto)', { precisa: ['foto', 'codigos'] }),
+      t('boleto', 'Boleto', 'Bank slip (boleto)', { leitor: 'boleto', precisa: ['foto', 'codigos'] }),
       t('consumo', 'Conta de luz, água, gás ou internet', 'Utility bill', { precisa: ['foto', 'codigos', 'pdf'] }),
       t('imposto', 'Imposto ou taxa (IPVA, IPTU, IRPF, ITBI)', 'Tax or fee', { precisa: ['foto', 'codigos', 'pdf'] }),
       t('multa', 'Multa', 'Traffic fine', { precisa: ['foto', 'codigos'] }),
@@ -221,7 +221,7 @@
 
   L.catalogo = {
     capacidades, formatos, familias, apps,
-    leitores: ['nfce', 'cartao', 'conta', 'extrato', 'notificacao'],
+    leitores: ['nfce', 'cartao', 'conta', 'boleto', 'extrato', 'notificacao'],
     tipo: id => tipos[id],
     familia: id => familias.find(f => f.id === id),
     // Tipos reconhecidos pelos sinais do catálogo (os leitores de dinheiro têm os próprios)
