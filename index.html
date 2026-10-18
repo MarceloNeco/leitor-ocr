@@ -894,6 +894,16 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       border-left: 4px solid var(--danger);
     }
 
+    /* The update banner has buttons: it takes touches (the box around the
+       toasts lets them through, for the toasts that go away by themselves) */
+    .toast-msg.update-toast {
+      pointer-events: auto;
+    }
+
+    .update-toast span {
+      flex: 1;
+    }
+
     @keyframes toastIn {
       from {
         opacity: 0;
@@ -1524,7 +1534,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.7.3';
+    const APP_VERSION = '0.7.4';
     const APP_UPDATED = '18/10/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
@@ -2055,7 +2065,20 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
     // Reads what was chosen (photos, PDF pages, files) with the reading engine
     // (leitura.js) and shows one tab per paper
+    // While a reading runs, a new version waits: its banner shows at the end
+    let lendo = false;
+    let atualizacaoPendente = false;
     async function executeOCR() {
+      lendo = true;
+      try {
+        await lerAgora();
+      } finally {
+        lendo = false;
+        if (atualizacaoPendente) showUpdateToast();
+      }
+    }
+
+    async function lerAgora() {
       ocrProgressWrap.style.display = 'flex';
       ocrProgressBar.style.width = '10%';
       ocrPercentText.textContent = '10%';
@@ -2396,7 +2419,10 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     let installPrompt = null;
 
     // sw.js keeps a copy of every file of the app on the device, so it opens
-    // and reads without internet. A new version shows a toast to reload.
+    // and reads without internet. sw.js takes over as soon as a new version is
+    // installed (skipWaiting + clients.claim): the banner to reload shows when
+    // that happens (controllerchange), not on the first visit, when there was
+    // no version before.
     async function setupOffline() {
       if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) {
         offlineStatus.textContent = 'Este navegador não guarda o app para uso sem internet.';
@@ -2404,13 +2430,12 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         return;
       }
       try {
-        const reg = await navigator.serviceWorker.register('./sw.js');
-        reg.addEventListener('updatefound', () => {
-          const sw = reg.installing;
-          if (sw) sw.addEventListener('statechange', () => {
-            if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdateToast();
-          });
+        let tinhaVersao = !!navigator.serviceWorker.controller;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (tinhaVersao) showUpdateToast();
+          tinhaVersao = true;
         });
+        await navigator.serviceWorker.register('./sw.js');
         await navigator.serviceWorker.ready;
         offlineReady = true;
       } catch (err) {
@@ -2419,11 +2444,19 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       renderOfflineStatus();
     }
 
+    // "Atualizar" reloads into the new version; "Depois" closes the banner,
+    // and the new version opens the next time the app is opened
     function showUpdateToast() {
+      if (lendo) { atualizacaoPendente = true; return; }
+      atualizacaoPendente = false;
+      if (toastContainer.querySelector('.update-toast')) return;
       const toast = document.createElement('div');
-      toast.className = 'toast-msg ok';
-      toast.innerHTML = '<span>Nova versão pronta.</span><button type="button" class="btn btn-primary btn-sm">Atualizar</button>';
-      toast.querySelector('button').addEventListener('click', () => location.reload());
+      toast.className = 'toast-msg ok update-toast';
+      toast.innerHTML = '<span>Nova versão pronta.</span>'
+        + '<button type="button" class="btn btn-ghost btn-sm" data-acao="depois">Depois</button>'
+        + '<button type="button" class="btn btn-primary btn-sm" data-acao="atualizar">Atualizar</button>';
+      toast.querySelector('[data-acao="atualizar"]').addEventListener('click', () => location.reload());
+      toast.querySelector('[data-acao="depois"]').addEventListener('click', () => toast.remove());
       toastContainer.appendChild(toast);
     }
 

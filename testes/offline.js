@@ -23,6 +23,10 @@
 // 7. Pagamento dividido: uma conta e duas vias de cartão; "O cartão final ...
 //    é meu" mostra a minha parte.
 // 8. Câmera de computador (câmera falsa do Chromium).
+// 9. Versão nova do app (o sw.js servido muda): a faixa "Nova versão pronta"
+//    não aparece na primeira visita; quando a versão nova assume no meio de
+//    uma leitura, espera a leitura terminar; recebe o toque: "Depois" fecha e
+//    "Atualizar" recarrega.
 // Também avisa se a versão do sw.js não bate com a do index.html.
 
 const fs = require('fs');
@@ -41,12 +45,16 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascr
   '.gz': 'application/gzip', '.wasm': 'application/wasm', '.png': 'image/png', '.webmanifest': 'application/manifest+json',
   '.pfb': 'application/octet-stream', '.ttf': 'font/ttf' };
 
+// Com swNovo > 0, o sw.js servido é o de uma versão nova (só muda a VERSAO)
+let swNovo = 0;
 function serveRepo() {
   return new Promise(resolve => {
     const server = http.createServer((req, res) => {
-      const file = path.join(REPO, decodeURIComponent(req.url.split('?')[0]).replace(/\/$/, '/index.html'));
+      const rel = decodeURIComponent(req.url.split('?')[0]).replace(/\/$/, '/index.html');
+      const file = path.join(REPO, rel);
       if (!file.startsWith(REPO) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
+      if (rel === '/sw.js' && swNovo) return res.end(fs.readFileSync(file, 'utf8').replace(/const VERSAO = '([^']+)'/, `const VERSAO = '$1-nova${swNovo}'`));
       fs.createReadStream(file).pipe(res);
     });
     server.listen(0, '127.0.0.1', () => resolve(server));
@@ -408,6 +416,42 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const asked = await page.waitForSelector('#docTypeDialog[open]', { timeout: 15000 }).then(() => true).catch(() => false);
   check(asked, '"Tirar foto" manda a foto para leitura (pergunta o tipo)');
   await page.close();
+
+  // 9. versão nova: a faixa de atualização (celular: toque)
+  const tela = await browser.newContext({ hasTouch: true, viewport: { width: 390, height: 760 } });
+  await tela.route(() => true, route => {
+    const url = route.request().url();
+    if (url.startsWith(base)) return route.continue();
+    external.add(url.split('?')[0]); return route.abort();
+  });
+  page = await tela.newPage();
+  page.on('pageerror', e => logs.push('pageerror: ' + e.message));
+  await page.goto(base + 'index.html');
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 60000 });
+  await page.waitForTimeout(800);
+  const faixa = page.locator('.toast-msg', { hasText: 'Nova versão' });
+  const naPrimeira = await faixa.count();
+  const novaVersao = async () => {
+    swNovo++;
+    await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+    return faixa.first().waitFor({ timeout: 60000 }).then(() => true).catch(() => false);
+  };
+  // a versão nova chega no meio da leitura do exemplo: a faixa só depois que a leitura termina
+  await page.evaluate(() => navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.__lendo = document.getElementById('ocrProgressWrap').style.display === 'flex';
+  }));
+  await page.click('#samplePosto');
+  const apareceu = await novaVersao();
+  const esperou = apareceu && await page.evaluate(() => window.__lendo === true && document.getElementById('fieldsEditorCard').style.display === 'flex');
+  const fechou = apareceu && await faixa.getByRole('button', { name: 'Depois' }).tap({ timeout: 5000 })
+    .then(() => faixa.first().waitFor({ state: 'detached', timeout: 5000 })).then(() => true).catch(() => false);
+  const apareceu2 = await novaVersao();
+  await page.evaluate(() => { window.__antes = 1; });
+  const recarregou = apareceu2 && await faixa.getByRole('button', { name: 'Atualizar' }).tap({ timeout: 5000 })
+    .then(() => page.waitForFunction(() => !window.__antes, null, { timeout: 15000 })).then(() => true).catch(() => false);
+  check(naPrimeira === 0 && apareceu && esperou && fechou && recarregou,
+    `versão nova: sem faixa na primeira visita=${naPrimeira === 0}, faixa esperou a leitura terminar=${esperou}, "Depois" fechou=${fechou}, "Atualizar" recarregou=${recarregou}`);
+  await tela.close();
 
   check(external.size === 0, 'nenhum pedido para fora do app' + (external.size ? ': ' + [...external].join(', ') : ''));
   check(logs.length === 0, 'nenhum erro de página' + (logs.length ? ': ' + logs.join(' | ') : ''));
