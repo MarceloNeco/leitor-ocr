@@ -10,6 +10,8 @@
 //    guardado), desliga a internet e lê de novo: tem que ler pelo OCR.
 // 2. Ajustes → "Guardar tudo": o leitor de PDF e o de códigos ficam guardados.
 // 3. PDF com texto (2 páginas, lido sem OCR) e PDF escaneado (lido com OCR).
+//    PDF com senha: pede a senha, avisa quando está errada, abre com a certa
+//    e não guarda a senha no aparelho.
 // 4. Duas fotos de uma vez: 2 abas, cada uma com seu valor. Espiada rápida e
 //    app certo: um comprovante espiado "dentro do HyperNutry" manda para o MoneyTRIO.
 // 5. TXT, CSV (de banco, em Windows-1252), OFX de fatura, XLSX e DOCX.
@@ -25,6 +27,7 @@ const path = require('path');
 const http = require('http');
 const os = require('os');
 const zlib = require('zlib');
+const crypto = require('crypto');
 
 const REPO = path.resolve(__dirname, '..');
 let chromium;
@@ -67,6 +70,47 @@ function zip(files) {
   end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(central.length / 2, 8); end.writeUInt16LE(central.length / 2, 10);
   end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
   return Buffer.concat([...local, cd, end]);
+}
+
+// Um PDF fictício de uma página com senha (o padrão mais simples do PDF:
+// RC4 de 40 bits), com o texto das linhas dadas
+function pdfComSenha(linhas, senha) {
+  const md5 = (...partes) => crypto.createHash('md5').update(Buffer.concat(partes)).digest();
+  const rc4 = (chave, dados) => {
+    const S = [...Array(256).keys()];
+    for (let i = 0, j = 0; i < 256; i++) { j = (j + S[i] + chave[i % chave.length]) & 255; [S[i], S[j]] = [S[j], S[i]]; }
+    const out = Buffer.alloc(dados.length);
+    for (let k = 0, i = 0, j = 0; k < dados.length; k++) {
+      i = (i + 1) & 255; j = (j + S[i]) & 255; [S[i], S[j]] = [S[j], S[i]];
+      out[k] = dados[k] ^ S[(S[i] + S[j]) & 255];
+    }
+    return out;
+  };
+  const PAD = Buffer.from('28BF4E5E4E758A4164004E56FFFA01082E2E00B6D0683E802F0CA9FE6453697A', 'hex');
+  const pad = s => Buffer.concat([Buffer.from(s, 'latin1'), PAD]).subarray(0, 32);
+  const id = crypto.randomBytes(16), P = -44, p4 = Buffer.alloc(4);
+  p4.writeInt32LE(P);
+  const O = rc4(md5(pad(senha)).subarray(0, 5), pad(senha));
+  const chave = md5(pad(senha), O, p4, id).subarray(0, 5);
+  const texto = Buffer.from('BT /F1 18 Tf 40 780 Td 26 TL ' + linhas.map(l => `(${l}) '`).join(' ') + ' ET', 'latin1');
+  const cifrado = rc4(md5(chave, Buffer.from([4, 0, 0, 0, 0])).subarray(0, 10), texto);   // o objeto 4 é o texto da página
+  const objs = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    Buffer.concat([Buffer.from(`<< /Length ${cifrado.length} >>\nstream\n`), cifrado, Buffer.from('\nendstream')]),
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Filter /Standard /V 1 /R 2 /O <${O.toString('hex')}> /U <${rc4(chave, PAD).toString('hex')}> /P ${P} >>`
+  ];
+  const partes = [Buffer.from('%PDF-1.4\n')], onde = [];
+  let pos = partes[0].length;
+  objs.forEach((o, n) => {
+    const b = Buffer.concat([Buffer.from(`${n + 1} 0 obj\n`), Buffer.from(o), Buffer.from('\nendobj\n')]);
+    onde.push(pos); partes.push(b); pos += b.length;
+  });
+  partes.push(Buffer.from(`xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + onde.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('')
+    + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R /Encrypt 6 0 R /ID [<${id.toString('hex')}> <${id.toString('hex')}>] >>\nstartxref\n${pos}\n%%EOF\n`));
+  return Buffer.concat(partes);
 }
 
 const receipt = (loja, valor, data) => `<div style="width:520px;padding:40px 30px;font:bold 26px monospace;color:#111;background:#fff;line-height:1.6;">
@@ -142,6 +186,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     + `<w:tbl><w:tr><w:tc>${p('VIA CLIENTE')}</w:tc><w:tc>${p('CREDITO A VISTA')}</w:tc></w:tr><w:tr><w:tc>${p('MASTERCARD')}</w:tc><w:tc>${p('NSU 123456')}</w:tc></w:tr></w:tbl>`
     + `${p('DATA 11/10/2026')}${p('VALOR TOTAL R$ 99,90')}</w:body></w:document>` }));
   const xls = file('velho.xls', 'nao e uma planilha de verdade');
+  const SENHA = '73915';
+  const trancado = file('trancado.pdf', pdfComSenha(['LOJA FICTICIA LTDA', 'COMPROVANTE DE PAGAMENTO', 'VIA CLIENTE', 'DATA 12/10/2026 10:30', 'CREDITO A VISTA', 'VALOR TOTAL R$ 64,90'], SENHA));
   const receita = file('receita.txt', 'CONSULTORIO EXEMPLO\nRECEITUARIO\nUSO ORAL\nREMEDIO EXEMPLO 500 MG\nTOMAR 1 COMPRIMIDO DE 8 EM 8 HORAS POR 5 DIAS\nDRA. EXEMPLO - CRM 000000\n');
 
   // ---------- ajudantes ----------
@@ -234,6 +280,21 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   page = await open();
   const r3 = await send(page, [scanned], 'cartao');
   check(r3.values[0] === 'R$ 23,50' && r3.status !== 'Valor lido do arquivo', `PDF escaneado, lido com OCR: Valor=${r3.values[0]} (${r3.status})`);
+  await page.close();
+  page = await open();
+  await page.setInputFiles('#fileInputGallery', trancado);
+  await page.waitForSelector('#passwordDialog[open]', { timeout: 60000 });
+  await page.fill('#passwordInput', '00000');
+  await page.click('#btnPasswordOk');
+  const errada = await page.waitForSelector('#passwordDialog[open] #passwordError', { state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
+  await page.fill('#passwordInput', SENHA);
+  await page.click('#btnPasswordOk');
+  await page.waitForSelector('#docTypeDialog[open]', { timeout: 60000 });
+  await page.click('#docTypeDialog button[data-tipo="cartao"]');
+  const r3b = await readTabs(page);
+  const guardada = await page.evaluate(s => JSON.stringify(localStorage).includes(s) || JSON.stringify(sessionStorage).includes(s), SENHA);
+  check(errada && r3b.values[0] === 'R$ 64,90' && r3b.status === 'Valor lido do arquivo' && !guardada,
+    `PDF com senha: avisou a senha errada=${errada}, abriu com a certa (Valor=${r3b.values[0]}, ${r3b.status}), senha guardada=${guardada}`);
   await page.close();
 
   // 4. duas fotos de uma vez

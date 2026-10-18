@@ -94,6 +94,10 @@
   // Guesses the document type from the words that give it away
   function detectDocType(readings) {
     const text = readings.map(r => r.text).join('\n').toUpperCase();
+    // A card bill talks about card, credit and debit all the time, like a
+    // card slip, but no slip says "pagamento mínimo" or "total da fatura":
+    // with many signs of a bill, it is a bill (and has no single amount)
+    if ((text.match(L.catalogo.tipo('fatura').sinais) || []).length >= 6) return 'fatura';
     let best = 'livre', bestScore = 2;   // fewer than 3 signs: free text
     L.detectaveis().forEach(key => {
       const score = (text.match(L.leitores[key].sinais) || []).length;

@@ -85,6 +85,7 @@
     ] },
     { id: 'saude', pt: 'Saúde', en: 'Health', privacidade: 'saude', apps: ['riseone'], tipos: [
       t('receita-medica', 'Receita médica ou de tratamento', 'Prescription', { precisa: ['foto'] }),
+      t('remedio', 'Remédio (caixa, bula ou rótulo de farmácia)', 'Medicine (box, leaflet or pharmacy label)', { precisa: ['foto', 'codigos'] }),
       t('pedido-exame', 'Pedido de exame', 'Test request', { precisa: ['foto'] }),
       t('resultado-exame', 'Resultado de exame ou laudo médico', 'Test result or medical report', { precisa: ['foto', 'pdf', 'tabela'] }),
       t('exame-imagem', 'Exame de imagem', 'Imaging exam', { precisa: ['foto', 'pdf'] }),
@@ -133,7 +134,7 @@
       t('regras', 'Regras da casa ou aviso', 'House rules or notice', { precisa: ['foto'] })
     ] },
     { id: 'telas', pt: 'Telas e mensagens', en: 'Screens and messages', apps: ['omnilife'], tipos: [
-      t('notificacao', 'Print de notificação (compra, banco)', 'Notification screenshot', { apps: ['moneytrio'], precisa: ['foto'], privacidade: 'financeiro' }),
+      t('notificacao', 'Print de notificação (compra, banco)', 'Notification screenshot', { leitor: 'notificacao', apps: ['moneytrio'], precisa: ['foto'], privacidade: 'financeiro' }),
       t('print', 'Print de tela', 'Screenshot', { precisa: ['foto'] }),
       t('email', 'E-mail', 'E-mail', { precisa: ['foto', 'pdf', 'texto'] }),
       t('recado', 'Recado ou bilhete', 'Note', { precisa: ['foto'] })
@@ -162,6 +163,8 @@
     extrato: /EXTRATO|SALDO (?:ANTERIOR|DO DIA|DISPON[IÍ]VEL)|LAN[CÇ]AMENTOS|AG[EÊ]NCIA|CONTA CORRENTE|PIX (?:ENVIADO|RECEBIDO)|ESTORNO|TRANSFER[EÊ]NCIA/g,
     fatura: /FATURA|PAGAMENTO M[IÍ]NIMO|LIMITE (?:DISPON|TOTAL)|ANUIDADE|MELHOR DIA DE COMPRA|COMPRAS PARCELADAS|ENCARGOS|TOTAL DA FATURA/g,
     'receita-medica': /RECEITU[AÁ]RIO|RECEITA M[EÉ]DICA|PRESCRI[CÇ][AÃ]O|NOME DO PACIENTE|\bPACIENTE\b|\bCRM\b|\bRQE\b|USO (?:ORAL|CONT[IÍ]NUO|T[OÓ]PICO|INTERNO|EXTERNO)|POSOLOGIA|\bTOMAR\b|COMPRIMIDOS?|C[AÁ]PSULAS?|\bGOTAS\b|AO DIA|EM \d+ HORAS|MANIPULA/g,
+    // a caixa, a bula e o rótulo da farmácia de manipulação (a receita do médico tem os próprios sinais)
+    remedio: /\bBULA\b|INDICA[CÇ][OÕ]ES|CONTRAINDICA|SOLU[CÇ][AÃ]O ORAL|SUSPENS[AÃ]O ORAL|USO (?:ADULTO|PEDI[AÁ]TRICO)|PEDI[AÁ]TRICO|\bMG\/ML\b|CADA (?:ML|COMPRIMIDO|C[AÁ]PSULA|G) CONT[EÉ]M|FARM\.? RESP|FARMAC[EÊ]UTIC|\bCRF\b|DROGARIA|FARM[AÁ]CIA|MANIPULA|REG(?:ISTRO)?\.? M\.?S\.?|VENDA SOB PRESCRI|MEDICAMENTO|ANALG[EÉ]SICO|ANTIT[EÉ]RMICO|SERINGA|\bFRASCO\b|\bCAP\b|\bPROD\.?:|\bVAL\.?:|\bREQ\.?:/g,
     'pedido-exame': /SOLICITO|SOLICITA[CÇ][AÃ]O DE EXAME|PEDIDO DE EXAME|HEMOGRAMA|GLICEMIA|COLESTEROL|TRIGLICER|CREATININA|\bTSH\b|\bT4 LIVRE|URINA|ULTRASS(?:OM|ONOGRAFIA)|TOMOGRAFIA|RESSON[AÂ]NCIA|ELETROCARDIOGRAMA|ECOCARDIOGRAMA|INDICA[CÇ][AÃ]O CL[IÍ]NICA|FERRITINA|VITAMINA|\bTGO\b|\bTGP\b|ENDOSCOPIA/g,
     'resultado-exame': /VALORES? DE REFER[EÊ]NCIA|\bRESULTADO|M[EÉ]TODO:|MATERIAL:|LIBERADO|COLETAD|\bMG\/DL\b|\bG\/DL\b|\bU\/L\b|\/MM[3³]|\bNG\/ML\b|ASSINATURA ELETR|LABORAT[OÓ]RIO/g,
     'exame-imagem': /ULTRASSONOGRAFIA|RADIOGRAFIA|MAMOGRAFIA|DENSITOMETRIA|IMPRESS[AÃ]O DIAGN|ACHADOS|CONCLUS[AÃ]O:|T[EÉ]CNICA:|EXAME REALIZADO/g,
@@ -169,7 +172,8 @@
     vacina: /VACINA|IMUNIZA|\bDOSE\b|REFOR[CÇ]O|CADERNETA|\bBCG\b|HEPATITE|TR[IÍ]PLICE|INFLUENZA|FEBRE AMARELA/g,
     atestado: /\bATESTO\b|ATESTADO|AFASTAMENTO|REPOUSO|COMPARECEU|ESTEVE SOB|PARA FINS DE/g,
     dieta: /\bDIETA\b|PLANO ALIMENTAR|CAF[EÉ] DA MANH[AÃ]|ALMO[CÇ]O|JANTAR|LANCHE|\bCEIA\b|COLA[CÇ][AÃ]O|NUTRICIONISTA|\bCRN\b/g,
-    nutricional: /INFORMA[CÇ](?:[AÃ]O|[OÕ]ES) NUTRICIONA|NUTRITION FACTS|VALOR ENERG|POR[CÇ][AÃ]O|CARBOIDRATO|PROTE[IÍ]NA|GORDURAS? (?:TOTA|SATURA|TRANS)|FIBRAS? ALIMENTAR|S[OÓ]DIO|A[CÇ][UÚ]CARES|%\s?V\.?D|\bKCAL\b|VALORES DI[AÁ]RIOS/g,
+    // "(mg)", "(g)", "(µg)": a unidade entre parênteses é da tabela, não de pedido de exame
+    nutricional: /INFORMA[CÇ](?:[AÃ]O|[OÕ]ES) NUTRICIONA|NUTRITION FACTS|VALOR ENERG|POR[CÇ][AÃ]O|CARBOIDRATO|PROTE[IÍ]NA|GORDURAS? (?:TOTA|SATURA|TRANS)|FIBRAS? ALIMENTAR|S[OÓ]DIO|A[CÇ][UÚ]CARES|%\s?V\.?D|\bKCAL\b|VALORES DI[AÁ]RIOS|\((?:MG|G|[UΜµ]G|KCAL|KJ)\)/g,
     ingredientes: /INGREDIENTES|\bCONT[EÉ]M\b|AL[EÉ]RGIC|GL[UÚ]TEN|LACTOSE|PODE CONTER|CONSERVANTE|ACIDULANTE|AROMATIZANTE|ESPESSANTE|EMULSIFICANTE|CORANTE/g,
     rotulo: /\bLOTE\b|VALIDADE|FABRICA[DÇ]|IND[UÚ]STRIA BRASILEIRA|PESO L[IÍ]QUIDO|\bSAC\b|0800|CONSERVAR|MANTER EM|EMBALAGEM|\bNET WT|\bPESO\b/g,
     garrafa: /CERVEJA|\bBEER\b|\bLAGER\b|PILSEN|\bIPA\b|\bVINHO\b|\bWINE\b|\bSAFRA\b|\bTINTO\b|ESPUMANTE|TEOR ALCO|% ?VOL|\bVODKA|WHISK|\bGIN\b|CACHA[CÇ]A|REFRIGERANTE|\bSUCO\b|\bCALS?\b|SEM GL[UÚ]TEN/g,
@@ -217,7 +221,7 @@
 
   L.catalogo = {
     capacidades, formatos, familias, apps,
-    leitores: ['nfce', 'cartao', 'conta', 'extrato'],
+    leitores: ['nfce', 'cartao', 'conta', 'extrato', 'notificacao'],
     tipo: id => tipos[id],
     familia: id => familias.find(f => f.id === id),
     // Tipos reconhecidos pelos sinais do catálogo (os leitores de dinheiro têm os próprios)

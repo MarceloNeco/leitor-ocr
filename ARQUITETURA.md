@@ -37,26 +37,27 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 | `leitura/foto.js` | Inclinação, papéis na foto (`findPapers`), recorte, limpeza do fundo, as várias leituras com o Tesseract (`readPaper`, `lerFotos`). |
 | `leitura/codigos.js` | `readCodes`: QR e códigos de barras (ZXing + jsQR). |
 | `leitura/relacoes.js` | `Leitura.relacionar(papeis)`: mesma compra, pagamento dividido, quem pagou e "minha parte" (cartões da pessoa pelos 4 últimos dígitos, em `localStorage` `leitor_meus_cartoes`). |
-| `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce`, `conta`, `extrato`. |
+| `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce`, `conta`, `extrato`, `notificacao` (as compras de um print de notificação viram lançamentos). |
 | `formatos/*.js` | Um arquivo por tipo de arquivo. |
-| `index.html` | Telas: capturar, abas dos papéis, campos para conferir, histórico, exportar, ajustes. Janelas: `detailDialog`, `confirmDialog`, `docTypeDialog`, `cameraDialog`, `papersDialog` (todas `<dialog>` nativo). |
+| `index.html` | Telas: capturar, abas dos papéis, campos para conferir, histórico, exportar, ajustes. Janelas: `detailDialog`, `confirmDialog`, `docTypeDialog`, `cameraDialog`, `papersDialog`, `passwordDialog` (todas `<dialog>` nativo). |
 | `sw.js` | Uso sem internet. `VERSAO` acompanha `APP_VERSION` do `index.html`. Arquivo novo do app entra em `ARQUIVOS`. |
 | `testes/medir.js` | Mede a leitura em fotos reais (fora do repositório) contra um gabarito. |
-| `testes/offline.js` | Testa sem dados pessoais: uso sem internet, partes pesadas por demanda, PDF, TXT, CSV, OFX, XLSX, DOCX, várias fotos, pagamento dividido, câmera. |
+| `testes/offline.js` | Testa sem dados pessoais: uso sem internet, partes pesadas por demanda, PDF (com senha também), TXT, CSV, OFX, XLSX, DOCX, várias fotos, pagamento dividido, câmera. |
 | `NOTAS-leitor-ocr.md` | Como a leitura funciona, por que cada decisão foi tomada, os números de cada etapa e as pendências. |
 | `ESTRATEGIA-leitura.md`, `PEDIDOS.md` | O plano do motor único para todos os apps e os pedidos que chegam dos outros apps. |
 
 ## O caminho de um documento
 
-1. `Leitura.abrir(arquivos)` → **fontes**. Cada foto, página de PDF, aba de planilha ou texto vira uma fonte: `{ nome, img }` (ler como foto), `{ nome, texto }` (texto pronto), `{ nome, linhas }` (tabela) ou `{ nome, itens, info }` (lançamentos de OFX). Arquivo que não abre volta em `recusados`, com o motivo, sem atrapalhar os outros.
+1. `Leitura.abrir(arquivos, aviso, pedirSenha)` → **fontes**. Cada foto, página de PDF, aba de planilha ou texto vira uma fonte: `{ nome, img }` (ler como foto), `{ nome, texto }` (texto pronto), `{ nome, linhas }` (tabela) ou `{ nome, itens, info }` (lançamentos de OFX). Arquivo que não abre volta em `recusados`, com o motivo, sem atrapalhar os outros. PDF com senha (fatura e extrato de banco costumam ter): o motor chama `pedirSenha(nome, errou)`, que o app responde com a senha digitada (ou nada, para pular o arquivo); a senha só abre o arquivo naquele momento e não é guardada. Sem `pedirSenha`, o PDF com senha volta em `recusados`.
 2. A tela pergunta o tipo (o OFX já diz que é extrato ou fatura) e, em foto, se há vários papéis (`Leitura.acharPapeis`).
-3. `Leitura.ler(fontes, { tipo, aviso, progresso })` → **papéis**, um por documento, cada um com `result` (`fields`, `valor`, `candidates`, `status`, `itens`...). Foto passa pelo OCR (várias leituras; o valor só vale quando duas leituras diferentes concordam). Texto de arquivo é exato: uma leitura basta.
+3. `Leitura.ler(fontes, { tipo, aviso, progresso })` → **papéis**, um por documento, cada um com `result` (`fields`, `valor`, `candidates`, `status`, `itens`...). Foto passa pelo OCR (várias leituras; o valor só vale quando duas leituras diferentes concordam). Texto de arquivo é exato: uma leitura basta. Lançamentos (`result.itens`: `{ data, hora?, descricao, valor }`) vêm do arquivo (OFX, CSV, planilha) ou do texto lido, quando o leitor do tipo tem `itens(readings)` (print de notificação: cada compra do print é um lançamento; o que as duas leituras não confirmam fica de fora, com aviso).
 4. `Leitura.relacionar(papeis)` acrescenta os campos de relação.
 
 ## Detecção automática da categoria e do tipo
 
 - **Tipo de arquivo**: pela extensão e pelo tipo que o navegador informa (`L.formatoDe`); formato antigo é recusado com o motivo.
 - **Tipo de documento** ("Não sei, descobrir", `detectDocType` em `leitura/texto.js`): primeiro os leitores de dinheiro (cartão, nota, conta), pelos `sinais` de cada um, porque são eles que leem o valor; se nenhum reconhece o papel, os outros tipos do catálogo, pelas palavras de `SINAIS` em `leitura/catalogo.js` (3 ou mais no texto; ganha o que tiver mais). O tipo descoberto vem com a categoria ("Saúde › Pedido de exame") e já fica no registro, mesmo antes de o tipo ter leitor próprio (aí ele é lido como texto livre).
+- **Fatura de cartão** fala de cartão, crédito e débito o tempo todo, como um comprovante, mas tem palavras que comprovante nenhum tem ("pagamento mínimo", "total da fatura"): com 6 ou mais sinais de fatura, é fatura, antes dos leitores de dinheiro. E um PDF de fatura ou extrato é um documento só: a página de simulação ou de avisos vira fatura também, e não um comprovante com valor.
 - **Arquivo que já diz o que é**: OFX é extrato ou fatura; CSV e planilha com colunas de data e valor viram lançamentos.
 - A pessoa sempre confere e pode trocar o tipo; quando o texto parece outro tipo, aparece "Parece ser: ...".
 
@@ -82,7 +83,8 @@ if (outro) avisar(outro.texto + ' Ler aqui mesmo?', outro.apps[0].url);
    - `id`, `vitais` (campos que ficam em vermelho quando faltam, ex. `['Valor']`);
    - `sinais` (regex com `/g`: palavras que denunciam o tipo; 3 ou mais = é esse tipo), `palavras` (o que acompanha o valor), `ignorar` (linhas que nunca têm o valor);
    - `campos(textUpper, fieldsMap)` para campos só dele (ex.: o cartão tem bandeira, NSU, final do cartão);
-   - ou `daTabela(linhas)` e `resultado(papel)` quando o documento é uma lista (ex.: `extrato`).
+   - ou `daTabela(linhas)` e `resultado(papel)` quando o documento é uma lista (ex.: `extrato`);
+   - ou `itens(readings)` → `{ itens, duvidas, confirmados }` quando a lista sai do texto lido (ex.: `notificacao`); o resumo é o do `extrato`.
 3. No catálogo: `leitor: '<id>'` no tipo e o id em `leitores` (a ordem é a da detecção).
 4. Pôr o `<script src="leitores/<id>.js">` no `index.html` e o arquivo na lista do `sw.js`.
 5. Medir com fotos reais e gabarito (`testes/medir.js`) antes e depois, e contar o resultado numa tabela.
@@ -104,7 +106,7 @@ Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`
    ```
 3. No código do app:
    ```js
-   const { fontes, recusados } = await Leitura.abrir(input.files);
+   const { fontes, recusados } = await Leitura.abrir(input.files, aviso, (nome, errou) => perguntarSenha(nome, errou));
    const papeis = await Leitura.ler(fontes, { tipo: 'auto', aviso: t => status.textContent = t });
    Leitura.relacionar(papeis);
    papeis.forEach(p => console.log(p.label, p.result.fields, p.result.valor));

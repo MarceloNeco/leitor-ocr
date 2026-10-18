@@ -589,14 +589,15 @@
     // More readings of the same photo: as photographed, larger, with
     // reinforced contrast. The amount is only accepted when two readings
     // agree on it (see agreedValue), so a money document gets at least
-    // two readings; free text stops at the first.
+    // two readings, and so does a type whose reader takes transactions out
+    // of the text (notification screenshot); free text stops at the first.
     const done = p => readings.some(r => r.rot === p[0] && r.bin === p[1] && r.size === p[2]);
     const passes = [[rotation, false, 1000, null], [base, false, 1400, region], [base, true, 1000, region]].filter(p => !done(p));
     let next = 0;
     while (true) {
       tipo = tipoPedido === 'auto' ? detectDocType(readings) : tipoPedido;
-      const wantsValue = L.tipo(tipo).vitais.includes('Valor');
-      if (!wantsValue && (tipoPedido !== 'auto' || readings.length >= 2)) break;
+      const def = L.tipo(tipo), wantsValue = def.vitais.includes('Valor');
+      if (!wantsValue && (readings.length >= 2 || (tipoPedido !== 'auto' && !def.itens))) break;
       if (wantsValue && agreedValue(readings, tipo) !== null) break;
       if (next >= passes.length) break;
       if (readings.length >= 2 && Date.now() - started > 20000) break;   // não prender a pessoa

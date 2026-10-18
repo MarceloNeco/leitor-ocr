@@ -49,6 +49,10 @@ O motor é o Tesseract.js 5.1.1 em português (`por`, modelo `4.0.0_best_int`). 
 16. **Pagamento dividido e minha parte** (`leitura/relacoes.js`): numa leitura com uma conta (ou nota) e vias de cartão, as vias que somam exatamente o total da conta, ou, sendo a única conta, as vias do mesmo dia (data lida nas duas) que somam menos que ela, viram "Pago em partes" na conta (com o que falta, pago por outra pessoa ou de outro jeito) e "Parte da conta" em cada via. O papel de cada um sai do texto (`detectDocType`), não só do botão escolhido. Só entram valores confirmados. A via do cartão ganha o campo "Cartão: final 1234" (só os 4 últimos dígitos); tocando em "O cartão final 1234 é meu", esses 4 dígitos ficam guardados no aparelho (`leitor_meus_cartoes`) e as vias passam a dizer "Quem pagou: Você / Outra pessoa", e a conta "Minha parte". A "mesma compra" (passo 11) mudou para esse arquivo também.
 18. **Detecção automática da categoria e do tipo** ("Não sei, descobrir", `detectDocType`): primeiro os leitores de dinheiro, como sempre (eles leem o valor e têm a vez); se nenhum reconhece o papel, os outros 52 tipos do catálogo são procurados pelas palavras que os denunciam (`SINAIS` em `leitura/catalogo.js`, 3 ou mais no texto, ganha o que tiver mais). A tela mostra "Categoria › Tipo" (ex.: "Saúde › Receita médica") e o registro guarda o tipo, mesmo que ele ainda seja lido como texto livre. Endereço (rua, avenida) não conta para "placa", porque aparece em quase todo documento.
 19. **Documento no app certo** (`Leitura.espiar`, `Leitura.ondeLer`, motor 1.1.0, app 0.7.1): o catálogo diz qual app da SolverONE cuida de cada família; a espiada faz uma leitura só (800 px, sem as conferências) para adivinhar o tipo antes da leitura completa, e `ondeLer` devolve o aviso pronto quando o documento é de outro app. Nas 52 fotos de 17/10: a espiada leva 2,3 s por foto (a leitura completa, 11,2 s), acerta o tipo em 20 (a completa, 25) e dá a mesma resposta da completa em 45. Como se fosse o HyperNutry: avisou em 15 dos 37 documentos de outros apps, sempre indicando o app certo, e em nenhum dos 14 do próprio HyperNutry. No Leitor OCR, que aceita tudo, o tipo aparece com o app de cada documento ("Dinheiro e compras › Comprovante de maquininha · MoneyTRIO"). O `testes/offline.js` confere a espiada e o aviso (27 verificações, todas certas).
+20. **PDF com senha** (motor 1.2.0, app 0.7.2): fatura e extrato de banco costumam vir com senha. `Leitura.abrir(arquivos, aviso, pedirSenha)`: o pdf.js avisa que precisa de senha, o motor pergunta ao app (`pedirSenha(nome, errou)`) e tenta de novo; a janela "PDF com senha" avisa a senha errada e deixa pular o arquivo. A senha só abre o arquivo naquele momento: não vai para o `localStorage`, nem para o registro, nem para lugar nenhum. Sem `pedirSenha` (outro app que ainda não pergunta), o PDF volta em `recusados` com o motivo.
+21. **Compras de um print de notificação** (`leitores/notificacao.js`): cada valor "R$" do print é um aviso; o aviso vai do começo dele ("Compra aprovada", "Debitamos", "Você usou", "Pix recebido"...) até o próximo. Dele saem a data e a hora ("em 12/10, às 13h25"; sem ano, é o ano de hoje), a loja ("final 1234 - LOJA valor R$", "R$ 41,00 em LOJA no dia", "de FULANO") e o sinal (recebido, estorno e devolução entram como entrada). Valor de limite ou saldo não é lançamento. A foto é lida duas vezes; o mesmo aviso (mesma data e hora) com valores diferentes fica com o valor lido mais vezes e, empatado, fica de fora com aviso, para nunca entrar valor errado. O resultado é o mesmo do extrato (lançamentos, entradas, saídas), e a tela diz "confirmados em 2 leituras" ou "confira os valores".
+22. **Fatura reconhecida como fatura**: a fatura fala de cartão, crédito e débito o tempo todo e era tomada por comprovante de maquininha (página por página, e a página de simulação mostrava R$ 500,00 como valor). Agora, com 6 ou mais sinais de fatura ("pagamento mínimo", "total da fatura", "limite"...), é fatura antes dos leitores de dinheiro, e as outras páginas do mesmo PDF também. Fatura não tem um valor só: o leitor próprio (total, vencimento, lançamentos com a soma conferida) espera o PDF original do banco, com o texto dentro.
+23. **Tipo Remédio** (família Saúde, RiseONE): caixa, bula e rótulo da farmácia de manipulação, pelas palavras deles (bula, indicações, solução oral, uso adulto e pediátrico, mg/mL, farmacêutico responsável, CRF, "Prod.:", "Val.:"...). A receita do médico continua com os próprios sinais (receituário, paciente, CRM).
 17. **Leitura sem foto não inventa nada**: se o OCR falhar numa foto de verdade (ex.: sem internet antes de o leitor de fotos estar guardado), aparece um aviso e nenhum campo. Até a 0.6 o app preenchia os campos com um comprovante de exemplo inventado ("AUTO POSTO CENTRAL", R$ 85,00), como se tivesse lido a foto; só os três comprovantes de demonstração continuam com texto próprio.
 
 Cada comprovante salvo guarda o `tipo` (e os lançamentos, quando é extrato), e o histórico mostra o tipo no cartão. No console do navegador, `window.ocrDebug` tem as leituras, os candidatos e os sinais de tipo da última foto.
@@ -214,6 +218,41 @@ Decisões: o leitor de XLSX e DOCX não usa biblioteca (são zips de XML; o nave
 Nenhuma foto que acertava passou a errar, e a detecção dos comprovantes não mudou. Passaram a acertar: prints de notificação de compra, ingresso com texto, CNH (frente), rótulos de informação nutricional, bioimpedância e os pedidos médicos. Ainda erram: 11 comprovantes girados ou pequenos que a leitura em si não pega bem no modo automático, 4 visores de esteira (números de LED, que o OCR não lê: falta a capacidade "visor"), 4 telas de rótulo enquadradas nos ingredientes (saem como "Ingredientes" em vez de "Informação nutricional"), embalagens e garrafa com letra artística, o verso da CNH, um ingresso só com QR code e dois prints.
 
 Fotos novas recebidas em 17/10 (52): prints de notificação de compra e de aplicativo de banco, ingressos com QR code, visores de esteira, CNH, rótulos e garrafas (inclusive pote redondo), pedidos médicos, bioimpedância e mais comprovantes. Servem de gabarito para os leitores próprios desses tipos, um por vez, por ordem de valor.
+
+## Resultado da 0.7.2 (PDF com senha, prints de notificação, remédio e fatura, 18/10/2026)
+
+**Prints de notificação** (2 prints de 12/10, cada um em duas versões: a do WhatsApp e a mais nítida; 12 compras no total):
+
+| | Compras certas | Faltaram | A mais |
+|---|---|---|---|
+| Antes (só o texto, nenhum lançamento) | 0 | 12 | 0 |
+| Depois | 12 | 0 | 0 |
+
+Todas com data e hora, menos a recarga da Tag no print do banco (o próprio aviso não traz a data). Na versão nítida do print de mensagens, uma compra só apareceu numa das leituras (a outra leu um traço no meio do valor): ela entra, e a tela diz "confira os valores".
+
+**Fotos novas de 17/10** (caixa e bula de remédio, 2 potes de farmácia de manipulação, latas de leite em pó e de achocolatado), tipo descoberto com "Não sei, descobrir":
+
+| | Tipo certo |
+|---|---|
+| Antes | 4 de 15 |
+| Depois | 8 de 15 |
+
+Passaram a acertar: a caixa e a bula do remédio, o pote da farmácia mais nítido e a tabela nutricional da lata que saía como "pedido de exame" (vitamina A, D, E, cálcio, ferro: agora a unidade entre parênteses, "(mg)", conta para a tabela). Ainda erram: a frente das latas (letra artística na curva: o OCR quase não lê nada) e o outro pote da farmácia (foto tremida).
+
+**Fatura em PDF** (6 páginas, o PDF "impresso", que virou imagem): antes, as 6 páginas saíam como comprovante de maquininha e a página de simulação mostrava R$ 500,00 como valor; depois, as 6 são fatura, nenhuma mostra valor, e a leitura caiu de 86 para 65 segundos (fatura não precisa da terceira leitura que confere o valor). Os lançamentos ainda não são lidos: nesse PDF o texto é imagem pequena e o OCR perde as vírgulas ("26000" no lugar de 260,00).
+
+**Regressão** (nenhuma diferença papel por papel em valor, data e estabelecimento):
+
+| Conjunto | Valor certo | Incerto, certo entre as opções | Incerto | Vazio | Errado |
+|---|---|---|---|---|---|
+| 37 fotos das etapas 2 a 5 (43 papéis), antes | 28 | 5 | 1 | 9 | 0 |
+| 37 fotos das etapas 2 a 5 (43 papéis), depois | 28 | 5 | 1 | 9 | 0 |
+| 14 fotos com vários papéis (27 papéis), antes | 18 | 3 | 0 | 6 | 0 |
+| 14 fotos com vários papéis (27 papéis), depois | 18 | 3 | 0 | 6 | 0 |
+
+Detecção nas 52 fotos de 17/10: 25 → 27 certas (duas telas de tabela nutricional deixaram de sair como "Ingredientes"); nenhuma piorou.
+
+**`testes/offline.js`**: 28 verificações, todas certas, com a nova: um PDF fictício com senha (gerado na hora) pede a senha, avisa a errada, abre com a certa e a senha não fica no aparelho.
 
 ## Pendências conhecidas (ninguém pediu ainda)
 
