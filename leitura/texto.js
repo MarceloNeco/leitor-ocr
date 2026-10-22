@@ -99,7 +99,7 @@
         if (!ESTAB_LEGAL.test(text) && enderecos.some(e => e !== so && so.length >= 6 && e.includes(so))) return;   // the neighborhood
         if (ESTAB_CLUE.test(text)) score += 2;
         if (ESTAB_LEGAL.test(text)) score += 2;
-        if (i < 12) score += Math.max(0, 2 - rank++);   // the first lines at the top
+        if (i < 12 && l.conf >= 60) score += Math.max(0, 2 - rank++);   // the first lines at the top (read with confidence: the top of a photo is often the table)
         const near = [lines[i + 1], lines[i + 2], lines[i - 1]].filter(Boolean).map(x => x.text.toUpperCase());
         if (near.some(x => /CNPJ|\d{2}\.\d{3}\.\d{3}\/\d{4}/.test(x))) score += 1.5;
         if (i < 8) score += 1;

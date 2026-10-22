@@ -103,9 +103,34 @@
     return out;
   }
 
+  // A phone screenshot in dark mode: light letters on a dark screen. It has
+  // the shape of a phone screen (tall and thin) and is dark on average; a
+  // photo of a receipt in poor light is not one (it keeps its paper crop and
+  // its dark ink)
+  function telaEscura(img) {
+    if (img.cutOut) return false;
+    if (img._telaEscura !== undefined) return img._telaEscura;
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    let escura = false;
+    if (w && h && Math.max(w, h) / Math.min(w, h) >= 1.9) {
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(100 * w / Math.max(w, h)));
+      c.height = Math.max(1, Math.round(100 * h / Math.max(w, h)));
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      let total = 0;
+      for (let i = 0; i < d.length; i += 4) total += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      escura = total / (d.length / 4) < 90;
+    }
+    img._telaEscura = escura;
+    return escura;
+  }
+
   // Builds a high-resolution image just for OCR: finds the receipt paper,
   // crops it, enlarges the text and turns it into clean black-on-white.
   function buildOcrCanvas(img, rotation = 0, binarize = false, targetW = 1000, region = null) {
+    const tela = telaEscura(img);
     const MAX_SRC = 3000;
     let w = img.naturalWidth || img.width;
     let h = img.naturalHeight || img.height;
@@ -130,9 +155,9 @@
     // Region to read: the one asked for (in the rotated frame), the block of
     // small ink marks that looks like text ('ink'), the whole picture ('all':
     // a paper already cut out of a photo with several), else the paper
-    if (region === 'ink') region = findTextBox(src) || findPaperBox(src);
+    if (region === 'ink') region = findTextBox(src) || findPaperBox(src, tela);
     if (region === 'all') region = { cx: 0, cy: 0, cw: src.width, ch: src.height };
-    const { cx, cy, cw, ch } = region || findPaperBox(src);
+    const { cx, cy, cw, ch } = region || findPaperBox(src, tela);
 
     // 2. Crop and resize so the receipt text has a size Tesseract reads well
     const scale = Math.min(region ? 4 : 3, targetW / cw);
@@ -150,14 +175,11 @@
     const d = od.data;
     const W = out.width, H = out.height;
     const g = new Float32Array(W * H);
-    let total = 0;
     for (let i = 0; i < g.length; i++) {
       g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-      total += g[i];
     }
-    // A phone screenshot in dark mode has light letters on a dark screen;
-    // Tesseract reads dark ink on light paper, so the image is inverted
-    if (total / g.length < 90) for (let i = 0; i < g.length; i++) g[i] = 255 - g[i];
+    // Tesseract reads dark ink on light paper: a dark screenshot is inverted
+    if (tela) for (let i = 0; i < g.length; i++) g[i] = 255 - g[i];
     // Local mean of the gray level: the paper and the table around it. In
     // gray mode every pixel is measured against it, so a dark table or a
     // blue background turns white and only the ink stays dark (Tesseract
@@ -198,7 +220,10 @@
   // Finds the paper in a photo (or canvas): the largest bright area on a
   // small copy. Returns the box to crop, or the whole image when no paper
   // stands out.
-  function findPaperBox(src) {
+  function findPaperBox(src, tela = false) {
+    // A dark screenshot is not paper on a table: the whole image is read, or
+    // the notifications below the brightest one are cut off
+    if (tela) return { cx: 0, cy: 0, cw: src.width, ch: src.height };
     const SMALL = 300;
     const k = Math.min(1, SMALL / Math.max(src.width, src.height));
     const sw = Math.max(1, Math.round(src.width * k));
@@ -210,14 +235,9 @@
     smctx.drawImage(src, 0, 0, sw, sh);
     const sd = smctx.getImageData(0, 0, sw, sh).data;
     const gray = new Uint8Array(sw * sh);
-    let total = 0;
     for (let i = 0; i < gray.length; i++) {
       gray[i] = 0.299 * sd[i * 4] + 0.587 * sd[i * 4 + 1] + 0.114 * sd[i * 4 + 2];
-      total += gray[i];
     }
-    // A dark screen (screenshot in dark mode) is not paper on a table: the
-    // whole image is read, or the notifications below the brightest one are cut
-    if (total / gray.length < 90) return { cx: 0, cy: 0, cw: src.width, ch: src.height };
     const otsu = (from) => {
       const hist = new Array(256).fill(0);
       let n = 0;
