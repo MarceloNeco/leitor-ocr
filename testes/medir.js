@@ -26,7 +26,14 @@
 // Campo sem "valores", "datas" ou "estab" no gabarito não recebe nota.
 // "lancamentos" (lista de valores, ex.: ["-250,80", "1.250,00"]) mede os
 // lançamentos lidos (extrato, fatura, print de notificação): certos, que
-// faltaram e lidos a mais.
+// faltaram e lidos a mais. "produtos" (lista de valores dos itens da nota)
+// mede os produtos lidos do mesmo jeito.
+// O estabelecimento conta como certo no campo Estabelecimento (nome
+// fantasia) ou no campo Razão social.
+// Arquivos que vão juntos (dois prints que se completam, o canhoto e o print
+// da mesma compra): no gabarito, uma chave "a.jpg+b.jpg"; os arquivos vão de
+// uma vez só, cada um vira uma aba, e os lançamentos contam juntos; "separar"
+// diz quais fotos do grupo (1, 2...) têm vários papéis.
 //
 // As fotos e o gabarito têm dados pessoais: ficam FORA do repositório.
 // O resultado completo (com o texto lido) é gravado na pasta das fotos.
@@ -77,11 +84,13 @@ function serveRepo() {
 const norm = s => (s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 const money = s => (s || '').replace(/R\$\s*/i, '').replace(/\./g, '').trim();
 const list = v => (v === undefined || v === null) ? [] : (Array.isArray(v) ? v : [v]);
+// 5.93 → "5,93" (para comparar com o gabarito, que é escrito como no papel)
+const L2 = n => typeof n === 'number' ? n.toFixed(2).replace('.', ',') : String(n || '');
 
 function grade(fields, chips, expected) {
   const g = k => (fields.find(f => f.key === k) || {}).val || '';
   const valores = list(expected.valores).map(money), datas = list(expected.datas), estabs = list(expected.estab).filter(Boolean);
-  const v = money(g('Valor')), d = g('Data'), e = norm(g('Estabelecimento'));
+  const v = money(g('Valor')), d = g('Data'), e = norm(g('Estabelecimento') + ' / ' + g('Razão social'));
   const judge = (read, ok) => ok.length === 0 ? (read ? 'errado' : 'certo') : (!read ? 'vazio' : ok.includes(read) ? 'certo' : 'errado');
   let valor = expected.valores === undefined ? '-' : judge(v, valores);
   if (valor === 'vazio' && chips.length) valor = chips.some(c => valores.includes(money(c))) ? 'incerto-ok' : 'incerto';
@@ -97,7 +106,9 @@ function grade(fields, chips, expected) {
   const base = `http://127.0.0.1:${server.address().port}/`;
   const gabaritoFile = path.join(PHOTOS, 'gabarito.json');
   const gabarito = fs.existsSync(gabaritoFile) ? JSON.parse(fs.readFileSync(gabaritoFile, 'utf8')) : null;
-  const files = ONLY.length ? ONLY : fs.readdirSync(PHOTOS).filter(f => /\.(jpe?g|png|pdf|ofx|ofc|csv|xlsx|docx|txt)$/i.test(f) && !f.startsWith('_')).sort();
+  const grupos = Object.keys(gabarito || {}).filter(k => k.includes('+'));
+  const files = ONLY.length ? ONLY : fs.readdirSync(PHOTOS).filter(f => /\.(jpe?g|png|pdf|ofx|ofc|csv|xlsx|docx|txt)$/i.test(f) && !f.startsWith('_'))
+    .filter(f => (gabarito && gabarito[f]) || !grupos.some(k => k.split('+').includes(f))).concat(grupos).sort();
   checkVersions();
 
   const browser = await chromium.launch();
@@ -121,38 +132,61 @@ function grade(fields, chips, expected) {
     const tipo = process.env.TIPO || (gabarito && gabarito[f] && gabarito[f].tipo) || 'auto';
     const expectedPapers = (gabarito && gabarito[f] && gabarito[f].papeis) || 1;
     const t0 = Date.now();
-    await page.setInputFiles('#fileInputGallery', path.join(PHOTOS, f));
+    await page.setInputFiles('#fileInputGallery', f.split('+').map(x => path.join(PHOTOS, x)));
     let ok = true, askedPapers = 0;
     try {
       // the app asks what the photo is (a file that says it, like OFX, goes
       // straight to the reading); answer with the type from the gabarito
       await page.waitForFunction(() => document.getElementById('docTypeDialog').open || document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 30000 });
       if (await page.$eval('#docTypeDialog', d => d.open)) await page.click(`#docTypeDialog button[data-tipo="${tipo}"]`);
-      // then it may ask whether to read several papers apart: answer as the gabarito says
-      await page.waitForFunction(() => document.getElementById('papersDialog').open || document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 600000 });
-      if (await page.$eval('#papersDialog', d => d.open)) {
-        askedPapers = +(await page.$eval('#papersDialogTitle', e => (e.textContent.match(/\d+/) || [0])[0]));
-        await page.click(expectedPapers > 1 ? '#btnPapersMany' : '#btnPapersOne');
-        await page.waitForFunction(() => document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 900000 });
+      // then it may ask whether to read several papers apart (once per photo):
+      // answer as the gabarito says; in a group, "separar" lists the photos
+      // (1, 2...) that have several papers
+      const separar = gabarito && gabarito[f] && gabarito[f].separar;
+      for (;;) {
+        await page.waitForFunction(() => document.getElementById('papersDialog').open || document.getElementById('fieldsEditorCard').style.display === 'flex', null, { timeout: 900000 });
+        if (!(await page.$eval('#papersDialog', d => d.open))) break;
+        const titulo = await page.$eval('#papersDialogTitle', e => e.textContent);
+        askedPapers += +((titulo.match(/\d+/) || [0])[0]);
+        const foto = +((titulo.match(/Foto (\d+)/) || [])[1] || 1);
+        await page.click((separar ? separar.includes(foto) : expectedPapers > 1) ? '#btnPapersMany' : '#btnPapersOne');
+        await page.waitForTimeout(300);
       }
     } catch (e) { ok = false; logs.push('harness: ' + e.message); }
     const secs = +((Date.now() - t0) / 1000).toFixed(1);
     const fallback = logs.some(l => l.includes('OCR falhou'));
     const nTabs = ok ? await page.$$eval('#paperTabs .paper-tab', els => els.filter(e => e.offsetParent !== null).length) : 0;
     const papersFound = Math.max(1, nTabs);
+    let lidosGrupo = [];
     for (let pi = 0; pi < papersFound; pi++) {
       if (nTabs > 1) { await page.click(`#paperTabs .paper-tab:nth-child(${pi + 1})`); }
       const fields = ok ? await page.$$eval('#fieldsListContainer .field-row', rows => rows.map(r => ({
         key: r.querySelector('.fld-key').value, val: r.querySelector('.fld-val').value, missing: r.classList.contains('field-missing') }))) : [];
       const chips = ok ? await page.$$eval('.valor-chip', els => els.map(e => e.textContent)) : [];
-      const itens = ok ? await page.$$eval('.items-table tbody tr', trs => trs.filter(t => t.offsetParent !== null).map(t => [...t.children].map(c => c.textContent))) : [];
-      const lanc = gabarito && gabarito[f] && gabarito[f].lancamentos ? (() => {
-        const falta = list(gabarito[f].lancamentos).map(money), lidos = itens.map(i => money(i[2]));
+      // a linha riscada de aviso repetido (o mesmo aviso em outro print) não conta
+      const itens = ok ? await page.$$eval('#itemsBox .items-table tbody tr', trs => trs.filter(t => t.offsetParent !== null)
+        .map(t => [...t.children].map(c => c.textContent).concat(t.classList.contains('repetido') ? ['repetido'] : []))) : [];
+      if (pi === 0) lidosGrupo = [];
+      lidosGrupo.push(...itens.filter(i => i[3] !== 'repetido').map(i => money(i[2])));
+      // num grupo, os lançamentos contam juntos, uma vez, no último papel
+      const lanc = gabarito && gabarito[f] && gabarito[f].lancamentos && (!f.includes('+') || pi === papersFound - 1) ? (() => {
+        const falta = list(gabarito[f].lancamentos).map(money), lidos = f.includes('+') ? lidosGrupo.slice() : itens.filter(i => i[3] !== 'repetido').map(i => money(i[2]));
         let certos = 0;
         const mais = lidos.filter(v => { const k = falta.indexOf(v); if (k < 0) return true; falta.splice(k, 1); certos++; return false; });
         return { certos, faltam: falta.length, aMais: mais.length };
       })() : null;
       const conf = ok ? await page.$eval('#confidenceVal', e => e.textContent) : '';
+      // o que não aparece na tabela de campos: produtos da nota, o estabelecimento e os lançamentos completos
+      const extra = ok ? await page.evaluate(i => {
+        const r = (typeof papers !== 'undefined' && papers[i] && papers[i].result) || {};
+        return { produtos: r.produtos || null, produtosConferido: r.produtosConferido, estabelecimento: r.estabelecimento || null, lancamentos: r.itens || null };
+      }, pi) : {};
+      const prod = gabarito && gabarito[f] && gabarito[f].produtos ? (() => {
+        const falta = list(gabarito[f].produtos).map(money), lidos = (extra.produtos || []).map(p => money(L2(p.valor)));
+        let certos = 0;
+        const mais = lidos.filter(v => { const k = falta.indexOf(v); if (k < 0) return true; falta.splice(k, 1); certos++; return false; });
+        return { certos, faltam: falta.length, aMais: mais.length, conferido: !!extra.produtosConferido };
+      })() : null;
       const debug = (await page.evaluate(() => window.ocrDebug || null)) || {};
       const texts = (debug.readings || []).map(r => r.text);
       const passes = texts.length;
@@ -164,9 +198,10 @@ function grade(fields, chips, expected) {
       const sinais = debug.sinais ? ` sinais=${debug.sinais.nfce}/${debug.sinais.cartao}/${debug.sinais.conta}` : '';
       const rots = (debug.readings || []).map(r => `${r.rot}${r.bin ? 'pb' : ''}${r.region ? 'rec' : ''}:${r.good}`).join(',') + (debug.tilt !== undefined ? ` incl=${debug.tilt}` : '');
       const label = papersFound > 1 ? `${f} [papel ${pi + 1}/${papersFound}]` : f;
-      results.push({ file: f, papel: pi + 1, papeis: papersFound, papeisEsperados: expectedPapers, papeisPerguntados: askedPapers, ok, secs, fallback, conf, passes, tipoEscolhido: tipo, tipoLido: debug.tipo, detectado: debug.detected, textKind: debug.textKind, chips, fields, itens, lanc, nota: notaG, codes: debug.codes, readings: debug.readings, logs: logs.slice(0, 30) });
+      results.push({ file: f, papel: pi + 1, papeis: papersFound, papeisEsperados: expectedPapers, papeisPerguntados: askedPapers, ok, secs, fallback, conf, passes, tipoEscolhido: tipo, tipoLido: debug.tipo, detectado: debug.detected, textKind: debug.textKind, chips, fields, itens, lanc, prod, extra, nota: notaG, codes: debug.codes, readings: debug.readings, logs: logs.slice(0, 30) });
       const tag = (notaG ? `  [valor=${notaG.valor} data=${notaG.data} estab=${notaG.estab}]` : '')
-        + (itens.length ? `  lançamentos=${itens.length} (${conf})` : '') + (lanc ? `  [lançamentos certos=${lanc.certos} faltam=${lanc.faltam} a mais=${lanc.aMais}]` : '');
+        + (itens.length ? `  lançamentos=${itens.length} (${conf})` : '') + (lanc ? `  [lançamentos certos=${lanc.certos} faltam=${lanc.faltam} a mais=${lanc.aMais}]` : '')
+        + (prod ? `  [produtos certos=${prod.certos} faltam=${prod.faltam} a mais=${prod.aMais}${prod.conferido ? ', soma confere' : ''}]` : '');
       const same = g('Mesma compra');
       console.log(`${label}  ${pi === 0 ? secs + 's' : ''}  leituras=${passes}${rots ? ' [' + rots + ']' : ''}${fallback ? ' FALLBACK' : ''}  tipo=${tipo}>${debug.tipo || '?'}${sinais}  Valor=${g('Valor')}${chips.length ? ' opções=' + chips.join('|') : ''}  Data=${g('Data')}  Hora=${g('Hora')}  Estab=${g('Estabelecimento').slice(0, 30)}${nota !== '-' ? '  Nota=' + nota : ''}${codes ? '  codigo=' + codes : ''}${same !== '-' ? '  mesma-compra=' + same : ''}  ${kind}${tag}`);
     }
@@ -190,6 +225,11 @@ function grade(fields, chips, expected) {
     console.log(`| valor | ${count('valor', 'certo')} | ${count('valor', 'incerto-ok')} | ${count('valor', 'incerto')} | ${count('valor', 'vazio')} | ${count('valor', 'errado')} |`);
     console.log(`| data | ${count('data', 'certo')} | - | - | ${count('data', 'vazio')} | ${count('data', 'errado')} |`);
     console.log(`| estab | ${count('estab', 'certo')} | - | - | - | ${count('estab', 'nao')} |`);
+    const comProd = results.filter(r => r.prod);
+    if (comProd.length) {
+      const soma = k => comProd.reduce((a, r) => a + r.prod[k], 0);
+      console.log(`Produtos: ${soma('certos')} certos, ${soma('faltam')} faltaram, ${soma('aMais')} lidos a mais; soma conferida em ${comProd.filter(r => r.prod.conferido).length} de ${comProd.length} notas`);
+    }
     const comLanc = results.filter(r => r.lanc);
     if (comLanc.length) {
       const soma = k => comLanc.reduce((a, r) => a + r.lanc[k], 0);

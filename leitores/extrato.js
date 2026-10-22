@@ -171,7 +171,7 @@
     ['anuidade', /ANUIDADE/i],
     ['encargo', /\bIOF\b|I\.O\.F|JUROS|ENCARGO|MULTA|\bMORA\b|TARIFA|\bTAR\b|CESTA DE SERV/i],
     ['pagamento', /PAGAMENTO|PAGTO|\bPAG\b|BOLETO|D[EÉ]B(?:ITO)?\.? AUT/i],
-    ['transferencia', /\bPIX\b|\bTED\b|\bDOC\b|TRANSF|\bTEF\b/i],
+    ['transferencia', /\bPIX\b|\bTED\b|\bDOC\b|TRANSF|\bTEF\b|VOC[EÊ] ENVIOU/i],
     ['compra', /COMPRA/i]
   ];
   const tipoDe = (descricao, valor, doc) => (TIPOS.find(([, re]) => re.test(descricao)) || [doc === 'fatura' && valor < 0 ? 'compra' : 'outro'])[0];
@@ -538,7 +538,8 @@
 
   // Os avisos de um texto lido: [{ data, hora, descricao, valor }]
   function avisos(texto) {
-    const t = limpa(texto || '');
+    // a palavra partida no fim da linha ("PADA-" / "RIA") volta a ser uma só
+    const t = limpa(String(texto || '').replace(/([A-Za-zÀ-ÿ])-\s*\n\s*([A-Za-zÀ-ÿ])/g, '$1$2'));
     const inicios = [...t.matchAll(INICIO)].map(m => m.index);
     const vals = [...t.matchAll(VALOR_AVISO)].filter(m => !NAO_E_LANCAMENTO.test(t.slice(Math.max(0, m.index - 25), m.index)));
     const ds = s => [...s.matchAll(DATA_AVISO)].filter(d => +d[1] >= 1 && +d[1] <= 31 && +d[2] >= 1 && +d[2] <= 12);
@@ -547,7 +548,10 @@
       const ini = Math.max(k ? vals[k - 1].index + vals[k - 1][0].length : 0, ...inicios.filter(i => i <= m.index));
       const fim = Math.min(k + 1 < vals.length ? vals[k + 1].index : t.length, ...inicios.filter(i => i > m.index));
       const antes = t.slice(ini, m.index), depois = t.slice(m.index + m[0].length, fim);
-      const d = ds(depois)[0] || ds(antes).pop();
+      // depois do valor, só a data do próprio aviso ("em 12/10", "dia 12/10", "12/10 às 10:16"),
+      // não a do cabeçalho da notificação seguinte (o Pix que mostra só a hora fica sem data)
+      const doAviso = ds(depois).filter(d => d[4] || /(?:\bEM|\bDIA|\bDE)\s*$/i.test(depois.slice(Math.max(0, d.index - 8), d.index)));
+      const d = doAviso[0] || ds(antes).pop();
       let data = '', hora = '';
       if (d) {
         const a = d[3] ? (d[3].length === 2 ? '20' + d[3] : d[3]) : anoAviso(+d[1], +d[2]);
@@ -636,6 +640,9 @@
     const item = { data: i.data || '' };
     if (i.hora) item.hora = i.hora;
     Object.assign(item, { descricao: i.descricao || '', valor: i.valor, moeda: i.moeda || ctx.moeda || 'BRL', entrada: i.valor > 0, tipo: tipoDe(`${i.descricao || ''} ${i.contexto || ''}`, i.valor, ctx.tipo) });
+    // a categoria, só quando a loja é de uma rede conhecida (dados/estabelecimentos.json)
+    const categoria = L.categoriaDe ? L.categoriaDe(i.descricao) : '';
+    if (categoria) item.categoria = categoria;
     if (i.parcela) item.parcela = i.parcela;
     if (i.cartaoFinal) item.cartaoFinal = i.cartaoFinal;
     item.conferido = !!ctx.conferido;

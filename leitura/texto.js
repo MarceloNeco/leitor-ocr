@@ -10,7 +10,9 @@
   // Ordered fields specification
   const ORDERED_FIELD_KEYS = [
     'Estabelecimento',
+    'Razão social',
     'CNPJ',
+    'Categoria',
     'Nota',
     'Valor',
     'Vencimento',
@@ -57,18 +59,30 @@
   // engine read with confidence that looks like a business name (LTDA,
   // RESTAURANTE, POSTO...), comes after "COMPRA" (Stone) or sits next to
   // the CNPJ, and is not an address, a city, a card brand or a label.
-  const ESTAB_SKIP = /VIA\s?CLIENTE|VIA DO CLIENTE|COMPROVANTE|CUPOM|DANFE|NFC-?E|DOCU|AUXILIAR|NOTA FISCAL|FISCAL|ELETR[OÔ]NIC|PROTOCOLO|CONSUMIDOR|CONSULTE|CHAVE|\bCPF\b|\bCEP\b|TELEFONE|\bTEL\b|FONE|CR[EÉ]DITO|D[EÉ]BITO|MASTERCARD|\bVISA\b|\bELO\b|AMEX|HIPERCARD|CART[AÃ]O|\bAUT\b|\bNSU\b|\bDOC\b|TERMINAL|SERIAL|\bAID\b|ARQC|VALOR|TOTAL|SUBTOTAL|TROCO|DESCONTO|\bITE[MN]|\bQTD|\bDATA\b|HORA|EMISS|PARCELA|SENHA|APROVAD|OBRIGADO|VOLTE SEMPRE|EXTRATO|RESUMO|PEDIDO|\bMESA\b|ATENDENTE|OPERADOR|\bOPE\b|CAIXA|\bPDV\b|ORDER|CASHIER|SERVER|RECEIPT|SURVEY|CHECK|GUEST|WELCOME|THANK|CUSTOMER|MERCHANT|\b(?:RUA|R\.|AV\.?|AVENIDA|ALAMEDA|AL\.|PRA[CÇ]A|ROD\.?|RODOVIA|ESTRADA|TRAVESSA|TV\.|LARGO|PKWY|PARKWAY|STREET|SUITE)\b|^\d|\b[A-Z]{3,}\/[A-Z]{2}\b|\b(?:SP|RJ|MG|RS|PR|SC|BA|PE|CE|GO|DF|ES|MT|MS|PA|AM|MA|PB|RN|PI|AL|SE|RO|TO|AC|AP|RR)\b\s*$/;
-  const ESTAB_ACQUIRER = /^(?:STONE|GETNET|CIELO|REDE|PAGSEGURO|PAGBANK|INFINITEPAY|SUMUP|SAFRAPAY|MERCADO PAGO|VERO|BIN|ELAVON|GLOBAL PAYMENTS)\s*$/;
-  const ESTAB_CLUE = /LTDA|\bS\.?A\.?\b|\bS\/A\b|EIRELI|\bME\b|\bEPP\b|COM[EÉ]RCIO|RESTAURANTE|LANCHONETE|LANCHES|\bBAR\b|PIZZARIA|PADARIA|CAFE|CAF[EÉ]|POSTO|FARM[AÁ]CIA|DROGARIA|SUPERMERCADO|MERCADO|VAREJ[AÃ]O|LOJA|CL[IÍ]NICA|HOSPITAL|ESTACIONAMENTO|KITCHEN|GRILL|BURGER|HOTEL|ACADEMIA|PET|ATACAD/;
+  const ESTAB_SKIP = /VIA\s?CLIENTE|VIA DO CLIENTE|COMPROVANTE|CUPOM|DANFE|NFC-?E|DOCU|AUXILIAR|NOTA FISCAL|FISCAL|ELETR[OÔ]NIC|PROTOCOLO|CONSUMIDOR|CONSULTE|CHAVE|\bCPF\b|\bCEP\b|TELEFONE|\bTEL\b|FONE|CR[EÉ]DITO|D[EÉ]BITO|MASTERCARD|\bVISA\b|\bELO\b|AMEX|HIPERCARD|CART[AÃ]O|\bAUT\b|\bNSU\b|\bDOC\b|TERMINAL|SERIAL|\bAID\b|ARQC|VALOR|TOTAL|SUBTOTAL|TROCO|DESCONTO|\bITE[MN]|\bQTD|\bDATA\b|HORA|EMISS|PARCELA|SENHA|APROVAD|OBRIGADO|VOLTE SEMPRE|EXTRATO|RESUMO|PEDIDO|\bMESA\b|ATENDENTE|OPERADOR|\bOPE\b|CAIXA|\bPDV\b|ORDER|CASHIER|SERVER|RECEIPT|SURVEY|CHECK|GUEST|IMPRESS[AÃ]O|PARA CONTROLE|CONFER[EÊ]NCIA|DETALHES DA VENDA|WELCOME|THANK|CUSTOMER|MERCHANT|\b(?:RUA|R\.|AV\.?|AVENIDA|ALAMEDA|AL\.|PRA[CÇ]A|ROD\.?|RODOVIA|ESTRADA|TRAVESSA|TV\.|LARGO|PKWY|PARKWAY|STREET|SUITE)\b|^\d|\b[A-Z]{3,}\/[A-Z]{2}\b|\b(?:SP|RJ|MG|RS|PR|SC|BA|PE|CE|GO|DF|ES|MT|MS|PA|AM|MA|PB|RN|PI|AL|SE|RO|TO|AC|AP|RR)\b\s*$/;
+  const ESTAB_ACQUIRER = /^(?:STONE|GETNET|CIELO|REDE|PAGSEGURO|PAGBANK|INFINITEPAY|SUMUP|SAFRAPAY|MERCADO PAGO|VERO|BIN|ELAVON|GLOBAL PAYMENTS|LARANJINHA(?: ITA[UÚ])?|TON|ALTEC)\s*$/;
+  // The legal name has the company type: SA, LTDA, CIA, EIRELI, ME
+  const ESTAB_LEGAL = /\bLTDA\b|\bS\.?\/?A\.?(?=\s|$)|\bCIA\b|COMPANHIA|EIRELI|\bME\b|\bEPP\b/;
+  // Address, city, ZIP and phone lines: the neighborhood (bairro) of the store
+  // shows up again inside them ("JARDIM EXEMPLO, CIDADE - SP")
+  const ESTAB_ENDERECO = /\b(?:RUA|R\.|AV\.?|AVENIDA|ALAMEDA|AL\.|PRA[CÇ]A|ROD\.?|RODOVIA|ESTRADA|TRAVESSA)\b|\bCEP\b|\d{5}-?\d{3}|[,-]\s*(?:SP|RJ|MG|RS|PR|SC|BA|PE|CE|GO|DF|ES|MT|MS|PA|AM|MA|PB|RN|PI|AL|SE|RO|TO|AC|AP|RR)\b\s*$|\b[A-Z]{3,}\/[A-Z]{2}\b/;
+  const ESTAB_CLUE = /LTDA|\bS\.?A\.?\b|\bS\/A\b|\bCIA\b|COMPANHIA|EIRELI|\bME\b|\bEPP\b|COM[EÉ]RCIO|RESTAURANTE|LANCHONETE|LANCHES|\bBAR\b|PIZZARIA|PADARIA|CAFE|CAF[EÉ]|POSTO|FARM[AÁ]CIA|DROGARIA|SUPERMERCADO|MERCADO|VAREJ[AÃ]O|LOJA|CL[IÍ]NICA|HOSPITAL|ESTACIONAMENTO|KITCHEN|GRILL|BURGER|HOTEL|ACADEMIA|PET|ATACAD/;
+  // The establishment: the first line at the top that is not address,
+  // neighborhood, city, ZIP, phone or CNPJ; a line with the company type (SA,
+  // LTDA, CIA, EIRELI, ME) wins. The OCR confidence weighs in, because the
+  // first line of a photo is often the border of the paper or the table.
   function pickEstablishment(readings) {
-    let best = null;
+    const cands = [];
     readings.forEach(r => {
       const lines = r.lines || [];
+      const enderecos = lines.map(l => l.text.toUpperCase()).filter(t => ESTAB_ENDERECO.test(t)).map(t => t.replace(/[^A-ZÀ-Ú]/g, ''));
+      let rank = 0;
       lines.forEach((l, i) => {
         let text = l.text.toUpperCase();
         let score = l.conf / 25;                     // 0 a 4
         if (/CNPJ|\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2}/.test(text)) {
-          text = text.replace(/\s*[-:]*\s*CNPJ.*$/, '').replace(/\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2}/, '');
+          text = text.replace(/[\s.:-]*C\s?N\s?P\S*.*$/, '').replace(/\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2}/, '')   // "CNPI", "CNP)": a foto lê o J errado
+            .replace(/^(?:[^A-ZÀ-Ú\s]\s+)+/, '');   // the paper's edge read as "2 " or "= " before the name
           score += 1.5;
         }
         text = text.replace(/^[^A-ZÀ-Ú0-9]+|[^A-ZÀ-Ú0-9.&)]+$/g, '').replace(/\s+[\d\s#\-]+$/, '');
@@ -81,15 +95,25 @@
         const wordy = tokens.filter(t => /^[A-ZÀ-Ú&.'-]{2,}$/.test(t) && /[AEIOUÀ-Ú]/.test(t)).length;
         if (wordy < Math.max(1, Math.ceil(tokens.length * 0.6))) return;   // mostly garbage
         if (ESTAB_SKIP.test(text) || ESTAB_ACQUIRER.test(text)) return;
+        const so = text.replace(/[^A-ZÀ-Ú]/g, '');
+        if (!ESTAB_LEGAL.test(text) && enderecos.some(e => e !== so && so.length >= 6 && e.includes(so))) return;   // the neighborhood
         if (ESTAB_CLUE.test(text)) score += 2;
+        if (ESTAB_LEGAL.test(text)) score += 2;
+        if (i < 12) score += Math.max(0, 2 - rank++);   // the first lines at the top
         const near = [lines[i + 1], lines[i + 2], lines[i - 1]].filter(Boolean).map(x => x.text.toUpperCase());
         if (near.some(x => /CNPJ|\d{2}\.\d{3}\.\d{3}\/\d{4}/.test(x))) score += 1.5;
         if (i < 8) score += 1;
         if (tokens.length === 1 && text.length < 6) score -= 1;
-        if (!best || score > best.score) best = { text, score };
+        cands.push({ text, score });
       });
     });
-    return best ? best.text : '';
+    const best = cands.reduce((b, c) => !b || c.score > b.score ? c : b, null);
+    if (!best) return '';
+    // A letter lost at the paper's edge in one reading ("ADARIA" for "PADARIA"):
+    // the other reading's whole word wins
+    const inteiro = cands.find(c => c.text.length > best.text.length && c.text.length <= best.text.length + 2 &&
+      c.text.endsWith(best.text) && /^[A-ZÀ-Ú]+$/.test(c.text.slice(0, c.text.length - best.text.length)));
+    return (inteiro || best).text;
   }
 
   // Guesses the document type from the words that give it away
@@ -205,6 +229,7 @@
       if ((has && !bestHas) || (has === bestHas && r.conf > readings[bestIdx].conf)) bestIdx = i;
     });
     const fields = parsed[bestIdx].fields.slice();
+    let estabelecimento = null;
     (codes || []).forEach(c => {
       fields.push(c.format === 'QR_CODE' ? { key: 'QR code', val: c.text } : { key: 'Código de barras', val: `${c.text} (${c.format.replace(/_/g, ' ')})` });
     });
@@ -228,6 +253,23 @@
       if (estab && f) f.val = estab;
       else if (estab) fields.unshift({ key: 'Estabelecimento', val: estab });
       else if (f) fields.splice(fields.indexOf(f), 1);
+      // The CNPJ (checked by its digits) says the chain: the name people know
+      // (nome fantasia) and the category; the legal name gets its own field
+      if (L.estabelecimento) {
+        const cnpjF = fields.find(x => x.key === 'CNPJ');
+        const cnpj = [cnpjF && cnpjF.val].concat(readings.flatMap(r => String(r.text || '').match(/\d{2}[.\s]{0,2}\d{3}[.\s]{0,2}\d{3}\s?\/\s?\d{4}\s?-?\s?\d{2}/g) || [])).find(c => L.cnpjValido(c));
+        const e = L.estabelecimento({ razao: estab, cnpj, cabecalho: String(readings[0].text || '').split('\n').slice(0, 8).join(' ') });
+        if (e.razao || e.cnpj) {
+          estabelecimento = e;
+          const ef = fields.find(x => x.key === 'Estabelecimento');
+          const nome = e.fantasia || e.razao;
+          if (ef) ef.val = nome; else if (nome) fields.unshift({ key: 'Estabelecimento', val: nome });
+          const depois = (key, val) => { const at = fields.findIndex(x => ORDERED_FIELD_KEYS.indexOf(x.key) > ORDERED_FIELD_KEYS.indexOf(key)); fields.splice(at === -1 ? fields.length : at, 0, { key, val }); };
+          if (e.fantasia && e.razao && e.fantasia !== e.razao) depois('Razão social', e.razao);
+          if (e.cnpj) { if (cnpjF) cnpjF.val = e.cnpj; else depois('CNPJ', e.cnpj); }
+          if (e.categoria) depois('Categoria', e.categoria);
+        }
+      }
     }
     ['Data', 'Hora'].forEach(key => {
       const f = fields.find(x => x.key === key);
@@ -269,6 +311,10 @@
     };
 
     const r = { fields, tipo, expectsValue, valor, candidates, status, hint, textKind, far, debug };
+    if (estabelecimento) r.estabelecimento = estabelecimento;
+    // The products of the receipt: detail of the one amount, not transactions
+    const prod = def.produtos ? def.produtos(readings) : null;
+    if (prod) Object.assign(r, { produtos: prod.produtos, produtosConferido: prod.conferido, produtosDiferenca: prod.diferenca !== null ? prod.diferenca / 100 : undefined });
     // the parts of the amount (boleto), in the same format as every transaction
     if (codigo && codigo.itens) r.itens = codigo.itens.map(i => L.leitores.extrato.contrato(i, { tipo, conferido: true, papel: '' }));
     return r;

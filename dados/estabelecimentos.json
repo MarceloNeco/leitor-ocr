@@ -1,0 +1,33 @@
+{
+  "sobre": "Redes conhecidas pela raiz do CNPJ (os 8 primeiros números, iguais em todas as lojas da empresa): nome fantasia e categoria. Dado público, conferido nos dados abertos do CNPJ da Receita Federal (consulta em minhareceita.org, 22/10/2026). 'nomes' acha a rede pela descrição de um lançamento (fatura, extrato, print), sem o CNPJ; 'marcas' escolhe a marca pelo cabeçalho do cupom quando a mesma empresa tem mais de uma.",
+  "versao": 1,
+  "estabelecimentos": [
+    { "cnpjRaiz": "47508411", "razao": "COMPANHIA BRASILEIRA DE DISTRIBUICAO", "fantasia": "Pão de Açúcar", "categoria": "Mercado",
+      "nomes": ["PAO DE ACUCAR", "PAODEACUCAR", "MINUTO PAO"], "marcas": [{ "fantasia": "Extra", "texto": "\\bEXTRA\\b" }] },
+    { "cnpjRaiz": "45543915", "razao": "CARREFOUR COMERCIO E INDUSTRIA LTDA", "fantasia": "Carrefour", "categoria": "Mercado", "nomes": ["CARREFOUR"] },
+    { "cnpjRaiz": "06057223", "razao": "SENDAS DISTRIBUIDORA S/A", "fantasia": "Assaí Atacadista", "categoria": "Mercado", "nomes": ["ASSAI"] },
+    { "cnpjRaiz": "75315333", "razao": "ATACADAO S.A.", "fantasia": "Atacadão", "categoria": "Mercado", "nomes": ["ATACADAO"] },
+    { "cnpjRaiz": "03476811", "razao": "DIA BRASIL SOCIEDADE LIMITADA", "fantasia": "Dia", "categoria": "Mercado", "nomes": ["DIA BRASIL"] },
+    { "cnpjRaiz": "61585865", "razao": "RAIA DROGASIL S/A", "fantasia": "Droga Raia", "categoria": "Farmácia",
+      "nomes": ["DROGASIL", "DROGA RAIA", "DROGARAIA", "\\bRAIA\\b"], "marcas": [{ "fantasia": "Drogasil", "texto": "DROGASIL(?! S/?A)" }] },
+    { "cnpjRaiz": "06626253", "razao": "EMPREENDIMENTOS PAGUE MENOS S/A", "fantasia": "Pague Menos", "categoria": "Farmácia", "nomes": ["PAGUE MENOS"] },
+    { "cnpjRaiz": "00776574", "razao": "AMERICANAS S.A - EM RECUPERACAO JUDICIAL", "fantasia": "Americanas", "categoria": "Loja", "nomes": ["AMERICANAS"] },
+    { "cnpjRaiz": "15436940", "razao": "AMAZON SERVICOS DE VAREJO DO BRASIL LTDA.", "fantasia": "Amazon", "categoria": "Compras online", "nomes": ["AMAZON", "AMZN"] },
+    { "cnpjRaiz": "03007331", "razao": "MERCADO LIVRE BRASIL LTDA", "fantasia": "Mercado Livre", "categoria": "Compras online", "nomes": ["MERCADO ?LIVRE"] },
+    { "cnpjRaiz": "14380200", "razao": "IFOOD.COM AGENCIA DE RESTAURANTES ONLINE S.A.", "fantasia": "iFood", "categoria": "Delivery", "nomes": ["IFOOD", "\\bIFD\\*"] },
+    { "cnpjRaiz": "17895646", "razao": "UBER DO BRASIL TECNOLOGIA LTDA.", "fantasia": "Uber", "categoria": "Transporte", "nomes": ["\\bUBER\\b"] },
+    { "cnpjRaiz": "18033552", "razao": "99 TECNOLOGIA LTDA", "fantasia": "99", "categoria": "Transporte", "nomes": ["\\b99 ?APP\\b", "\\b99 TECNOLOGIA", "\\b99 ?POP\\b"] },
+    { "cnpjRaiz": "33000167", "razao": "PETROLEO BRASILEIRO S A PETROBRAS", "fantasia": "Petrobras", "categoria": "Combustível", "nomes": ["PETROBRAS"] },
+    { "cnpjRaiz": "34274233", "razao": "VIBRA ENERGIA S.A", "fantasia": "Petrobras (Vibra)", "categoria": "Combustível", "nomes": ["BR MANIA"] },
+    { "cnpjRaiz": "33337122", "razao": "IPIRANGA PRODUTOS DE PETROLEO S.A.", "fantasia": "Ipiranga", "categoria": "Combustível", "nomes": ["IPIRANGA"] },
+    { "cnpjRaiz": "33453598", "razao": "RAIZEN S.A.", "fantasia": "Shell (Raízen)", "categoria": "Combustível", "nomes": ["\\bSHELL\\b"] },
+    { "cnpjRaiz": "43776517", "razao": "COMPANHIA DE SANEAMENTO BASICO DO ESTADO DE SAO PAULO - SABESP", "fantasia": "Sabesp", "categoria": "Água", "nomes": ["SABESP"] },
+    { "cnpjRaiz": "61695227", "razao": "ELETROPAULO METROPOLITANA ELETRICIDADE DE SAO PAULO S.A.", "fantasia": "Enel São Paulo", "categoria": "Energia", "nomes": ["\\bENEL\\b", "ELETROPAULO"] },
+    { "cnpjRaiz": "33050071", "razao": "AMPLA ENERGIA E SERVICOS S.A.", "fantasia": "Enel Rio", "categoria": "Energia" },
+    { "cnpjRaiz": "07047251", "razao": "COMPANHIA ENERGETICA DO CEARA", "fantasia": "Enel Ceará", "categoria": "Energia" },
+    { "cnpjRaiz": "02558157", "razao": "TELEFONICA BRASIL S.A.", "fantasia": "Vivo", "categoria": "Telefone e internet", "nomes": ["\\bVIVO\\b", "TELEFONICA"] },
+    { "cnpjRaiz": "40432544", "razao": "CLARO S.A.", "fantasia": "Claro", "categoria": "Telefone e internet", "nomes": ["\\bCLARO S\\.?A\\b", "\\bDA CLARO\\b"] },
+    { "cnpjRaiz": "02421421", "razao": "TIM S A", "fantasia": "TIM", "categoria": "Telefone e internet", "nomes": ["\\bTIM\\b"] },
+    { "cnpjRaiz": "13590585", "razao": "NETFLIX ENTRETENIMENTO BRASIL LTDA.", "fantasia": "Netflix", "categoria": "Assinatura", "nomes": ["NETFLIX"] }
+  ]
+}

@@ -150,9 +150,14 @@
     const d = od.data;
     const W = out.width, H = out.height;
     const g = new Float32Array(W * H);
+    let total = 0;
     for (let i = 0; i < g.length; i++) {
       g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+      total += g[i];
     }
+    // A phone screenshot in dark mode has light letters on a dark screen;
+    // Tesseract reads dark ink on light paper, so the image is inverted
+    if (total / g.length < 90) for (let i = 0; i < g.length; i++) g[i] = 255 - g[i];
     // Local mean of the gray level: the paper and the table around it. In
     // gray mode every pixel is measured against it, so a dark table or a
     // blue background turns white and only the ink stays dark (Tesseract
@@ -205,9 +210,14 @@
     smctx.drawImage(src, 0, 0, sw, sh);
     const sd = smctx.getImageData(0, 0, sw, sh).data;
     const gray = new Uint8Array(sw * sh);
+    let total = 0;
     for (let i = 0; i < gray.length; i++) {
       gray[i] = 0.299 * sd[i * 4] + 0.587 * sd[i * 4 + 1] + 0.114 * sd[i * 4 + 2];
+      total += gray[i];
     }
+    // A dark screen (screenshot in dark mode) is not paper on a table: the
+    // whole image is read, or the notifications below the brightest one are cut
+    if (total / gray.length < 90) return { cx: 0, cy: 0, cw: src.width, ch: src.height };
     const otsu = (from) => {
       const hist = new Array(256).fill(0);
       let n = 0;

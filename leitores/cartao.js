@@ -68,7 +68,9 @@ Leitura.registrarLeitor({
 
     // Final do cartão: só os 4 últimos dígitos ("******1234", "FINAL 1234"),
     // nunca o número inteiro. Serve para saber quem pagou (leitura/relacoes.js)
-    const fim = textUpper.match(/(?:\*{2,}|(?:X{4}[\s.-]?){2,})\s?(\d{4})\b/) || textUpper.match(/\bFINAL\s*[:.]?\s*(\d{4})\b/);
+    // "MASTERCARD ****1234" (a foto pode ler os asteriscos como "t")
+    const fim = textUpper.match(/(?:\*{2,}|(?:X{4}[\s.-]?){2,})\s?(\d{4})\b/) || textUpper.match(/\bFINAL\s*[:.]?\s*(\d{4})\b/)
+      || textUpper.match(/(?:CARD|VISA|ELO|AMEX|MAESTRO)\s*-?\s*[*TX]{2,}[*TX\s]*(\d{4})\b/);
     if (fim) fieldsMap['Cartão'] = 'final ' + fim[1];
   }
 });

@@ -1023,8 +1023,10 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
     .items-table td.neg { color: var(--danger); }
 
-    /* Pagamento e estorno do mesmo valor no mesmo dia: ficam na lista, riscados */
-    .items-table tr.anulado td { color: var(--muted); text-decoration: line-through; }
+    /* Pagamento e estorno do mesmo valor no mesmo dia, e o aviso que já está em
+       outro print: ficam na lista, riscados */
+    .items-table tr.anulado td, .items-table tr.repetido td { color: var(--muted); text-decoration: line-through; }
+    .products-box summary { cursor: pointer; font-size: 12px; padding: 8px; }
     .items-table .tag {
       display: inline-block;
       margin-left: 4px;
@@ -1262,6 +1264,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
             <!-- Dynamic editable rows rendered here -->
           </div>
           <div id="itemsBox" class="items-box" style="display: none;"></div>
+          <details id="productsBox" class="items-box products-box" style="display: none;"></details>
 
           <div style="display:flex; justify-content:flex-start;">
             <button id="btnAddField" class="btn btn-secondary btn-sm">
@@ -1534,6 +1537,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
   <script src="leitura/catalogo.js"></script>
   <script src="leitura/texto.js"></script>
   <script src="leitura/relacoes.js"></script>
+  <script src="leitura/estabelecimentos.js"></script>
   <script src="leitores/cartao.js"></script>
   <script src="leitores/nfce.js"></script>
   <script src="leitores/conta.js"></script>
@@ -1545,8 +1549,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.7.5';
-    const APP_UPDATED = '18/10/2026';   // data desta versão
+    const APP_VERSION = '0.7.6';
+    const APP_UPDATED = '22/10/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
     const formatBRL = Leitura.texto.formatBRL;
@@ -1721,6 +1725,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     const offlineParts = document.getElementById('offlineParts');
     const btnSaveAllOffline = document.getElementById('btnSaveAllOffline');
     const itemsBox = document.getElementById('itemsBox');
+    const productsBox = document.getElementById('productsBox');
     const installHint = document.getElementById('installHint');
 
     /* =========================================================
@@ -2214,8 +2219,19 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       itemsBox.style.display = items.length ? '' : 'none';
       const MAX_ITEMS = 200;
       itemsBox.innerHTML = items.length ? `<table class="items-table"><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>${
-        items.slice(0, MAX_ITEMS).map(i => `<tr${i.anulado ? ' class="anulado"' : ''}><td>${escapeHtml(i.data + (i.hora ? ' ' + i.hora : ''))}</td><td>${escapeHtml(i.descricao)}${i.anulado ? '<small class="tag">anulado</small>' : ''}</td><td class="${i.valor < 0 ? 'neg' : ''}">${escapeHtml((i.valor < 0 ? '-' : '') + (result.moeda ? result.moeda + ' ' + Math.abs(i.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : formatBRL(Math.abs(i.valor))))}</td></tr>`).join('')
+        items.slice(0, MAX_ITEMS).map(i => `<tr${i.anulado ? ' class="anulado"' : i.repetido ? ' class="repetido"' : ''}><td>${escapeHtml(i.data + (i.hora ? ' ' + i.hora : ''))}</td><td>${escapeHtml(i.descricao)}${i.anulado ? '<small class="tag">anulado</small>' : ''}${i.repetido ? `<small class="tag">já em ${escapeHtml(i.repetido)}</small>` : ''}${i.mesmaCompra ? `<small class="tag">mesma compra: ${escapeHtml(i.mesmaCompra)}</small>` : ''}</td><td class="${i.valor < 0 ? 'neg' : ''}">${escapeHtml((i.valor < 0 ? '-' : '') + (result.moeda ? result.moeda + ' ' + Math.abs(i.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : formatBRL(Math.abs(i.valor))))}</td></tr>`).join('')
       }</tbody></table>${items.length > MAX_ITEMS ? `<p>e mais ${items.length - MAX_ITEMS} lançamentos (todos são guardados ao salvar)</p>` : ''}` : '';
+
+      // The products of a receipt: detail of its one amount, folded under the fields
+      const prods = result.produtos || [];
+      productsBox.style.display = prods.length ? '' : 'none';
+      productsBox.open = false;
+      const qtd = p => p.unidade === 'kg' ? `${String(p.qtd).replace('.', ',')} kg` : `${p.qtd} ${p.unidade} × ${formatBRL(p.precoUnit)}`;
+      productsBox.innerHTML = prods.length ? `<summary>${prods.length} produtos · ${result.produtosConferido ? 'a soma confere com o valor a pagar'
+        : 'confira: a soma não fecha com o valor a pagar' + (result.produtosDiferenca ? ` (diferença de ${formatBRL(Math.abs(result.produtosDiferenca))})` : '')}</summary>
+        <table class="items-table"><thead><tr><th>Produto</th><th>Quantidade</th><th>Valor</th></tr></thead><tbody>${
+        prods.map(p => `<tr><td>${escapeHtml(p.descricao)}${p.desconto ? `<small class="tag">desconto ${escapeHtml(formatBRL(p.desconto))}</small>` : ''}</td><td>${escapeHtml(qtd(p))}</td><td>${escapeHtml(formatBRL(p.valor))}</td></tr>`).join('')
+      }</tbody></table>` : '';
 
       // Category and type: "Saúde › Pedido de exame"
       const shownType = Leitura.tipo(result.tipo), family = Leitura.catalogo.familia(shownType.familia);
@@ -2274,8 +2290,15 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       stashEdits();
       // One record per paper; empty fields (an amount not typed in) are left out
       const records = papers.length
-        ? papers.map(p => ({ tipo: p.tipo, fields: (p.edited || p.result.fields).filter(f => f.val).map(f => ({ key: f.key, val: f.val })), itens: p.result.itens, moeda: p.result.moeda }))
+        ? papers.map(p => ({ tipo: p.tipo, fields: (p.edited || p.result.fields).filter(f => f.val).map(f => ({ key: f.key, val: f.val })), itens: p.result.itens, moeda: p.result.moeda,
+          produtos: p.result.produtos, estabelecimento: p.result.estabelecimento }))
         : [{ tipo: lastTipo, fields: readFieldRows().filter(f => f.val).map(f => ({ key: f.key, val: f.val })) }];
+      // The person corrected the store's name: this device remembers it for that CNPJ
+      papers.forEach(p => {
+        const e = p.result.estabelecimento, antes = (p.result.fields.find(f => f.key === 'Estabelecimento') || {}).val;
+        const agora = ((p.edited || []).find(f => f.key === 'Estabelecimento') || {}).val;
+        if (e && e.cnpj && p.edited && agora !== undefined && agora !== antes) Leitura.lembrarNomeEstabelecimento(e.cnpj, agora.trim());
+      });
 
       if (records.every(r => r.fields.length === 0)) {
         showToast('Adicione ao menos um campo para salvar!', 'warn');
@@ -2295,7 +2318,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       } else {
         const now = Date.now();
         records.filter(r => r.fields.length).forEach((r, i) => {
-          list.unshift(Object.assign({ id: 'rec_' + (now + i), savedAt: new Date().toISOString(), tipo: r.tipo, fields: r.fields }, r.itens ? { itens: r.itens } : {}, r.moeda ? { moeda: r.moeda } : {}));
+          list.unshift(Object.assign({ id: 'rec_' + (now + i), savedAt: new Date().toISOString(), tipo: r.tipo, fields: r.fields }, r.itens ? { itens: r.itens } : {}, r.moeda ? { moeda: r.moeda } : {},
+            r.produtos ? { produtos: r.produtos } : {}, r.estabelecimento ? { estabelecimento: r.estabelecimento } : {}));
         });
         showToast(records.length > 1 ? `${records.length} comprovantes salvos!` : 'Comprovante salvo com sucesso!', 'ok');
       }

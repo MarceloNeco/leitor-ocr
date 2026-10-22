@@ -2,7 +2,7 @@
 // VERSAO precisa acompanhar APP_VERSION no index.html: é a mudança dela que
 // faz o navegador baixar a versão nova e jogar a antiga fora
 // (testes/medir.js e testes/offline.js avisam quando as duas diferem).
-const VERSAO = '0.7.5';
+const VERSAO = '0.7.6';
 // Todos os apps do solverone.com.br dividem o mesmo endereço e, por isso, as mesmas
 // cópias guardadas: o nome leva o app, e só as cópias deste app são apagadas.
 const PREFIXO = 'dgo-leitor-ocr-';
@@ -16,6 +16,7 @@ const PASTAS_PESADAS = ['tesseract/', 'libs/'];
 // O básico: telas e o motor de leitura sem as partes pesadas (arquivo novo do app entra aqui)
 const ARQUIVOS = [
   './',
+  './dados/estabelecimentos.json',
   './formatos/csv.js',
   './formatos/docx.js',
   './formatos/ofx.js',
@@ -38,6 +39,7 @@ const ARQUIVOS = [
   './leitura.js',
   './leitura/catalogo.js',
   './leitura/codigos.js',
+  './leitura/estabelecimentos.js',
   './leitura/foto.js',
   './leitura/relacoes.js',
   './leitura/texto.js',

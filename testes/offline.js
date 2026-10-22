@@ -34,6 +34,15 @@
 //    não aparece na primeira visita; quando a versão nova assume no meio de
 //    uma leitura, espera a leitura terminar; recebe o toque: "Depois" fecha e
 //    "Atualizar" recarrega.
+// 11. Loja e produtos: um cupom de mentira com o CNPJ de uma rede da base
+//    (dados/estabelecimentos.json, escolhida na hora) mostra o nome fantasia,
+//    a razão social e a categoria; os produtos nos dois jeitos de linha (tudo
+//    numa linha, e o peso com o desconto do item nas linhas de baixo) somam o
+//    valor a pagar. Um cupom que não fecha mostra a lista para conferir; o
+//    nome corrigido de uma loja fica guardado para a próxima leitura.
+//    Dois prints com um aviso repetido, um Pix só com a hora e o canhoto da
+//    mesma compra de um dos avisos: o repetido não conta duas vezes, o Pix
+//    fica sem data, a categoria vem da base e o canhoto fica ligado ao aviso.
 // Também avisa se a versão do sw.js não bate com a do index.html.
 
 const fs = require('fs');
@@ -153,6 +162,24 @@ const slip = (bandeira, final, valor) => `<div style="width:520px;padding:40px 3
 const bill = `<div style="width:520px;padding:40px 30px;font:bold 26px monospace;color:#111;background:#fff;line-height:1.6;">
   RESTAURANTE EXEMPLO<br>CONFERENCIA DE CONTA<br>MESA 03 - 2 PESSOAS<br>SUBTOTAL R$ 90,91<br>GORJETA 10% R$ 9,09<br>TOTAL R$ 100,00<br>10/10/2026 14:05</div>`;
 
+// CNPJ com os dígitos verificadores certos a partir dos 12 primeiros números
+function cnpjCom(doze) {
+  const dv = d => { let t = 0, p = d.length - 7; for (const c of d) { t += +c * p--; if (p < 2) p = 9; } return t % 11 < 2 ? 0 : 11 - t % 11; };
+  const d13 = doze + dv(doze), d = d13 + dv(d13);
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+// Cupom de mentira: um produto numa linha só; outro com o peso na linha de
+// baixo; outro com a quantidade e o "desconto sobre item" nas de baixo
+const cupom = (cnpj, aPagar) => ['MERCADO FICTICIO', 'EMPRESA FICTICIA COMERCIO LTDA', 'CNPJ: ' + cnpj, 'RUA DAS FLORES, 100 - CENTRO',
+  'DOCUMENTO AUXILIAR DA NOTA FISCAL DE CONSUMIDOR ELETRONICA', 'COD DESCRICAO QTD UN VL UNIT VL TOTAL',
+  '001 7890000000017 ARROZ BRANCO EXEMPLO 5KG 1 UN X 21,90 21,90', '002 7890000000024 FEIJAO PRETO EXEMPLO 2 UN X 8,50 17,00',
+  '003 2000000000015 QUEIJO EXEMPLO FATIADO', '0,500 kg X 19,90 9,95', '004 7890000000031 SABAO EM PO EXEMPLO', '1 UN X 12,90 12,90', 'desconto sobre item -1,50',
+  'QTD. TOTAL DE ITENS 4', 'VALOR TOTAL R$ 61,75', 'DESCONTO R$ 1,50', 'VALOR A PAGAR R$ ' + aPagar, 'FORMA DE PAGAMENTO', 'CARTAO DE CREDITO ' + aPagar, ''].join('\n');
+// Avisos de banco como os de verdade, numa tela clara
+const aviso = (titulo, corpo) => `<div style="margin:0 0 18px;padding:22px;border-radius:18px;border:1px solid #ddd;background:#fff;font:22px Arial;color:#111;line-height:1.4"><b>Banco Exemplo</b> · agora<br><b>${titulo}</b><br>${corpo}</div>`;
+const compra = (v, loja, h) => aviso('Compra aprovada', `Compra aprovada no seu EXEMPLO GOLD final 1234 - ${loja} valor R$ ${v} em 10/10/2026, às ${h}.`);
+const telaAvisos = avisos => `<div style="width:560px;font:22px Arial;color:#111;background:#fff">Notificações<br><br>${avisos}Limpar tudo</div>`;
+
 let failed = 0;
 const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); if (!ok) failed++; };
 
@@ -209,6 +236,14 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const naoFecha = await folha('nao-fecha.pdf', linhas(['BANCO EXEMPLO S.A.', 'EXTRATO', '01 OUT SALDO ANTERIOR 100,00', '02 OUT LOJA UM 30,00 D',
     '03 OUT LOJA DOIS (20,00)', '05 OUT SALDO FINAL 40,00']));
   const vazio = await folha('vazio.pdf', linhas(['BANCO EXEMPLO S.A.', 'EXTRATO DE CONTA CORRENTE', 'Período: 01/10/2026 a 31/10/2026', 'Não há movimentações no período.']));
+  const lojas = JSON.parse(fs.readFileSync(path.join(REPO, 'dados/estabelecimentos.json'), 'utf8')).estabelecimentos;
+  const rede = lojas.find(e => !e.marcas), comNome = lojas.find(e => (e.nomes || []).some(n => new RegExp(n).test(e.fantasia.toUpperCase())));
+  const cnpjRede = cnpjCom(rede.cnpjRaiz + '0001'), cnpjFicticio = cnpjCom('123456780001');
+  const lojaBase = comNome.fantasia.toUpperCase() + ' EXEMPLO';
+  const printA = await shot(telaAvisos(compra('37,50', 'PADARIA EXEMPLO', '09h10') + compra('22,90', lojaBase, '11h30')), 'printA.png');
+  const printB = await shot(telaAvisos(compra('22,90', lojaBase, '11h30') + compra('60,00', 'RESTAURANTE EXEMPLO', '14h07')
+    + aviso('Pix enviado', 'Você enviou R$ 15,00 para FULANO FICTICIO.')), 'printB.png');
+  const viaAviso = await shot(slip('MASTERCARD', '1234', '60,00'), 'via-aviso.png');
   const printUm = await shot(`<div style="width:520px;padding:24px;border-radius:18px;background:#fff;font:22px Arial;color:#111;line-height:1.4"><b>Banco Exemplo</b> · agora<br>`
     + '<b>Compra aprovada</b><br>Compra de R$ 37,50 aprovada em PADARIA EXEMPLO em 12/10, às 13h25. Cartão final 0001.</div>', 'print.png');
   await gen.close();
@@ -247,6 +282,7 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const boletoErrado = file('boleto-errado.txt', `BANCO EXEMPLO S.A.\nBeneficiário\nESCOLA EXEMPLO LTDA\nNosso Número 123\nPagável em qualquer banco\nVencimento 10/11/2026\n${trocado}\n`);
   const SENHA = '73915';
   const trancado = file('trancado.pdf', pdfComSenha(['LOJA FICTICIA LTDA', 'COMPROVANTE DE PAGAMENTO', 'VIA CLIENTE', 'DATA 12/10/2026 10:30', 'CREDITO A VISTA', 'VALOR TOTAL R$ 64,90'], SENHA));
+  const cupomRede = file('cupom.txt', cupom(cnpjRede, '60,25')), cupomNaoFecha = file('cupom-nao-fecha.txt', cupom(cnpjFicticio, '63,25'));
   const receita = file('receita.txt', 'CONSULTORIO EXEMPLO\nRECEITUARIO\nUSO ORAL\nREMEDIO EXEMPLO 500 MG\nTOMAR 1 COMPRIMIDO DE 8 EM 8 HORAS POR 5 DIAS\nDRA. EXEMPLO - CRM 000000\n');
 
   // ---------- ajudantes ----------
@@ -520,6 +556,56 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   check(naPrimeira === 0 && apareceu && esperou && fechou && recarregou,
     `versão nova: sem faixa na primeira visita=${naPrimeira === 0}, faixa esperou a leitura terminar=${esperou}, "Depois" fechou=${fechou}, "Atualizar" recarregou=${recarregou}`);
   await tela.close();
+
+  // 11. loja e produtos; prints com aviso repetido e o canhoto da mesma compra
+  page = await open();
+  const c1 = await send(page, [cupomRede], 'auto');
+  const res1 = await page.evaluate(() => papers[0].result);
+  const caixa = await page.$eval('#productsBox summary', e => e.textContent).catch(() => '');
+  const linhasProd = await page.$$eval('#productsBox tbody tr', t => t.length).catch(() => 0);
+  const f1 = c1.fields[0];
+  check(f1.Estabelecimento === rede.fantasia && f1['Razão social'] === rede.razao && f1.Categoria === rede.categoria && f1.CNPJ === cnpjRede
+    && JSON.stringify(res1.estabelecimento) === JSON.stringify({ razao: rede.razao, cnpj: cnpjRede, cnpjRaiz: rede.cnpjRaiz, filial: '0001', fantasia: rede.fantasia, categoria: rede.categoria }),
+    `loja pela raiz do CNPJ: Estabelecimento=${f1.Estabelecimento}, Razão social=${f1['Razão social']}, Categoria=${f1.Categoria}`);
+  const prods = JSON.stringify((res1.produtos || []).map(p => [p.codigo, p.descricao, p.qtd, p.unidade, p.precoUnit, p.desconto || 0, p.valor, p.conferido]));
+  check(prods === JSON.stringify([['7890000000017', 'ARROZ BRANCO EXEMPLO 5KG', 1, 'UN', 21.9, 0, 21.9, true], ['7890000000024', 'FEIJAO PRETO EXEMPLO', 2, 'UN', 8.5, 0, 17, true],
+    ['2000000000015', 'QUEIJO EXEMPLO FATIADO', 0.5, 'kg', 19.9, 0, 9.95, true], ['7890000000031', 'SABAO EM PO EXEMPLO', 1, 'UN', 12.9, 1.5, 12.9, true]])
+    && res1.produtosConferido === true && c1.values[0] === 'R$ 60,25' && c1.status === 'Valor conferido pela soma dos produtos'
+    && caixa.startsWith('4 produtos · a soma confere com o valor a pagar') && linhasProd === 4,
+    `produtos nos dois jeitos de linha: ${(res1.produtos || []).length} produtos, soma menos o desconto = ${c1.values[0]} (${c1.status}); tabela "${caixa}"`);
+  await page.close();
+  page = await open();
+  const c2 = await send(page, [cupomNaoFecha], 'auto');
+  const res2 = await page.evaluate(() => papers[0].result);
+  const caixa2 = await page.$eval('#productsBox summary', e => e.textContent).catch(() => '');
+  check(res2.produtosConferido === false && (res2.produtos || []).length === 4 && res2.produtos.every(p => p.conferido === false)
+    && /confira: a soma não fecha com o valor a pagar \(diferença de R\$ 3,00\)/.test(caixa2)
+    && c2.fields[0].Estabelecimento === 'EMPRESA FICTICIA COMERCIO LTDA' && !c2.fields[0].Categoria,
+    `cupom que não fecha: os produtos aparecem para conferir ("${caixa2}"); loja fora da base: ${c2.fields[0].Estabelecimento}, sem categoria`);
+  await page.fill('#fieldsListContainer .field-row:has(.fld-key[value="Estabelecimento"]) .fld-val', 'MEU MERCADO');
+  await page.click('#btnSaveReceipt');
+  await page.close();
+  page = await open();
+  const c3 = await send(page, [cupomNaoFecha], 'auto');
+  check(c3.fields[0].Estabelecimento === 'MEU MERCADO' && c3.fields[0]['Razão social'] === 'EMPRESA FICTICIA COMERCIO LTDA',
+    `o nome corrigido da loja vale na próxima leitura deste CNPJ: ${c3.fields[0].Estabelecimento}`);
+  await page.close();
+  page = await open();
+  const pr = await send(page, [printA, printB, viaAviso], 'auto');
+  const listas = await page.evaluate(() => papers.map(p => p.result.itens || []));
+  const unicos = listas.flat().filter(i => !i.repetido);
+  const pix = unicos.find(i => i.tipo === 'transferencia') || {};
+  const daBase = unicos.find(i => i.valor === -22.9) || {};
+  await page.click('#paperTabs .paper-tab:nth-child(2)');
+  const marcas = await page.$$eval('.items-table tbody tr', t => t.map(r => (r.className === 'repetido' ? 'R ' : '') + [...r.querySelectorAll('.tag')].map(x => x.textContent).join(' ')));
+  check(pr.tabs.length === 3 && listas[0].length === 2 && listas[1].length === 3 && unicos.length === 4 && unicos.filter(i => i.tipo === 'compra').length === 3
+    && marcas.includes('R já em Foto 1') && marcas.includes('mesma compra: Foto 3'),
+    `2 prints com um aviso repetido: ${unicos.length} lançamentos diferentes (3 compras e 1 Pix), linhas da 2ª aba: ${JSON.stringify(marcas)}`);
+  check(pix.valor === -15 && pix.data === '' && daBase.categoria === comNome.categoria && unicos.filter(i => i.categoria).length === 1,
+    `Pix só com a hora fica sem data (data="${pix.data}"); categoria pela base só na loja conhecida (${daBase.categoria})`);
+  check((pr.fields[2]['Mesma compra'] || '') === 'Foto 2: aviso de 10/10/2026 às 14:07',
+    `canhoto e aviso da mesma compra ligados: "${pr.fields[2]['Mesma compra'] || ''}"`);
+  await page.close();
 
   check(external.size === 0, 'nenhum pedido para fora do app' + (external.size ? ': ' + [...external].join(', ') : ''));
   check(logs.length === 0, 'nenhum erro de página' + (logs.length ? ': ' + logs.join(' | ') : ''));
