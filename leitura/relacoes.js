@@ -5,6 +5,11 @@
      pagou uma parte, outra pessoa pagou outra, e a conta tem o total).
    - Minha parte: o cartão da própria pessoa, reconhecido pelos 4 últimos
      dígitos, guardados só neste aparelho quando ela toca em "É meu".
+   - Lançamento repetido: um print cortado em dois mostra a mesma notificação
+     nos dois; ela conta no primeiro e, no outro, fica marcada (repetido).
+   - Canhoto e notificação: o canhoto do cartão e o aviso do banco da mesma
+     compra (mesmo valor, dia, hora ou cartão) ficam ligados (mesmaCompra),
+     para a compra contar uma vez só.
    Só liga papéis com valor confirmado: na dúvida, nada é ligado.
    ===================================================================== */
 (function (L) {
@@ -80,12 +85,62 @@
     return out;
   }
 
+  // Dois lançamentos de prints diferentes que são o mesmo aviso: mesmo valor e
+  // cartão, e mesma data e hora quando as duas leram (o print cortado pode
+  // perder a data), com a loja parecida
+  const letras = t => String(t || '').toUpperCase().normalize('NFD').replace(/[^A-Z]/g, '');
+  const parecida = (a, b) => { const x = letras(a), y = letras(b); return x.length >= 4 && y.length >= 4 && (x.includes(y.slice(0, 8)) || y.includes(x.slice(0, 8))); };
+  const iguais = (a, b) => a.valor === b.valor && (!a.cartaoFinal || !b.cartaoFinal || a.cartaoFinal === b.cartaoFinal)
+    && (!a.data || !b.data || a.data === b.data) && (!a.hora || !b.hora || a.hora === b.hora)
+    && (parecida(a.descricao, b.descricao) || !!(a.data && a.hora && a.data === b.data && a.hora === b.hora));
+
+  function repetidos(list, nome) {
+    const vistos = [];
+    list.forEach((p, i) => (p.result.itens || []).forEach(item => {
+      if (p.tipo !== 'notificacao' && p.result.tipo !== 'notificacao') return;
+      const antes = vistos.find(v => v.i !== i && iguais(v.item, item));
+      if (!antes) return vistos.push({ i, item });
+      item.repetido = nome(antes.i);
+      // O aviso cortado na borda de um print fica inteiro no outro: o que
+      // ficou vale com o que só a cópia mostra (o tipo, a data, o cartão)
+      const v = antes.item;
+      if (v.tipo === 'outro' && item.tipo !== 'outro') v.tipo = item.tipo;
+      ['data', 'hora', 'cartaoFinal', 'categoria'].forEach(k => { if (!v[k] && item[k]) v[k] = item[k]; });
+    }));
+  }
+
+  // O canhoto do cartão e o aviso do banco da mesma compra: mesmo valor e dia,
+  // e a hora perto (até 20 minutos) ou o mesmo final do cartão
+  const minutos = h => { const m = String(h || '').match(/(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null; };
+  function canhotoENotificacao(list, nome) {
+    const ligados = [];
+    list.forEach((p, i) => {
+      if (papelDe(p) !== 'cartao' || p.result.valor === null) return;
+      const dia = campo(p, 'Data'), hora = minutos(campo(p, 'Hora')), fim = (campo(p, 'Cartão').match(/\d{4}$/) || [])[0];
+      list.forEach((q, j) => (q.result.itens || []).forEach(item => {
+        if (j === i || item.repetido || item.mesmaCompra || item.valor !== -p.result.valor) return;
+        if (!dia || !item.data || dia !== item.data) return;
+        const perto = hora !== null && minutos(item.hora) !== null && Math.abs(hora - minutos(item.hora)) <= 20;
+        const cartao = fim && item.cartaoFinal && fim === item.cartaoFinal;
+        if (!perto && !cartao) return;
+        item.mesmaCompra = nome(i);
+        add(list, i, 'Mesma compra', `${nome(j)}: aviso de ${item.data}${item.hora ? ' às ' + item.hora : ''}`);
+        ligados.push([i + 1, j + 1]);
+      }));
+    });
+    return ligados;
+  }
+
   // Liga os papéis de uma leitura. Pode ser chamada de novo (ex.: depois de "É
   // meu"): os campos de relação são refeitos do zero.
   L.relacionar = list => {
     list.forEach(p => [p.result.fields, p.edited].forEach(fs => {
       if (fs) for (let k = fs.length - 1; k >= 0; k--) if (CHAVES.includes(fs[k].key)) fs.splice(k, 1);
     }));
+    list.forEach(p => (p.result.itens || []).forEach(item => { delete item.repetido; delete item.mesmaCompra; }));
+    const rotulo = i => list[i].label || `papel ${i + 1}`;
+    repetidos(list, rotulo);
+    const avisos = canhotoENotificacao(list, rotulo);
     const pares = linkSamePurchase(list);
     const divisoes = splitPayments(list, new Set(pares.flat().map(n => n - 1)));
     const nome = i => list[i].label || `papel ${i + 1}`;
@@ -101,6 +156,6 @@
     });
     // Quem pagou só aparece depois que a pessoa disse qual cartão é dela
     if (meus.length) list.forEach((p, i) => { if (final(i)) add(list, i, 'Quem pagou', meu(i) ? 'Você' : 'Outra pessoa'); });
-    return { pares, divisoes };
+    return { pares, divisoes, avisos };
   };
 })(window.Leitura);

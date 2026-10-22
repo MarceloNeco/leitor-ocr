@@ -36,13 +36,15 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 | `leitura/texto.js` | Campos a partir do texto (`parseDocument`, `findMoney`, `parseChave`, `pickEstablishment`), tipo pelo texto (`detectDocType`), valor confirmado (`agreedValue`) e o resultado de um papel (`buildResult`). |
 | `leitura/foto.js` | Inclinação, papéis na foto (`findPapers`), recorte, limpeza do fundo, as várias leituras com o Tesseract (`readPaper`, `lerFotos`). |
 | `leitura/codigos.js` | `readCodes`: QR e códigos de barras (ZXing + jsQR). |
-| `leitura/relacoes.js` | `Leitura.relacionar(papeis)`: mesma compra, pagamento dividido, quem pagou e "minha parte" (cartões da pessoa pelos 4 últimos dígitos, em `localStorage` `leitor_meus_cartoes`). |
-| `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce` (também o total do DANFE, conferido pela soma da nota), `conta`, `transferencia` (Pix, TED), `boleto` (valor e vencimento da linha digitável, conferidos pelos dígitos verificadores; as partes do valor; o valor pago no comprovante), `arrecadacao` (conta de luz, água, gás, telefone, imposto e multa pelo código de 48 números), `extrato` (o **leitor de lançamentos**: um só para extrato, fatura e print de notificação, de qualquer banco; ver "Lançamentos"). |
+| `leitura/relacoes.js` | `Leitura.relacionar(papeis)`: mesma compra (a nota e a via do cartão; o canhoto e o aviso do banco), aviso repetido em dois prints, pagamento dividido, quem pagou e "minha parte" (cartões da pessoa pelos 4 últimos dígitos, em `localStorage` `leitor_meus_cartoes`). |
+| `leitura/estabelecimentos.js` | Quem é a loja: `Leitura.estabelecimento({ razao, cnpj, cabecalho })` pela raiz do CNPJ na base, `Leitura.categoriaDe(descricao)` e o nome corrigido pela pessoa (`localStorage` `leitor_nomes_estabelecimentos`). Ver "Lojas". |
+| `dados/estabelecimentos.json` | A base de lojas: raiz do CNPJ, razão social, nome fantasia e categoria das redes comuns (dado público). |
+| `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce` (também o total do DANFE, conferido pela soma da nota, e os produtos do cupom; ver "Produtos da nota"), `conta`, `transferencia` (Pix, TED), `boleto` (valor e vencimento da linha digitável, conferidos pelos dígitos verificadores; as partes do valor; o valor pago no comprovante), `arrecadacao` (conta de luz, água, gás, telefone, imposto e multa pelo código de 48 números), `extrato` (o **leitor de lançamentos**: um só para extrato, fatura e print de notificação, de qualquer banco; ver "Lançamentos"). |
 | `formatos/*.js` | Um arquivo por tipo de arquivo. |
 | `index.html` | Telas: capturar, abas dos papéis, campos para conferir, histórico, exportar, ajustes. Janelas: `detailDialog`, `confirmDialog`, `docTypeDialog`, `cameraDialog`, `papersDialog`, `passwordDialog` (todas `<dialog>` nativo). |
 | `sw.js` | Uso sem internet. `VERSAO` acompanha `APP_VERSION` do `index.html`. Arquivo novo do app entra em `ARQUIVOS`. A versão nova assume na hora (skipWaiting + clients.claim); a tela mostra a faixa "Nova versão pronta" (Atualizar / Depois) quando ela assume (`controllerchange`), nunca na primeira visita, e espera a leitura em andamento terminar. |
 | `testes/medir.js` | Mede a leitura em fotos reais (fora do repositório) contra um gabarito. |
-| `testes/offline.js` | Testa sem dados pessoais: uso sem internet, partes pesadas por demanda, PDF (com senha também), TXT, CSV, OFX, XLSX, DOCX, várias fotos, pagamento dividido, lançamentos de extratos, fatura e print de mentira, câmera, faixa de versão nova. |
+| `testes/offline.js` | Testa sem dados pessoais: uso sem internet, partes pesadas por demanda, PDF (com senha também), TXT, CSV, OFX, XLSX, DOCX, várias fotos, pagamento dividido, lançamentos de extratos, fatura e print de mentira, loja pela base e produtos de um cupom de mentira, prints com aviso repetido e o canhoto da mesma compra, câmera, faixa de versão nova. |
 | `NOTAS-leitor-ocr.md` | Como a leitura funciona, por que cada decisão foi tomada, os números de cada etapa e as pendências. |
 | `ESTRATEGIA-leitura.md`, `PEDIDOS.md` | O plano do motor único para todos os apps e os pedidos que chegam dos outros apps. |
 
@@ -114,6 +116,9 @@ if (outro) avisar(outro.texto + ' Ler aqui mesmo?', outro.apps[0].url);
 | `tipo` | "compra", "pagamento", "estorno", "encargo", "anuidade", "transferencia" ou "outro" (pelas palavras) |
 | `parcela` | `{ n, de }` na compra parcelada ("3/10" → `{ n: 3, de: 10 }`) |
 | `cartaoFinal` | os últimos números do cartão (fatura e print), nunca o número inteiro |
+| `categoria` | a categoria da loja pela base ("Mercado", "Transporte"...), só quando a descrição tem o nome de uma rede conhecida; senão o campo não vem (nada chutado) |
+| `repetido` | o papel onde o mesmo aviso já está (dois prints que se cobrem): este não conta de novo |
+| `mesmaCompra` | o papel do canhoto do cartão da mesma compra (mesmo valor e dia, hora perto ou o mesmo cartão): a compra conta uma vez |
 | `conferido` | `true` quando a soma fechou com o saldo ou o total impresso, ou quando veio de arquivo de dados do banco (OFX, CSV, planilha); `false` = a pessoa confere |
 | `anulado` | `true` no pagamento e no estorno do mesmo valor no mesmo dia |
 | `origem` | `{ papel, pagina?, linha? }`: o papel (nome do arquivo ou da aba), a página do PDF e a linha |
@@ -125,6 +130,36 @@ if (outro) avisar(outro.texto + ' Ler aqui mesmo?', outro.apps[0].url);
 
 No papel: `result.itens` (a lista), `result.conferido` e, quando a soma não fecha, `result.diferenca` (em reais).
 
+## Produtos da nota
+
+O cupom fiscal (NFC-e, SAT) traz os produtos, um por linha ou com a quantidade e o peso na linha de baixo ("0,500 kg X 19,90"), e às vezes o "desconto sobre item" na linha seguinte. **Produto não é lançamento**: o papel continua com um valor só (o valor a pagar); a lista é detalhe da compra.
+
+| Campo | O que é |
+|---|---|
+| `codigo` | o código do produto (barras ou interno), quando lido |
+| `descricao` | como está no cupom |
+| `qtd` | quantidade (peso em kg no produto pesado) |
+| `unidade` | "UN", "kg", "LT"... |
+| `precoUnit` | preço da unidade (ou do kg) |
+| `desconto` | o desconto do item, em reais, quando há |
+| `valor` | o valor do item, antes do desconto |
+| `conferido` | `true` só quando a soma dos itens menos os descontos dá o "valor a pagar" impresso; `false` = a tela mostra a lista para conferir |
+
+```js
+{ codigo: '2000000000015', descricao: 'QUEIJO EXEMPLO FATIADO', qtd: 0.5, unidade: 'kg', precoUnit: 19.9, valor: 9.95, conferido: true }
+```
+
+No papel: `result.produtos` (a lista), `result.produtosConferido` e, quando não fecha, `result.produtosDiferenca` (em reais: o valor a pagar menos a soma). Quando a soma fecha, ela também confirma o valor do papel ("Valor conferido pela soma dos produtos"). Na foto, cada produto vale pela conta do próprio cupom (quantidade × preço = valor) ou pelo que duas leituras leram igual; o que fica em dúvida não entra. A tela mostra "12 produtos" fechado embaixo dos campos, e o registro salvo guarda a lista.
+
+## Lojas: a base de estabelecimentos
+
+- **Razão social pelo papel.** É a primeira linha de texto do alto que não é endereço, bairro, cidade, CEP, telefone nem CNPJ; linha com SA, LTDA, CIA, EIRELI ou ME ganha.
+- **Rede pela raiz do CNPJ.** Os 8 primeiros números do CNPJ são iguais em todas as lojas da mesma empresa. `dados/estabelecimentos.json` liga a raiz ao nome fantasia e à categoria (`{ cnpjRaiz, razao, fantasia, categoria, nomes?, marcas? }`; `nomes` acha a rede pela descrição de um lançamento, "IFD*LOJA"; `marcas` separa as marcas da mesma empresa pelo cabeçalho). Cada raiz foi conferida nos dados abertos de CNPJ da Receita Federal. O CNPJ só vale com os dois dígitos verificadores certos.
+- **Na tela**: Estabelecimento mostra o nome fantasia quando a raiz é conhecida; a razão social fica em "Razão social" e a categoria em "Categoria". Loja fora da base fica com a razão lida, sem categoria: nada é chutado.
+- **No papel**: `result.estabelecimento = { razao, fantasia?, categoria?, cnpj, cnpjRaiz, filial }`.
+- **Nome corrigido.** Quando a pessoa corrige o nome da loja de um CNPJ e salva, o aparelho lembra (`localStorage` `leitor_nomes_estabelecimentos`, como `leitor_meus_cartoes`) e da próxima vez o nome dela aparece.
+- **Um dia no RootifyONE.** A base vai morar no RootifyONE ("Conteúdo dos apps"), editada lá e servida a todos os apps. Os outros apps leem pelo mesmo caminho: `Leitura.estabelecimento(...)` e `Leitura.categoriaDe(...)`; só muda de onde `Leitura.carregarEstabelecimentos` busca o arquivo.
+
 **Copiar o motor para os outros apps fica para depois**: MoneyTRIO, HyperNutry e OmniLife recebem esta versão do motor cada um no seu próprio PR.
 
 ## Abrir um formato novo de arquivo
@@ -133,13 +168,14 @@ Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`
 
 ## Usar o motor em outro app
 
-1. Copiar sem alterar: `leitura.js`, `leitura/`, `leitores/` (só os leitores que o app usa), `formatos/` e as pastas pesadas que ele vai usar (`tesseract/` para foto, `libs/` para códigos e PDF).
+1. Copiar sem alterar: `leitura.js`, `leitura/`, `leitores/` (só os leitores que o app usa), `formatos/`, `dados/` e as pastas pesadas que ele vai usar (`tesseract/` para foto, `libs/` para códigos e PDF).
 2. Na página, antes do script do app:
    ```html
    <script src="leitura.js"></script>
    <script src="leitura/catalogo.js"></script>
    <script src="leitura/texto.js"></script>
    <script src="leitura/relacoes.js"></script>
+   <script src="leitura/estabelecimentos.js"></script>
    <script src="leitores/cartao.js"></script>   <!-- um por leitor -->
    ```
 3. No código do app:

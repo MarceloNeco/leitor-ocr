@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.4.0';
+  L.versao = '1.5.0';
   // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
   L.app = L.app || null;
 
@@ -142,6 +142,7 @@
   // progresso(0 a 100)
   L.ler = async (fontes, opcoes = {}) => {
     const o = Object.assign({ tipo: 'auto', rotacao: 0, aviso: () => {}, progresso: () => {} }, opcoes);
+    if (L.carregarEstabelecimentos) await L.carregarEstabelecimentos();   // as redes conhecidas, para o nome da loja
     const fotos = fontes.filter(f => f.img);
     let lidas = [];
     if (fotos.length) {
