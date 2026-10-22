@@ -554,7 +554,9 @@
       const d = doAviso[0] || ds(antes).pop();
       let data = '', hora = '';
       if (d) {
-        const a = d[3] ? (d[3].length === 2 ? '20' + d[3] : d[3]) : anoAviso(+d[1], +d[2]);
+        // ano lido no futuro ("2076" por "2026"): erro de leitura, vale como sem ano
+        const lido = d[3] ? +(d[3].length === 2 ? '20' + d[3] : d[3]) : 0;
+        const a = lido && lido <= new Date().getFullYear() + 1 ? lido : anoAviso(+d[1], +d[2]);
         data = `${d[1].padStart(2, '0')}/${d[2].padStart(2, '0')}/${a}`;
         if (d[4] && +d[4] <= 23 && +d[5] <= 59) hora = `${d[4].padStart(2, '0')}:${d[5]}`;
       }
