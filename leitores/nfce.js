@@ -5,8 +5,9 @@
    e os valores na de baixo; o total da nota só vale quando fecha a conta
    (produtos + frete + seguro + outras despesas + IPI + ICMS ST − desconto).
    No cupom, o total também vale quando a soma dos produtos menos os descontos
-   dá o "valor a pagar" impresso, ou quando duas leituras leem igual o "valor
-   a pagar" (o total depois do desconto).
+   dá o "valor a pagar" impresso, quando "valor dos produtos" mais acréscimo
+   menos desconto dá um valor pago lido, ou quando duas leituras leem igual o
+   "valor a pagar" (o total depois do desconto).
    produtos: as linhas de item do cupom (código, descrição, quantidade,
    unidade, preço, desconto, valor), conferidas pela conta do próprio cupom
    (quantidade × preço = valor) e, na foto, pelas várias leituras. Produto
@@ -39,8 +40,38 @@
     }
     const p = produtosDe(readings);
     if (p && p.conferido) return { valor: p.aPagar / 100, campos: {}, status: 'Valor conferido pela soma dos produtos' };
+    const soma = somaDoCupom(readings);
+    if (soma) return { valor: soma / 100, campos: {}, status: 'Valor conferido pela soma da nota' };
     const c = aPagarDe(readings);
     return c ? { valor: c / 100, campos: {}, status: 'Valor a pagar confirmado em 2 leituras' } : null;
+  }
+
+  // A conta do próprio cupom: "Valor dos Produtos" mais o acréscimo (despesas
+  // acessórias, taxa de serviço) menos o desconto tem que dar um valor pago
+  // lido em alguma leitura (na linha "a pagar", "valor pago" ou na forma de
+  // pagamento). Uma leitura que troca um dígito do total (401,58 por 401,59
+  // numa impressão apagada) não fecha a conta; a certa fecha.
+  const PRODUTOS = /VALOR\s?DOS\s?PRODUTOS|TOTAL\s?DOS\s?PRODUTOS/i;
+  const ACRESCIMO = /ACR[EÉ]SCIMO|D\.?\s?ACESS[OÓ]RIAS|DESPESAS ACESS|OUTRAS DESPESAS|TAXA DE SERVI[CÇ]O|SERVI[CÇ]O \(?\d/i;
+  const DESC_TOTAL = /^\W*DESCONTO(?!\s*SOBRE)/i;
+  const PAGO = /PAGAR|PAGO|CART[AÃ]O|DINHEIRO|\bPIX\b|[OQ]UTROS|D[EÉ]BITO|CR[EÉ]DITO/i;
+  const FORMA = /FORMA DE PAGAMENTO|VALOR PAGO/i;
+  function somaDoCupom(readings) {
+    const ultimo = l => { const v = l.match(DINHEIRO); return v ? cents(v[v.length - 1]) : null; };
+    const pagos = new Set();
+    // os valores pagos: nas linhas de pagamento e nas três depois do cabeçalho "forma de pagamento"
+    readings.forEach(r => String(r.text || '').split('\n').forEach((l, i, ls) => {
+      if (PAGO.test(l) || ls.slice(Math.max(0, i - 3), i).some(x => FORMA.test(x))) { const v = ultimo(l); if (v) pagos.add(v); }
+    }));
+    for (const r of readings) {
+      const linhas = String(r.text || '').split('\n');
+      const acha = re => { const l = linhas.find(x => re.test(x)); return l ? ultimo(l) : null; };
+      const produtos = acha(PRODUTOS);
+      if (!produtos) continue;
+      const soma = produtos + (acha(ACRESCIMO) || 0) - (acha(DESC_TOTAL) || 0);
+      if (soma > 0 && pagos.has(soma)) return soma;
+    }
+    return null;
   }
 
   // O "valor a pagar" (o total menos os descontos) lido igual em duas leituras
