@@ -116,9 +116,18 @@
     return (inteiro || best).text;
   }
 
-  // Guesses the document type from the words that give it away
-  function detectDocType(readings) {
+  // Guesses the document type from the words that give it away. A paper
+  // with an amount in big letters read on its own (grandes) is a money
+  // paper even when few of its words were read: the money reader with the
+  // most signs, or a card slip.
+  function detectDocType(readings, grandes = []) {
     const text = readings.map(r => r.text).join('\n').toUpperCase();
+    if (valorGrande(grandes, 3)) {
+      const dinheiro = ['cartao', 'conta', 'nfce'].filter(k => L.leitores[k]);
+      const sinais = dinheiro.map(k => (text.match(L.leitores[k].sinais) || []).length);
+      const melhor = dinheiro[sinais.indexOf(Math.max(...sinais))];
+      if (sinais.some(n => n > 0) && detectDocType(readings) === 'livre') return melhor;
+    }
     // A bank slip's code line has check digits: one that checks out is a
     // boleto, even on a page that also has the condo's report or the bill
     if (L.leitores.boleto && readings.some(r => L.leitores.boleto.achar(r.text))) return 'boleto';
@@ -179,23 +188,28 @@
     return null;
   }
 
+  // The band of big digits (lerValorGrande in foto.js) read the same amount
+  // at most of the four sizes, with confidence, and no reading of it was
+  // doubtful (two alike symbols as different digits): an amount to trust
+  // on its own. Read at two sizes only, it still counts to contest the
+  // regular readings (see decidirValor).
+  const valorGrande = (grandes, vezes) => {
+    const [top, segundo] = grandes.slice().sort((a, b) => b.vezes - a.vezes || b.conf - a.conf);
+    return top && top.vezes >= vezes && top.conf >= (vezes >= 3 ? 65 : 60) && !top.duvida && (!segundo || segundo.vezes < top.vezes) ? top : null;
+  };
+
   // The amount of the paper: what two regular readings agree on
-  // (agreedValue) and what the band of big digits says (lerValorGrande in
-  // foto.js), put together. The band counts when one amount was read at
-  // more sizes than any other, at least twice, with confidence. When the
-  // regular readings read nothing, it is the amount, unless some reading of
-  // it was doubtful (two alike symbols as different digits). When the two
-  // disagree (23,09 in the regular readings, 23,00 in the band), nothing is
-  // decided and both are offered: empty beats wrong. Returns { valor, fonte
-  // ('leituras' | 'grande' | null) }.
+  // (agreedValue) and what the band of big digits says, put together. When
+  // the regular readings read nothing, the band is the amount if read the
+  // same at three sizes or more (two sizes agreeing read 198,18 on a slip
+  // of 190,10). When the two disagree (23,09 in the regular readings, 23,00
+  // in the band), nothing is decided and both are offered: empty beats
+  // wrong. Returns { valor, fonte ('leituras' | 'grande' | null) }.
   function decidirValor(readings, tipo, grandes = []) {
     const regular = agreedValue(readings, tipo);
-    const [top, segundo] = grandes.slice().sort((a, b) => b.vezes - a.vezes || b.conf - a.conf);
-    const grande = top && top.vezes >= 2 && top.conf >= 60 && (!segundo || segundo.vezes < top.vezes) ? top : null;
-    if (!grande) return { valor: regular, fonte: regular !== null ? 'leituras' : null };
-    if (regular === grande.valor) return { valor: regular, fonte: 'leituras' };
-    if (regular !== null) return grande.duvida ? { valor: regular, fonte: 'leituras' } : { valor: null, fonte: null };
-    return grande.duvida ? { valor: null, fonte: null } : { valor: grande.valor, fonte: 'grande' };
+    const forte = valorGrande(grandes, 3), fraco = valorGrande(grandes, 2);
+    if (regular !== null) return !fraco || fraco.valor === regular ? { valor: regular, fonte: 'leituras' } : { valor: null, fonte: null };
+    return forte ? { valor: forte.valor, fonte: 'grande' } : { valor: null, fonte: null };
   }
 
   // How many words the engine read with confidence: the measure of a
@@ -480,5 +494,5 @@
       .sort((a, b) => b.score - a.score || b.num - a.num);
   }
 
-  L.texto = { CAMPOS: ORDERED_FIELD_KEYS, parseDocument, findMoney, parseChave, pickEstablishment, detectDocType, mostCommon, agreedValue, decidirValor, goodWords, classifyTextKind, formatBRL, buildResult };
+  L.texto = { CAMPOS: ORDERED_FIELD_KEYS, parseDocument, findMoney, parseChave, pickEstablishment, detectDocType, mostCommon, agreedValue, decidirValor, valorGrande, goodWords, classifyTextKind, formatBRL, buildResult };
 })(window.Leitura);

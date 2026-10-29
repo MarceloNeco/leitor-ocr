@@ -681,7 +681,7 @@
       const lines = (res.data.lines || []).map(l => ({ text: (l.text || '').trim(), conf: l.confidence || 0 })).filter(l => l.text);
       return { text: res.data.text || '', conf: res.data.confidence || 0, words: res.data.words || [], lines, rot, bin, size, region: { cx: f.cx, cy: f.cy, cw: f.cw, ch: f.ch }, frame: f };
     };
-    const started = Date.now();
+    let started = Date.now();
 
     // Straighten the photo automatically: the app measures how tilted the
     // receipt is instead of assuming it was photographed square (the lines
@@ -700,13 +700,16 @@
     // every position (the measured tilt and its quarter turns, plus the
     // plain quarter turns in case the tilt was misjudged), keep the
     // position the engine reads with confidence, and crop to where the
-    // confident words are.
+    // confident words are. An upside-down receipt can still yield a few
+    // dozen "words" the engine trusts, all of them nonsense that no reader
+    // recognizes: a paper of no known type is also tried the other way up.
     let region = null;
-    if (goodWords(readings[0]) < 8) {
+    const nonsense = tipoPedido === 'auto' && goodWords(readings[0]) < 40 && detectDocType(readings) === 'livre';
+    if (goodWords(readings[0]) < 8 || nonsense) {
       aviso(label + 'Procurando a posição certa...');
       let best = null;
       const near = (a, b) => Math.abs(((a - b) % 360 + 540) % 360 - 180) < 6;
-      const probes = [base, base + 180, base + 90, base - 90, medida, medida + 180, rotation, rotation + 90, rotation + 180, rotation + 270]
+      const probes = (nonsense ? [base + 180, base] : [base, base + 180]).concat([base + 90, base - 90, medida, medida + 180, rotation, rotation + 90, rotation + 180, rotation + 270])
         .filter((r, i, all) => all.findIndex(q => near(q, r)) === i);
       const probing = Date.now();
       for (const rot of probes) {
@@ -719,6 +722,7 @@
         base = best.rot;
         region = textRegion(best.probe) || best.probe.region;
         readings = [region === best.probe.region ? best.probe : await read(base, false, 1000, region)];
+        started = Date.now();   // the time limit below counts from the first good reading
       }
     }
 
@@ -741,7 +745,7 @@
     const passes = [[rotation, false, 1000, null], [base, false, 1400, region], [base, true, 1000, region]].filter(p => !done(p));
     let next = 0;
     while (true) {
-      tipo = tipoPedido === 'auto' ? detectDocType(readings) : tipoPedido;
+      tipo = tipoPedido === 'auto' ? detectDocType(readings, grandes) : tipoPedido;
       const def = L.tipo(tipo), wantsValue = def.vitais.includes('Valor');
       if (!wantsValue && (readings.length >= 2 || (tipoPedido !== 'auto' && !def.itens))) break;
       if (wantsValue && decidirValor(readings, tipo, grandes).valor !== null) break;
