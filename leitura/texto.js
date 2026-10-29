@@ -179,6 +179,25 @@
     return null;
   }
 
+  // The amount of the paper: what two regular readings agree on
+  // (agreedValue) and what the band of big digits says (lerValorGrande in
+  // foto.js), put together. The band counts when one amount was read at
+  // more sizes than any other, at least twice, with confidence. When the
+  // regular readings read nothing, it is the amount, unless some reading of
+  // it was doubtful (two alike symbols as different digits). When the two
+  // disagree (23,09 in the regular readings, 23,00 in the band), nothing is
+  // decided and both are offered: empty beats wrong. Returns { valor, fonte
+  // ('leituras' | 'grande' | null) }.
+  function decidirValor(readings, tipo, grandes = []) {
+    const regular = agreedValue(readings, tipo);
+    const [top, segundo] = grandes.slice().sort((a, b) => b.vezes - a.vezes || b.conf - a.conf);
+    const grande = top && top.vezes >= 2 && top.conf >= 60 && (!segundo || segundo.vezes < top.vezes) ? top : null;
+    if (!grande) return { valor: regular, fonte: regular !== null ? 'leituras' : null };
+    if (regular === grande.valor) return { valor: regular, fonte: 'leituras' };
+    if (regular !== null) return grande.duvida ? { valor: regular, fonte: 'leituras' } : { valor: null, fonte: null };
+    return grande.duvida ? { valor: null, fonte: null } : { valor: grande.valor, fonte: 'grande' };
+  }
+
   // How many words the engine read with confidence: the measure of a
   // reading being right side up
   function goodWords(reading) {
@@ -209,15 +228,17 @@
   // when two readings agree, otherwise the candidates are offered as
   // buttons; every other field comes from the best reading. Returns the
   // result object that renderFieldsEditor shows.
-  function buildResult(readings, tipo, codes, tilt) {
+  function buildResult(readings, tipo, codes, tilt, grandes = []) {
     const def = L.tipo(tipo);
     const expectsValue = def.vitais.includes('Valor');
     const parsed = readings.map(r => parseDocument(r.text, tipo));
     // A value carried by a code with check digits (boleto) is exact and wins
     const codigo = def.exato ? def.exato(readings, codes) : null;
-    const valor = codigo && codigo.valor ? codigo.valor : expectsValue && !def.soCodigo && !(codigo && codigo.semTexto) ? agreedValue(readings, tipo) : null;
+    const decidido = expectsValue && !def.soCodigo && !(codigo && codigo.semTexto) ? decidirValor(readings, tipo, grandes) : { valor: null, fonte: null };
+    const valor = codigo && codigo.valor ? codigo.valor : decidido.valor;
+    // the amounts to offer as buttons: the first of each reading, and the big digits read with confidence
     const candidates = expectsValue && valor === null
-      ? [...new Set(parsed.map(p => p.candidatos[0] ? p.candidatos[0].num : null).filter(n => n !== null))]
+      ? [...new Set(parsed.map(p => p.candidatos[0] ? p.candidatos[0].num : null).concat(grandes.filter(g => g.conf >= 60).map(g => g.valor)).filter(n => n !== null))]
       : [];
 
     // The other fields come from the reading that found the agreed amount,
@@ -291,7 +312,7 @@
 
     let status;
     if (!expectsValue) status = { cls: 'neutral', text: 'Texto lido' };
-    else if (valor !== null) status = { cls: 'ok', text: codigo && codigo.valor ? codigo.status : readings[0].exato ? 'Valor lido do arquivo' : 'Valor confirmado em 2 leituras' };
+    else if (valor !== null) status = { cls: 'ok', text: codigo && codigo.valor ? codigo.status : readings[0].exato ? 'Valor lido do arquivo' : decidido.fonte === 'grande' ? 'Valor em letra grande, confirmado em 2 leituras' : 'Valor confirmado em 2 leituras' };
     else if (candidates.length) status = { cls: 'warn', text: 'Valor incerto: confira' };
     else status = { cls: 'bad', text: 'Valor não lido' };
 
@@ -306,7 +327,7 @@
     const sinais = {};
     L.detectaveis().forEach(k => { sinais[k] = (allText.match(L.leitores[k].sinais) || []).length; });
     const debug = {
-      tipo, detected, sinais, valor, candidates, textKind, tilt, codes: codes || [],
+      tipo, detected, sinais, valor, candidates, textKind, tilt, grandes, codes: codes || [],
       readings: readings.map((r, i) => ({ text: r.text, conf: r.conf, words: r.words.length, good: goodWords(r), rot: r.rot, bin: r.bin, size: r.size, region: r.region, candidatos: parsed[i].candidatos }))
     };
 
@@ -459,5 +480,5 @@
       .sort((a, b) => b.score - a.score || b.num - a.num);
   }
 
-  L.texto = { CAMPOS: ORDERED_FIELD_KEYS, parseDocument, findMoney, parseChave, pickEstablishment, detectDocType, mostCommon, agreedValue, goodWords, classifyTextKind, formatBRL, buildResult };
+  L.texto = { CAMPOS: ORDERED_FIELD_KEYS, parseDocument, findMoney, parseChave, pickEstablishment, detectDocType, mostCommon, agreedValue, decidirValor, goodWords, classifyTextKind, formatBRL, buildResult };
 })(window.Leitura);

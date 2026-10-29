@@ -43,6 +43,10 @@
 //    Dois prints com um aviso repetido, um Pix só com a hora e o canhoto da
 //    mesma compra de um dos avisos: o repetido não conta duas vezes, o Pix
 //    fica sem data, a categoria vem da base e o canhoto fica ligado ao aviso.
+// 12. Canhotos de mentira com o valor em letra grande: inclinado, de cabeça
+//    para baixo, de lado (e com ponto, "23.00"), e dois girados numa foto só,
+//    lidos separados: cada um com o valor certo. A nota de mentira fica
+//    ligada ao aviso do banco da mesma compra (mesmo valor, dia e hora perto).
 // Também avisa se a versão do sw.js não bate com a do index.html.
 
 const fs = require('fs');
@@ -174,7 +178,12 @@ const cupom = (cnpj, aPagar) => ['MERCADO FICTICIO', 'EMPRESA FICTICIA COMERCIO 
   'DOCUMENTO AUXILIAR DA NOTA FISCAL DE CONSUMIDOR ELETRONICA', 'COD DESCRICAO QTD UN VL UNIT VL TOTAL',
   '001 7890000000017 ARROZ BRANCO EXEMPLO 5KG 1 UN X 21,90 21,90', '002 7890000000024 FEIJAO PRETO EXEMPLO 2 UN X 8,50 17,00',
   '003 2000000000015 QUEIJO EXEMPLO FATIADO', '0,500 kg X 19,90 9,95', '004 7890000000031 SABAO EM PO EXEMPLO', '1 UN X 12,90 12,90', 'desconto sobre item -1,50',
-  'QTD. TOTAL DE ITENS 4', 'VALOR TOTAL R$ 61,75', 'DESCONTO R$ 1,50', 'VALOR A PAGAR R$ ' + aPagar, 'FORMA DE PAGAMENTO', 'CARTAO DE CREDITO ' + aPagar, ''].join('\n');
+  'QTD. TOTAL DE ITENS 4', 'VALOR TOTAL R$ 61,75', 'DESCONTO R$ 1,50', 'VALOR A PAGAR R$ ' + aPagar, 'FORMA DE PAGAMENTO', 'CARTAO DE CREDITO ' + aPagar, 'EMISSAO: 10/10/2026 14:05', ''].join('\n');
+// Canhoto com o valor em letra grande (o dobro da altura), como as maquininhas imprimem
+const slipGrande = (valor, loja = 'BAR EXEMPLO ME', hora = '14:07') => `<div style="width:520px;padding:40px 30px;font:bold 26px monospace;color:#111;background:#fff;line-height:1.6;">
+  VIA CLIENTE (1)<br>${loja}<br>10/10/2026 ${hora}<br>CREDITO A VISTA<br>MASTERCARD ****1234<br>
+  <span style="font-size:54px;font-weight:900;letter-spacing:2px">R$${valor}</span><br>AUT 654321 NSU 000123</div>`;
+const girado = (inner, graus, lado = 760) => `<div style="width:${lado}px;height:${lado}px;display:flex;align-items:center;justify-content:center"><div style="transform:rotate(${graus}deg)">${inner}</div></div>`;
 // Avisos de banco como os de verdade, numa tela clara
 const aviso = (titulo, corpo) => `<div style="margin:0 0 18px;padding:22px;border-radius:18px;border:1px solid #ddd;background:#fff;font:22px Arial;color:#111;line-height:1.4"><b>Banco Exemplo</b> · agora<br><b>${titulo}</b><br>${corpo}</div>`;
 const compra = (v, loja, h) => aviso('Compra aprovada', `Compra aprovada no seu EXEMPLO GOLD final 1234 - ${loja} valor R$ ${v} em 10/10/2026, às ${h}.`);
@@ -244,6 +253,11 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const printB = await shot(telaAvisos(compra('22,90', lojaBase, '11h30') + compra('60,00', 'RESTAURANTE EXEMPLO', '14h07')
     + aviso('Pix enviado', 'Você enviou R$ 15,00 para FULANO FICTICIO.')), 'printB.png');
   const viaAviso = await shot(slip('MASTERCARD', '1234', '60,00'), 'via-aviso.png');
+  const grandeInclinado = await shot(girado(slipGrande('36,00'), 8), 'grande-inclinado.png');
+  const cabecaParaBaixo = await shot(girado(slipGrande('16,00'), 180), 'cabeca-para-baixo.png');
+  const deLado = await shot(girado(slipGrande('23.00'), 90), 'de-lado.png');
+  const doisGirados = await shot(`<div style="display:flex;gap:120px">${girado(slipGrande('40,00', 'BAR EXEMPLO LTDA', '12:30'), 180, 700)}${girado(slipGrande('25,50', 'PADARIA EXEMPLO', '12:41'), -90, 700)}</div>`, 'dois-girados.png');
+  const printNota = await shot(telaAvisos(compra('60,25', 'MERCADO EXEMPLO', '14h07')), 'print-nota.png');
   const printUm = await shot(`<div style="width:520px;padding:24px;border-radius:18px;background:#fff;font:22px Arial;color:#111;line-height:1.4"><b>Banco Exemplo</b> · agora<br>`
     + '<b>Compra aprovada</b><br>Compra de R$ 37,50 aprovada em PADARIA EXEMPLO em 12/10, às 13h25. Cartão final 0001.</div>', 'print.png');
   await gen.close();
@@ -305,14 +319,14 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     }
     return { tabs, fields, values: fields.map(f => f.Valor || ''), status: await pg.$eval('#confidenceVal', e => e.textContent) };
   };
-  const send = async (pg, files, tipo) => {
+  const send = async (pg, files, tipo, separar = false) => {
     await pg.setInputFiles('#fileInputGallery', files);
     if (tipo) {
       await pg.waitForSelector('#docTypeDialog[open]', { timeout: 60000 });
       await pg.click(`#docTypeDialog button[data-tipo="${tipo}"]`);
     }
-    // "ler separados?" nunca deve aparecer nestes testes; se aparecer, é um papel só
-    pg.waitForSelector('#papersDialog[open]', { timeout: 300000 }).then(() => pg.click('#btnPapersOne')).catch(() => {});
+    // "ler separados?" só aparece de propósito na foto com dois papéis; nas outras, é um papel só
+    pg.waitForSelector('#papersDialog[open]', { timeout: 300000 }).then(() => pg.click(separar ? '#btnPapersMany' : '#btnPapersOne')).catch(() => {});
     return readTabs(pg);
   };
   const saved = (pg, files) => pg.evaluate(async fs => { const out = {}; for (const f of fs) out[f] = !!(await caches.match(Leitura.url(f))); return out; }, files);
@@ -605,6 +619,28 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     `Pix só com a hora fica sem data (data="${pix.data}"); categoria pela base só na loja conhecida (${daBase.categoria})`);
   check((pr.fields[2]['Mesma compra'] || '') === 'Foto 2: aviso de 10/10/2026 às 14:07',
     `canhoto e aviso da mesma compra ligados: "${pr.fields[2]['Mesma compra'] || ''}"`);
+  await page.close();
+
+  // 12. canhotos com o valor em letra grande, girados; a nota ligada ao aviso
+  const canhoto = async (arquivo, separar) => {
+    page = await open();
+    const r = await send(page, [arquivo], 'auto', separar);
+    const grandes = await page.evaluate(() => papers.map(p => (p.grandes || []).map(g => g.valor)));
+    await page.close();
+    return Object.assign(r, { grandes });
+  };
+  const g1 = await canhoto(grandeInclinado), g2 = await canhoto(cabecaParaBaixo), g3 = await canhoto(deLado);
+  check(g1.values[0] === 'R$ 36,00' && g1.grandes[0][0] === 36 && g1.fields[0].Estabelecimento === 'BAR EXEMPLO ME',
+    `canhoto inclinado com o valor em letra grande: Valor=${g1.values[0]} (faixa grande leu ${JSON.stringify(g1.grandes[0])}; ${g1.status})`);
+  check(g2.values[0] === 'R$ 16,00' && g2.fields[0].Hora === '14:07', `canhoto de cabeça para baixo: Valor=${g2.values[0]}, Hora=${g2.fields[0].Hora}`);
+  check(g3.values[0] === 'R$ 23,00', `canhoto de lado, valor com ponto ("23.00"): Valor=${g3.values[0]}`);
+  const g4 = await canhoto(doisGirados, true);
+  check(g4.tabs.length === 2 && g4.values.join('|') === 'R$ 40,00|R$ 25,50' && g4.fields[0].Estabelecimento === 'BAR EXEMPLO LTDA' && g4.fields[1].Estabelecimento === 'PADARIA EXEMPLO',
+    `dois canhotos girados numa foto, lidos separados: valores=${JSON.stringify(g4.values)} lojas=${JSON.stringify(g4.fields.map(f => f.Estabelecimento))}`);
+  page = await open();
+  const nota = await send(page, [cupomRede, printNota], 'auto');
+  check(nota.values[0] === 'R$ 60,25' && /aviso de 10\/10\/2026 às 14:07$/.test(nota.fields[0]['Mesma compra'] || ''),
+    `nota fiscal e aviso do banco da mesma compra ligados: "${nota.fields[0]['Mesma compra'] || ''}"`);
   await page.close();
 
   check(external.size === 0, 'nenhum pedido para fora do app' + (external.size ? ': ' + [...external].join(', ') : ''));

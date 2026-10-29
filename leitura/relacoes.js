@@ -7,9 +7,9 @@
      dígitos, guardados só neste aparelho quando ela toca em "É meu".
    - Lançamento repetido: um print cortado em dois mostra a mesma notificação
      nos dois; ela conta no primeiro e, no outro, fica marcada (repetido).
-   - Canhoto e notificação: o canhoto do cartão e o aviso do banco da mesma
-     compra (mesmo valor, dia, hora ou cartão) ficam ligados (mesmaCompra),
-     para a compra contar uma vez só.
+   - Canhoto e notificação: o canhoto do cartão (ou a nota, ou a conta) e o
+     aviso do banco da mesma compra (mesmo valor, dia, hora ou cartão) ficam
+     ligados (mesmaCompra), para a compra contar uma vez só.
    Só liga papéis com valor confirmado: na dúvida, nada é ligado.
    ===================================================================== */
 (function (L) {
@@ -109,13 +109,14 @@
     }));
   }
 
-  // O canhoto do cartão e o aviso do banco da mesma compra: mesmo valor e dia,
-  // e a hora perto (até 20 minutos) ou o mesmo final do cartão
+  // O canhoto do cartão (ou a nota fiscal, ou a conta) e o aviso do banco da
+  // mesma compra: mesmo valor e dia, e a hora perto (até 20 minutos) ou o
+  // mesmo final do cartão
   const minutos = h => { const m = String(h || '').match(/(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null; };
   function canhotoENotificacao(list, nome) {
     const ligados = [];
     list.forEach((p, i) => {
-      if (papelDe(p) !== 'cartao' || p.result.valor === null) return;
+      if (!['cartao', 'nfce', 'conta'].includes(papelDe(p)) || p.result.valor === null) return;
       const dia = campo(p, 'Data'), hora = minutos(campo(p, 'Hora')), fim = (campo(p, 'Cartão').match(/\d{4}$/) || [])[0];
       list.forEach((q, j) => (q.result.itens || []).forEach(item => {
         if (j === i || item.repetido || item.mesmaCompra || item.valor !== -p.result.valor) return;
