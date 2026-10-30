@@ -196,7 +196,8 @@ function grade(fields, chips, expected) {
       const codes = (debug.codes || []).map(c => `${c.format}:${c.text.slice(0, 30)}`).join(';');
       const nota = g('Nota');
       const sinais = debug.sinais ? ` sinais=${debug.sinais.nfce}/${debug.sinais.cartao}/${debug.sinais.conta}` : '';
-      const rots = (debug.readings || []).map(r => `${r.rot}${r.bin ? 'pb' : ''}${r.region ? 'rec' : ''}:${r.good}`).join(',') + (debug.tilt !== undefined ? ` incl=${debug.tilt}` : '');
+      const rots = (debug.readings || []).map(r => `${r.rot}${r.bin ? 'pb' : ''}${r.region ? 'rec' : ''}:${r.good}`).join(',') + (debug.tilt !== undefined ? ` incl=${debug.tilt}` : '')
+        + (debug.grandes && debug.grandes.length ? ` grande=${debug.grandes.map(g => `${g.valor}x${g.vezes}/${Math.round(g.conf)}${g.duvida ? '?' : ''}`).join('|')}` : '');
       const label = papersFound > 1 ? `${f} [papel ${pi + 1}/${papersFound}]` : f;
       results.push({ file: f, papel: pi + 1, papeis: papersFound, papeisEsperados: expectedPapers, papeisPerguntados: askedPapers, ok, secs, fallback, conf, passes, tipoEscolhido: tipo, tipoLido: debug.tipo, detectado: debug.detected, textKind: debug.textKind, chips, fields, itens, lanc, prod, extra, nota: notaG, codes: debug.codes, readings: debug.readings, logs: logs.slice(0, 30) });
       const tag = (notaG ? `  [valor=${notaG.valor} data=${notaG.data} estab=${notaG.estab}]` : '')

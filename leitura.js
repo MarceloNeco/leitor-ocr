@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.5.0';
+  L.versao = '1.6.0';
   // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
   L.app = L.app || null;
 
@@ -234,7 +234,7 @@
   // fatura e print, pelo leitor de lançamentos); mudam se o tipo mudar.
   L.resultado = papel => {
     if (!papel.readings.length) return L.leitores.extrato.resultado(papel);
-    const base = L.texto.buildResult(papel.readings, papel.tipo, papel.codes, papel.tilt);
+    const base = L.texto.buildResult(papel.readings, papel.tipo, papel.codes, papel.tilt, papel.grandes);
     const leitor = L.leitores[L.tipo(papel.tipo).leitor];
     const lidos = leitor && leitor.itens ? leitor.itens(papel.readings, papel.tipo) : null;
     return lidos ? L.leitores.extrato.resultado(Object.assign({}, papel, { itens: lidos.itens }), base, lidos) : base;

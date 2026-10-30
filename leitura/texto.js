@@ -116,9 +116,18 @@
     return (inteiro || best).text;
   }
 
-  // Guesses the document type from the words that give it away
-  function detectDocType(readings) {
+  // Guesses the document type from the words that give it away. A paper
+  // with an amount in big letters read on its own (grandes) is a money
+  // paper even when few of its words were read: the money reader with the
+  // most signs, or a card slip.
+  function detectDocType(readings, grandes = []) {
     const text = readings.map(r => r.text).join('\n').toUpperCase();
+    if (valorGrande(grandes, 3)) {
+      const dinheiro = ['cartao', 'conta', 'nfce'].filter(k => L.leitores[k]);
+      const sinais = dinheiro.map(k => (text.match(L.leitores[k].sinais) || []).length);
+      const melhor = dinheiro[sinais.indexOf(Math.max(...sinais))];
+      if (sinais.some(n => n > 0) && detectDocType(readings) === 'livre') return melhor;
+    }
     // A bank slip's code line has check digits: one that checks out is a
     // boleto, even on a page that also has the condo's report or the bill
     if (L.leitores.boleto && readings.some(r => L.leitores.boleto.achar(r.text))) return 'boleto';
@@ -179,6 +188,30 @@
     return null;
   }
 
+  // The band of big digits (lerValorGrande in foto.js) read the same amount
+  // at most of the four sizes, with confidence, and no reading of it was
+  // doubtful (two alike symbols as different digits): an amount to trust
+  // on its own. Read at two sizes only, it still counts to contest the
+  // regular readings (see decidirValor).
+  const valorGrande = (grandes, vezes) => {
+    const [top, segundo] = grandes.slice().sort((a, b) => b.vezes - a.vezes || b.conf - a.conf);
+    return top && top.vezes >= vezes && top.conf >= (vezes >= 3 ? 65 : 60) && !top.duvida && (!segundo || segundo.vezes < top.vezes) ? top : null;
+  };
+
+  // The amount of the paper: what two regular readings agree on
+  // (agreedValue) and what the band of big digits says, put together. When
+  // the regular readings read nothing, the band is the amount if read the
+  // same at three sizes or more (two sizes agreeing read 198,18 on a slip
+  // of 190,10). When the two disagree (23,09 in the regular readings, 23,00
+  // in the band), nothing is decided and both are offered: empty beats
+  // wrong. Returns { valor, fonte ('leituras' | 'grande' | null) }.
+  function decidirValor(readings, tipo, grandes = []) {
+    const regular = agreedValue(readings, tipo);
+    const forte = valorGrande(grandes, 3), fraco = valorGrande(grandes, 2);
+    if (regular !== null) return !fraco || fraco.valor === regular ? { valor: regular, fonte: 'leituras' } : { valor: null, fonte: null };
+    return forte ? { valor: forte.valor, fonte: 'grande' } : { valor: null, fonte: null };
+  }
+
   // How many words the engine read with confidence: the measure of a
   // reading being right side up
   function goodWords(reading) {
@@ -209,15 +242,17 @@
   // when two readings agree, otherwise the candidates are offered as
   // buttons; every other field comes from the best reading. Returns the
   // result object that renderFieldsEditor shows.
-  function buildResult(readings, tipo, codes, tilt) {
+  function buildResult(readings, tipo, codes, tilt, grandes = []) {
     const def = L.tipo(tipo);
     const expectsValue = def.vitais.includes('Valor');
     const parsed = readings.map(r => parseDocument(r.text, tipo));
     // A value carried by a code with check digits (boleto) is exact and wins
     const codigo = def.exato ? def.exato(readings, codes) : null;
-    const valor = codigo && codigo.valor ? codigo.valor : expectsValue && !def.soCodigo && !(codigo && codigo.semTexto) ? agreedValue(readings, tipo) : null;
+    const decidido = expectsValue && !def.soCodigo && !(codigo && codigo.semTexto) ? decidirValor(readings, tipo, grandes) : { valor: null, fonte: null };
+    const valor = codigo && codigo.valor ? codigo.valor : decidido.valor;
+    // the amounts to offer as buttons: the first of each reading, and the big digits read with confidence
     const candidates = expectsValue && valor === null
-      ? [...new Set(parsed.map(p => p.candidatos[0] ? p.candidatos[0].num : null).filter(n => n !== null))]
+      ? [...new Set(parsed.map(p => p.candidatos[0] ? p.candidatos[0].num : null).concat(grandes.filter(g => g.conf >= 60).map(g => g.valor)).filter(n => n !== null))]
       : [];
 
     // The other fields come from the reading that found the agreed amount,
@@ -291,7 +326,7 @@
 
     let status;
     if (!expectsValue) status = { cls: 'neutral', text: 'Texto lido' };
-    else if (valor !== null) status = { cls: 'ok', text: codigo && codigo.valor ? codigo.status : readings[0].exato ? 'Valor lido do arquivo' : 'Valor confirmado em 2 leituras' };
+    else if (valor !== null) status = { cls: 'ok', text: codigo && codigo.valor ? codigo.status : readings[0].exato ? 'Valor lido do arquivo' : decidido.fonte === 'grande' ? 'Valor em letra grande, confirmado em 2 leituras' : 'Valor confirmado em 2 leituras' };
     else if (candidates.length) status = { cls: 'warn', text: 'Valor incerto: confira' };
     else status = { cls: 'bad', text: 'Valor não lido' };
 
@@ -306,7 +341,7 @@
     const sinais = {};
     L.detectaveis().forEach(k => { sinais[k] = (allText.match(L.leitores[k].sinais) || []).length; });
     const debug = {
-      tipo, detected, sinais, valor, candidates, textKind, tilt, codes: codes || [],
+      tipo, detected, sinais, valor, candidates, textKind, tilt, grandes, codes: codes || [],
       readings: readings.map((r, i) => ({ text: r.text, conf: r.conf, words: r.words.length, good: goodWords(r), rot: r.rot, bin: r.bin, size: r.size, region: r.region, candidatos: parsed[i].candidatos }))
     };
 
@@ -459,5 +494,5 @@
       .sort((a, b) => b.score - a.score || b.num - a.num);
   }
 
-  L.texto = { CAMPOS: ORDERED_FIELD_KEYS, parseDocument, findMoney, parseChave, pickEstablishment, detectDocType, mostCommon, agreedValue, goodWords, classifyTextKind, formatBRL, buildResult };
+  L.texto = { CAMPOS: ORDERED_FIELD_KEYS, parseDocument, findMoney, parseChave, pickEstablishment, detectDocType, mostCommon, agreedValue, decidirValor, valorGrande, goodWords, classifyTextKind, formatBRL, buildResult };
 })(window.Leitura);

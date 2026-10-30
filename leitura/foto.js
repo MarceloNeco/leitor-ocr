@@ -1,12 +1,13 @@
 /* =====================================================================
    leitura/foto.js — ler texto em foto (OCR). Só carrega na primeira foto.
-   Endireita a foto, acha os papéis, limpa o fundo e faz as várias leituras
-   com o Tesseract.js (pasta tesseract/, que só baixa na primeira vez).
+   Endireita a foto (e cada papel recortado dela), acha os papéis, limpa o
+   fundo, faz as várias leituras com o Tesseract.js (pasta tesseract/, que só
+   baixa na primeira vez) e lê à parte o valor em letra grande.
    Usa leitura/texto.js para saber se as leituras concordam.
    ===================================================================== */
 (function (L) {
   'use strict';
-  const { detectDocType, agreedValue, goodWords } = L.texto;
+  const { detectDocType, decidirValor, goodWords } = L.texto;
 
   // The OCR engine (Tesseract.js 5.1.1), its worker, core and the Portuguese
   // language file live in the site's own tesseract/ folder, so reading no
@@ -20,87 +21,52 @@
     return window.Tesseract;
   }
 
-  // Discovers how tilted the receipt is in the photo. Text lines make
-  // dark stripes; the angle where those stripes are sharpest is the right one.
-  function estimateAngles(img) {
-    const SIZE = 360;
-    const w0 = img.naturalWidth || img.width;
-    const h0 = img.naturalHeight || img.height;
-    const s = Math.min(1, SIZE / Math.max(w0, h0));
-    const w = Math.max(1, Math.round(w0 * s));
-    const h = Math.max(1, Math.round(h0 * s));
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    const ctx = c.getContext('2d');
-    ctx.drawImage(img, 0, 0, w, h);
-    const d = ctx.getImageData(0, 0, w, h).data;
-
-    // Grayscale, then local threshold so only the printed ink stays
-    const g = new Float32Array(w * h);
-    for (let i = 0; i < g.length; i++) {
-      g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-    }
-    const integ = new Float64Array((w + 1) * (h + 1));
-    for (let y = 0; y < h; y++) {
-      let row = 0;
-      for (let x = 0; x < w; x++) {
-        row += g[y * w + x];
-        integ[(y + 1) * (w + 1) + x + 1] = integ[y * (w + 1) + x + 1] + row;
-      }
-    }
-    const r = Math.max(6, Math.round(w / 12));
-    const ink = new Float32Array(w * h);
-    for (let y = 0; y < h; y++) {
-      const ya = Math.max(0, y - r), yb = Math.min(h, y + r + 1);
-      for (let x = 0; x < w; x++) {
-        const xa = Math.max(0, x - r), xb = Math.min(w, x + r + 1);
-        const area = (xb - xa) * (yb - ya);
-        const sum = integ[yb * (w + 1) + xb] - integ[ya * (w + 1) + xb] - integ[yb * (w + 1) + xa] + integ[ya * (w + 1) + xa];
-        ink[y * w + x] = g[y * w + x] * area < sum * 0.9 ? 1 : 0;
-      }
-    }
-
-    // For each candidate angle, count ink per line and measure how much
-    // it jumps from line to line — many sharp jumps means the text is level
-    const cx = w / 2, cy = h / 2;
-    const diag = Math.ceil(Math.sqrt(w * w + h * h));
-    const scores = [];
-    for (let a = -87; a < 90; a += 3) {
-      const ar = (a * Math.PI) / 180;
-      const sa = Math.sin(ar), ca = Math.cos(ar);
+  // How tilted the text lines are: the angle (degrees, -90 < a <= 90, the
+  // way the lines run in the picture) at which the ink of the letter-sized
+  // marks makes the sharpest stripes. Only those marks count: creases,
+  // shadows and logos are big marks, and they fooled the old measure, taken
+  // on the whole picture, on crumpled slips (78° on a slip lying straight).
+  // The ink is measured on cells of a third of a letter: at that size the
+  // gaps between letters vanish and the rows become solid stripes, while
+  // the gaps between the lines stay (on a receipt the letters line up in
+  // columns too, and at full size the columns could win). "razao" says how
+  // much better that angle is than its perpendicular.
+  function anguloLinhas(src) {
+    // on a small copy of a whole photo the letters are 2 or 3 pixels tall and
+    // break into bits: the copy grows until they are about 8 pixels tall
+    let grade = letterGrid(src, 500);
+    if (grade.alturaLetra < 6 && Math.max(src.width, src.height) > 500) grade = letterGrid(src, Math.min(2000, Math.round(500 * 8 / Math.max(1, grade.alturaLetra))));
+    const { label, letterLike, alturaLetra: h, sw, sh } = grade;
+    const cell = Math.max(1, Math.round(h / 3));
+    const gw = Math.ceil(sw / cell), gh = Math.ceil(sh / cell);
+    const dens = new Float32Array(gw * gh);
+    for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) { const id = label[y * sw + x]; if (id >= 0 && letterLike[id]) dens[Math.floor(y / cell) * gw + Math.floor(x / cell)] += 1; }
+    const pix = [];
+    for (let i = 0; i < dens.length; i++) if (dens[i]) pix.push([i % gw + 0.5, Math.floor(i / gw) + 0.5, dens[i] / (cell * cell)]);
+    if (pix.length < 30) return { a: 0, razao: 0 };
+    const diag = Math.ceil(Math.hypot(gw, gh));
+    // the ink per line at this angle, and how much it jumps from line to
+    // line: many sharp jumps means the lines of text are level
+    const nitidez = a => {
+      const ar = a * Math.PI / 180, sa = Math.sin(ar), ca = Math.cos(ar);
       const prof = new Float32Array(diag + 2);
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          if (!ink[y * w + x]) continue;
-          // spread each dot between the two nearest lines, otherwise
-          // diagonal angles produce a false striped pattern
-          const yy = -(x - cx) * sa + (y - cy) * ca + diag / 2;
-          const y0 = Math.floor(yy);
-          if (y0 < 0 || y0 >= diag) continue;
-          const f = yy - y0;
-          prof[y0] += 1 - f;
-          prof[y0 + 1] += f;
-        }
+      for (const [x, y, w] of pix) {
+        // spread each cell between the two nearest lines, otherwise
+        // diagonal angles produce a false striped pattern
+        const yy = -x * sa + y * ca + diag / 2, y0 = Math.floor(yy);
+        if (y0 < 0 || y0 >= diag) continue;
+        const f = yy - y0;
+        prof[y0] += w * (1 - f);
+        prof[y0 + 1] += w * f;
       }
-      let score = 0;
-      for (let i = 1; i <= diag; i++) {
-        const dv = prof[i] - prof[i - 1];
-        score += dv * dv;
-      }
-      scores.push({ a, score });
-    }
-    scores.sort((p, q) => q.score - p.score);
-
-    // Keep the best angle plus one clearly different runner-up
-    const out = [scores[0].a];
-    for (const s2 of scores) {
-      if (Math.abs(s2.a - out[0]) > 12 && Math.abs(Math.abs(s2.a - out[0]) - 180) > 12) {
-        out.push(s2.a);
-        break;
-      }
-    }
-    return out;
+      let e = 0;
+      for (let i = 1; i <= diag; i++) { const d = prof[i] - prof[i - 1]; e += d * d; }
+      return e;
+    };
+    let best = { a: 0, e: -1 };
+    for (let a = -90; a < 90; a += 2) { const e = nitidez(a); if (e > best.e) best = { a, e }; }
+    for (let a = best.a - 1.5; a <= best.a + 1.5; a += 0.5) { const e = nitidez(a); if (e > best.e) best = { a, e }; }
+    return { a: best.a, razao: best.e / Math.max(1, nitidez(best.a + 90)) };
   }
 
   // A phone screenshot in dark mode: light letters on a dark screen. It has
@@ -432,7 +398,11 @@
   }
 
   // Letter-sized ink marks counted on a coarse grid: the raw material of
-  // findTextBox (where the text is) and findPapers (how many papers)
+  // findTextBox (where the text is), findPapers (how many papers),
+  // anguloLinhas (how tilted the text is) and faixasGrandes (the big
+  // digits). Also returns the marks (box, area, center), which mark each
+  // pixel belongs to, which marks are letter-sized and their typical
+  // height, in the small copy's pixels (k = its scale).
   function letterGrid(src, SMALL = 400) {
     const k = Math.min(1, SMALL / Math.max(src.width, src.height));
     const sw = Math.max(1, Math.round(src.width * k)), sh = Math.max(1, Math.round(src.height * k));
@@ -467,17 +437,17 @@
     for (let start = 0; start < ink.length; start++) {
       if (!ink[start] || label[start] >= 0) continue;
       const id = marks.length;
-      let area = 0, x0 = sw, y0 = sh, x1 = 0, y1 = 0;
+      let area = 0, x0 = sw, y0 = sh, x1 = 0, y1 = 0, sx = 0, sy = 0;
       label[start] = id; stack.push(start);
       while (stack.length) {
         const p = stack.pop();
         const x = p % sw, y = (p - x) / sw;
-        area++;
+        area++; sx += x; sy += y;
         if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
         const nb = [x > 0 ? p - 1 : -1, x < sw - 1 ? p + 1 : -1, y > 0 ? p - sw : -1, y < sh - 1 ? p + sw : -1];
         for (const q of nb) if (q >= 0 && ink[q] && label[q] < 0) { label[q] = id; stack.push(q); }
       }
-      marks.push({ area, x0, y0, x1, y1 });
+      marks.push({ area, x0, y0, x1, y1, cx: sx / area, cy: sy / area });
     }
     const letterLike = marks.map(m => m.area >= 2 && m.area <= 400 && (m.x1 - m.x0) < 30 && (m.y1 - m.y0) < 30);
     // coarse grid: cells with a few letter-sized marks are text
@@ -490,7 +460,130 @@
       const gx = Math.floor((m.x0 + m.x1) / 2 / CELL), gy = Math.floor((m.y0 + m.y1) / 2 / CELL);
       count[gy * gw + gx]++;
     });
-    return { count, gw, gh, CELL, k, sw, sh };
+    const alturas = marks.filter((m, i) => letterLike[i]).map(m => m.y1 - m.y0 + 1).sort((a, b) => a - b);
+    return { count, gw, gh, CELL, k, sw, sh, marks, label, letterLike, alturaLetra: alturas[Math.floor(alturas.length / 2)] || 1 };
+  }
+
+  // Bands of big digits: the marks much taller than the typical letter,
+  // lined up side by side (the amount of a card slip or a restaurant bill,
+  // but also a logo). marks and k come from letterGrid; the bands come back
+  // in the canvas's own pixels: [{ x0, y0, x1, y1, h, n }].
+  function faixasGrandes(marks, k) {
+    const alt = m => m.y1 - m.y0 + 1, larg = m => m.x1 - m.x0 + 1;
+    const tx = marks.filter(m => m.area >= 4 && alt(m) >= 5 && alt(m) <= 120 && larg(m) <= 160);
+    if (tx.length < 10) return [];
+    const hs = tx.map(alt).sort((a, b) => a - b), med = hs[Math.floor(hs.length / 2)];
+    const tall = tx.filter(m => alt(m) >= 1.7 * med && alt(m) <= 7 * med && larg(m) >= 0.25 * alt(m)).sort((a, b) => a.x0 - b.x0);
+    const grupos = [];
+    tall.forEach(m => {
+      const h = alt(m);
+      const g = grupos.find(G => m.x0 - G.x1 <= 1.6 * Math.max(G.h, h) && Math.min(G.y1, m.y1) - Math.max(G.y0, m.y0) >= 0.5 * Math.min(G.h, h));
+      if (g) { g.x1 = Math.max(g.x1, m.x1); g.y0 = Math.min(g.y0, m.y0); g.y1 = Math.max(g.y1, m.y1); g.h = g.y1 - g.y0 + 1; g.n++; }
+      else grupos.push({ x0: m.x0, x1: m.x1, y0: m.y0, y1: m.y1, h, n: 1 });
+    });
+    return grupos.filter(g => g.n >= 3 || (g.n === 2 && g.x1 - g.x0 >= 2 * g.h)).map(g => ({ x0: g.x0 / k, y0: g.y0 / k, x1: g.x1 / k, y1: g.y1 / k, h: g.h / k, n: g.n }));
+  }
+
+  // One band cut out of the canvas: only the marks inside the band stay (the
+  // lines above and below, and the paper's edge, are blanked), then it is
+  // enlarged to alvoH pixels of height with a white margin around, the way
+  // the engine reads a lone line best. null when nothing is inside.
+  function recorteFaixa(canvas, marks, k, g, alvoH) {
+    const h = g.y1 - g.y0 + 1, pad = Math.max(4, 0.15 * h);
+    const X0 = g.x0 - 1.3 * h, X1 = g.x1 + 0.4 * h, Y0 = g.y0 - pad, Y1 = g.y1 + pad;
+    const dentro = marks.map(m => ({ x0: m.x0 / k, y0: m.y0 / k, x1: (m.x1 + 1) / k, y1: (m.y1 + 1) / k }))
+      .filter(m => m.x0 >= X0 && m.x1 <= X1 && m.y0 >= Y0 && m.y1 <= Y1);
+    if (!dentro.length) return null;
+    const x0 = Math.max(0, Math.floor(Math.min(...dentro.map(m => m.x0)) - 2)), y0 = Math.max(0, Math.floor(Math.min(...dentro.map(m => m.y0)) - 2));
+    const x1 = Math.min(canvas.width, Math.ceil(Math.max(...dentro.map(m => m.x1)) + 2)), y1 = Math.min(canvas.height, Math.ceil(Math.max(...dentro.map(m => m.y1)) + 2));
+    if (x1 - x0 < 8 || y1 - y0 < 8) return null;
+    const faixa = document.createElement('canvas');
+    faixa.width = x1 - x0; faixa.height = y1 - y0;
+    const fctx = faixa.getContext('2d');
+    fctx.fillStyle = '#fff'; fctx.fillRect(0, 0, faixa.width, faixa.height);
+    dentro.forEach(m => fctx.drawImage(canvas, m.x0 - 1, m.y0 - 1, m.x1 - m.x0 + 2, m.y1 - m.y0 + 2, m.x0 - 1 - x0, m.y0 - 1 - y0, m.x1 - m.x0 + 2, m.y1 - m.y0 + 2));
+    const s = alvoH / faixa.height, margem = Math.round(0.4 * alvoH);
+    const out = document.createElement('canvas');
+    out.width = Math.round(faixa.width * s) + 2 * margem; out.height = alvoH + 2 * margem;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, out.width, out.height);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(faixa, margem, margem, Math.round(faixa.width * s), alvoH);
+    return out;
+  }
+
+  // Two symbols that look the same cannot be two different digits: the
+  // thermal print fills the "0" and the engine reads "8" for one of them
+  // (34,08 for 34,00), with full confidence. Compares the ink of each pair
+  // of digits the engine found in the crop; false when a pair looks alike
+  // (85% or more) but was read as different digits.
+  function digitosCoerentes(crop, symbols) {
+    const ctx = crop.getContext('2d');
+    const W = 10, H = 14;
+    const vetor = b => {
+      const w = Math.max(1, b.x1 - b.x0), h = Math.max(1, b.y1 - b.y0);
+      const d = ctx.getImageData(b.x0, b.y0, w, h).data;
+      const v = new Float32Array(W * H), n = new Float32Array(W * H);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const k = Math.floor(y * H / h) * W + Math.floor(x * W / w);
+        v[k] += d[(y * w + x) * 4] < 128 ? 1 : 0;
+        n[k]++;
+      }
+      for (let k = 0; k < v.length; k++) v[k] /= n[k] || 1;
+      return v;
+    };
+    const digitos = symbols.filter(s => /^\d$/.test(s.text) && s.bbox).map(s => ({ t: s.text, v: vetor(s.bbox) }));
+    for (let i = 0; i < digitos.length; i++) for (let j = i + 1; j < digitos.length; j++) {
+      if (digitos[i].t === digitos[j].t) continue;
+      let dif = 0;
+      for (let k = 0; k < W * H; k++) dif += Math.abs(digitos[i].v[k] - digitos[j].v[k]);
+      if (1 - dif / (W * H) >= 0.85) return false;
+    }
+    return true;
+  }
+
+  // The amount in big letters. The regular readings skip the double-height
+  // digits of card slips ("R$36,00") and restaurant bills, or get one digit
+  // wrong (23,09 for 23,00): here each band of tall marks is cut out on its
+  // own, cleaned of the lines around it, enlarged and read as a single line
+  // at four sizes (the "R$" comes out as "6" at one size and right at the
+  // others, so the sizes vote). A band without a digit at the first size is
+  // a logo or a label and is left alone. Returns [{ valor, vezes, conf,
+  // duvida }] per amount read, the one read most often first (duvida: some
+  // reading of it had two alike symbols as different digits, see
+  // digitosCoerentes); texto.js decides what it is worth.
+  async function lerValorGrande(img, worker, rot, region) {
+    const reg = region || (img.cutOut ? 'all' : null);
+    const bin = buildOcrCanvas(img, rot, true, 1400, reg);
+    const { marks, k } = letterGrid(bin, 1400);
+    const faixas = faixasGrandes(marks, k);
+    if (!faixas.length) return [];
+    const cinza = buildOcrCanvas(img, rot, false, 1400, reg);
+    const lidos = new Map();
+    await worker.setParameters({ tessedit_pageseg_mode: '7' });   // one line of text
+    try {
+      for (const g of faixas.slice(0, 4)) {
+        for (const [alvo, fonte] of [[48, cinza], [56, bin], [64, cinza], [80, cinza]]) {
+          const recorte = recorteFaixa(fonte, marks, k, g, alvo);
+          if (!recorte) break;
+          const res = await worker.recognize(recorte);
+          const texto = String(res.data.text || '');
+          if (!/\d/.test(texto)) break;
+          const m = texto.match(/(\d{1,3}(?:[.,]\d{3})*|\d+)\s?[.,]\s?(\d{2})(?!\d)/);
+          if (!m) continue;
+          const valor = parseFloat(m[1].replace(/[.,]/g, '') + '.' + m[2]);
+          if (!(valor > 0 && valor < 100000)) continue;
+          const v = lidos.get(valor) || { valor, vezes: 0, conf: 0, duvida: false };
+          v.vezes++;
+          v.conf = Math.max(v.conf, res.data.confidence || 0);
+          if (!digitosCoerentes(recorte, res.data.symbols || [])) v.duvida = true;
+          lidos.set(valor, v);
+        }
+      }
+    } finally {
+      await worker.setParameters({ tessedit_pageseg_mode: '6' });   // back to the engine's default (one block)
+    }
+    return [...lidos.values()].sort((a, b) => b.vezes - a.vezes || b.conf - a.conf);
   }
 
   function findTextBox(src, SMALL = 400) {
@@ -515,15 +608,22 @@
   }
 
   // The photo cut down to the paper, so the tilt is measured on the
-  // receipt's own text and not on the table around it
+  // receipt's own text and not on the table around it (a dark screenshot
+  // is inverted first: the tilt is measured on ink, not on light letters)
   function cropPaper(img) {
-    const MAX = 1500;
+    const MAX = 2000;
     let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
     const s = Math.min(1, MAX / Math.max(w, h));
     w = Math.round(w * s); h = Math.round(h * s);
     const src = document.createElement('canvas');
     src.width = w; src.height = h;
-    src.getContext('2d').drawImage(img, 0, 0, w, h);
+    const sctx = src.getContext('2d');
+    sctx.drawImage(img, 0, 0, w, h);
+    if (telaEscura(img)) {
+      const od = sctx.getImageData(0, 0, w, h), d = od.data;
+      for (let i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2]; }
+      sctx.putImageData(od, 0, 0);
+    }
     const { cx, cy, cw, ch } = findTextBox(src) || findPaperBox(src);
     const out = document.createElement('canvas');
     out.width = cw; out.height = ch;
@@ -567,7 +667,7 @@
   // readings, the search for the right position when the first comes out
   // bad, and the QR codes and barcodes. tipoPedido is the type chosen in the
   // pop-up ('auto' to find out); aviso(text) tells the screen what is going on.
-  // Returns { readings, tipo, codes, tilt }.
+  // Returns { readings, tipo, codes, tilt, grandes }.
   async function readPaper(img, worker, rotation, label, tipoPedido, aviso) {
     let readings = [];
     let tipo = tipoPedido;
@@ -581,12 +681,18 @@
       const lines = (res.data.lines || []).map(l => ({ text: (l.text || '').trim(), conf: l.confidence || 0 })).filter(l => l.text);
       return { text: res.data.text || '', conf: res.data.confidence || 0, words: res.data.words || [], lines, rot, bin, size, region: { cx: f.cx, cy: f.cy, cw: f.cw, ch: f.ch }, frame: f };
     };
-    const started = Date.now();
+    let started = Date.now();
 
     // Straighten the photo automatically: the app measures how tilted the
-    // receipt is instead of assuming it was photographed square
-    const tilt = estimateAngles(cropPaper(img));
-    let base = rotation + tilt[0];
+    // receipt is instead of assuming it was photographed square (the lines
+    // run at +a, so the picture is turned by -a). A paper cut out of a photo
+    // with several can lie any way, and the measure is trusted. A whole
+    // photo is almost always upright, and the measure can be fooled by the
+    // table around the paper: only a small tilt is trusted, and a big one
+    // waits its turn among the positions tried below.
+    const tilt = anguloLinhas(cropPaper(img));
+    const medida = rotation - tilt.a;
+    let base = img.cutOut || Math.abs(tilt.a) <= 20 ? medida : rotation;
     readings.push(await read(base, false, 1000));
 
     // Sideways or upside-down photo, or paper the app failed to find: the
@@ -594,13 +700,16 @@
     // every position (the measured tilt and its quarter turns, plus the
     // plain quarter turns in case the tilt was misjudged), keep the
     // position the engine reads with confidence, and crop to where the
-    // confident words are.
+    // confident words are. An upside-down receipt can still yield a few
+    // dozen "words" the engine trusts, all of them nonsense that no reader
+    // recognizes: a paper of no known type is also tried the other way up.
     let region = null;
-    if (goodWords(readings[0]) < 8) {
+    const nonsense = tipoPedido === 'auto' && goodWords(readings[0]) < 40 && detectDocType(readings) === 'livre';
+    if (goodWords(readings[0]) < 8 || nonsense) {
       aviso(label + 'Procurando a posição certa...');
       let best = null;
       const near = (a, b) => Math.abs(((a - b) % 360 + 540) % 360 - 180) < 6;
-      const probes = [base, base + 180, base + 90, base - 90, rotation, rotation + 90, rotation + 180, rotation + 270]
+      const probes = (nonsense ? [base + 180, base] : [base, base + 180]).concat([base + 90, base - 90, medida, medida + 180, rotation, rotation + 90, rotation + 180, rotation + 270])
         .filter((r, i, all) => all.findIndex(q => near(q, r)) === i);
       const probing = Date.now();
       for (const rot of probes) {
@@ -613,22 +722,33 @@
         base = best.rot;
         region = textRegion(best.probe) || best.probe.region;
         readings = [region === best.probe.region ? best.probe : await read(base, false, 1000, region)];
+        started = Date.now();   // the time limit below counts from the first good reading
       }
+    }
+
+    // The amount in big letters, read on its own (lerValorGrande): the
+    // regular readings skip it or get a digit wrong. Only on a paper that
+    // has an amount, or one read so badly that it may be a slip.
+    let grandes = [];
+    const querValor = t => L.tipo(t).vitais.includes('Valor');
+    if (querValor(tipoPedido === 'auto' ? detectDocType(readings) : tipoPedido) || (tipoPedido === 'auto' && goodWords(readings[0]) < 15)) {
+      aviso(label + 'Lendo o valor em letra grande...');
+      grandes = await lerValorGrande(img, worker, base, region);
     }
 
     // More readings of the same photo: as photographed, larger, with
     // reinforced contrast. The amount is only accepted when two readings
-    // agree on it (see agreedValue), so a money document gets at least
+    // agree on it (see decidirValor), so a money document gets at least
     // two readings, and so does a type whose reader takes transactions out
     // of the text (notification screenshot); free text stops at the first.
     const done = p => readings.some(r => r.rot === p[0] && r.bin === p[1] && r.size === p[2]);
     const passes = [[rotation, false, 1000, null], [base, false, 1400, region], [base, true, 1000, region]].filter(p => !done(p));
     let next = 0;
     while (true) {
-      tipo = tipoPedido === 'auto' ? detectDocType(readings) : tipoPedido;
+      tipo = tipoPedido === 'auto' ? detectDocType(readings, grandes) : tipoPedido;
       const def = L.tipo(tipo), wantsValue = def.vitais.includes('Valor');
       if (!wantsValue && (readings.length >= 2 || (tipoPedido !== 'auto' && !def.itens))) break;
-      if (wantsValue && agreedValue(readings, tipo) !== null) break;
+      if (wantsValue && decidirValor(readings, tipo, grandes).valor !== null) break;
       if (next >= passes.length) break;
       if (readings.length >= 2 && Date.now() - started > 20000) break;   // não prender a pessoa
       aviso(label + 'Conferindo com outra leitura...');
@@ -637,7 +757,7 @@
 
     aviso(label + 'Procurando QR code e código de barras...');
     const codes = img._presetText ? [] : await L.lerCodigos(img);
-    return { readings, tipo, codes, tilt: tilt[0] };
+    return { readings, tipo, codes, tilt: tilt.a, grandes };
   }
 
 
@@ -675,13 +795,13 @@
     const T = await loadTesseractLibrary();
     const worker = await T.createWorker('por', 1, { workerPath: OCR_BASE + 'worker.min.js', corePath: OCR_BASE, langPath: OCR_BASE });
     try {
-      const res = await worker.recognize(buildOcrCanvas(img, estimateAngles(cropPaper(img))[0], false, 800));
+      const res = await worker.recognize(buildOcrCanvas(img, -anguloLinhas(cropPaper(img)).a, false, 800));
       return detectDocType([{ text: res.data.text || '' }]);
     } finally {
       await worker.terminate();
     }
   }
 
-  L.foto = { espiar, estimateAngles, buildOcrCanvas, findPaperBox, findPapers, letterGrid, findTextBox, cropPaper, cropBox, textRegion, readPaper };
+  L.foto = { espiar, anguloLinhas, buildOcrCanvas, findPaperBox, findPapers, letterGrid, findTextBox, cropPaper, cropBox, textRegion, faixasGrandes, recorteFaixa, lerValorGrande, readPaper };
   L.lerFotos = lerFotos;
 })(window.Leitura);
