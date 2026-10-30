@@ -58,6 +58,15 @@
 //    número do CNPJ sai do aparelho. O QR code de uma nota (endereço .gov.br
 //    da Sefaz) ganha o botão "Ver a nota no site da Sefaz"; outro endereço
 //    impresso num papel não ganha botão.
+// 14. Ler com IA (nível C), com o Gemini e o Claude simulados por rotas (nada
+//    sai de verdade): sem chave, o botão não aparece; a chave colada em
+//    Ajustes é testada (lista de modelos) e guardada no cofre comum dos apps
+//    SolverONE; um canhoto sem o valor impresso ganha o botão "Ler com IA",
+//    que pede confirmação (a foto sai do aparelho) e só manda a foto e o
+//    pedido; o valor lido pela IA vira um botão de um toque, os outros campos
+//    entram marcados; a opção "usar a IA sozinho" lê sem perguntar; saúde
+//    sempre pergunta; a cota esgotada vira aviso em linguagem simples; a
+//    chave do Claude vai com os cabeçalhos certos; apagar a chave tira tudo.
 // Também avisa se a versão do sw.js não bate com a do index.html.
 
 const fs = require('fs');
@@ -231,6 +240,30 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   };
   await context.route('https://minhareceita.org/**', servicoCnpj);
   await context.route('https://brasilapi.com.br/api/cnpj/v1/**', servicoCnpj);
+  // As IAs (nível C), simuladas: a lista de modelos e a leitura de uma foto; iaFora = 429 derruba a cota
+  const pedidosIA = [];
+  let iaFora = 0;
+  const leituraIA = { tipo: 'cartao', estabelecimento: 'BAR EXEMPLO ME', cnpj: null, valor: 36, data: '10/10/2026', hora: '14:07', bandeira: 'MASTERCARD', cartao_final: '1234', modalidade: 'crédito à vista', autorizacao: '654321', nsu: '000123', produtos: [], observacao: null };
+  const corsIA = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
+  await context.route('https://generativelanguage.googleapis.com/**', route => {
+    const req = route.request(), u = req.url();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: corsIA });
+    if (/\/models(\?|$)/.test(u)) { pedidosIA.push({ quem: 'gemini', o: 'lista', chave: req.headers()['x-goog-api-key'] || '' }); return route.fulfill({ status: 200, contentType: 'application/json', headers: corsIA,
+      body: JSON.stringify({ models: [{ name: 'models/gemini-2.5-flash-lite', supportedGenerationMethods: ['generateContent'] }, { name: 'models/gemini-3.1-flash', supportedGenerationMethods: ['generateContent'] }, { name: 'models/gemini-2.5-pro', supportedGenerationMethods: ['generateContent'] }, { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] }] }) }); }
+    const corpo = JSON.parse(req.postData() || '{}'), parts = (corpo.contents && corpo.contents[0] && corpo.contents[0].parts) || [];
+    pedidosIA.push({ quem: 'gemini', o: 'leitura', modelo: (u.match(/models\/([^:]+)/) || [])[1], partes: parts.map(p => p.text ? 'texto' : p.inline_data ? p.inline_data.mime_type : '?'), corpo: req.postData() || '' });
+    if (iaFora) return route.fulfill({ status: iaFora, contentType: 'application/json', headers: corsIA, body: JSON.stringify({ error: { message: 'quota' } }) });
+    return route.fulfill({ status: 200, contentType: 'application/json', headers: corsIA, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(leituraIA) }] } }] }) });
+  });
+  await context.route('https://api.anthropic.com/**', route => {
+    const req = route.request(), u = req.url(), h = req.headers();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: corsIA });
+    const cab = { chave: h['x-api-key'] || '', versao: h['anthropic-version'] || '', navegador: h['anthropic-dangerous-direct-browser-access'] || '' };
+    if (/\/v1\/models/.test(u)) { pedidosIA.push(Object.assign({ quem: 'anthropic', o: 'lista' }, cab)); return route.fulfill({ status: 200, contentType: 'application/json', headers: corsIA, body: JSON.stringify({ data: [{ id: 'claude-opus-5' }, { id: 'claude-sonnet-5' }, { id: 'claude-haiku-4-5' }] }) }); }
+    const corpo = JSON.parse(req.postData() || '{}'), partes = (corpo.messages && corpo.messages[0] && corpo.messages[0].content) || [];
+    pedidosIA.push(Object.assign({ quem: 'anthropic', o: 'leitura', modelo: corpo.model, partes: partes.map(p => p.type === 'image' ? p.source.media_type : p.type), corpo: req.postData() || '' }, cab));
+    return route.fulfill({ status: 200, contentType: 'application/json', headers: corsIA, body: JSON.stringify({ content: [{ type: 'text', text: '```json\n' + JSON.stringify(Object.assign({}, leituraIA, { valor: 36.0 })) + '\n```' }] }) });
+  });
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'leitor-ocr-'));
   const file = (name, content) => { const f = path.join(tmp, name); fs.writeFileSync(f, content); return f; };
 
@@ -295,6 +328,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const cupomDe = (nome, cnpj) => file(`cupom-${soNumeros(cnpj).slice(0, 8)}.txt`, [nome, 'CNPJ: ' + cnpj, 'DOCUMENTO AUXILIAR DA NOTA FISCAL DE CONSUMIDOR ELETRONICA', '001 7890000000017 COXINHA EXEMPLO 2 UN X 8,00 16,00',
     'VALOR TOTAL R$ 16,00', 'VALOR A PAGAR R$ 16,00', 'FORMA DE PAGAMENTO', 'CARTAO DE CREDITO 16,00', 'EMISSAO: 10/10/2026 12:00', ''].join('\n'));
   const cupomLanche = cupomDe('LANCHONETE DO ZE', cnpjLanche), cupomPadaria = cupomDe('PADARIA EXEMPLO', cnpjPadaria), cupomAgencia = cupomDe('EXEMPLO AGENCIA', cnpjAgencia), cupomMercearia = cupomDe('MERCEARIA EXEMPLO ME', cnpjMercearia), cupomBoteco = cupomDe('BOTECO DO ZE', cnpjBoteco);
+  // canhoto sem o valor impresso (14): a leitura normal fica sem valor, e a IA de mentira lê 36,00
+  const semValor = await shot(`<div style="width:520px;padding:40px 30px;font:bold 26px monospace;color:#111;background:#fff;line-height:1.6;">VIA CLIENTE (1)<br>BAR EXEMPLO ME<br>10/10/2026 14:07<br>CREDITO A VISTA<br><br>AUT 654321 NSU 000123</div>`, 'sem-valor.png');
   // a nota fotografada da 13 (o QR code vem de um leitor de códigos trocado no teste)
   const cupomFoto = await shot(`<div style="width:560px;padding:30px;font:bold 22px monospace;color:#111;background:#fff;line-height:1.5;white-space:pre-line">${cupom(cnpjLanche, '61,75').replace(/DESCONTO R\$ 1,50\n/, '')}</div>`, 'cupom-foto.png');
   await gen.close();
@@ -745,6 +780,97 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     'só endereço .gov.br vira botão: outro endereço impresso num papel não abre nada');
   await page.close();
   check(consultas.every(u => /^https:\/\/(minhareceita\.org|brasilapi\.com\.br\/api\/cnpj\/v1)\/\d{14}$/.test(u)), `nas consultas de CNPJ só o número da loja sai do aparelho (${consultas.length} consultas)`);
+
+  // 14. ler com IA (nível C), com as IAs simuladas
+  const camposIA = pg => pg.$$eval('#fieldsListContainer .field-row', rows => rows.map(r => ({ key: r.querySelector('.fld-key').value, val: r.querySelector('.fld-val').value, ia: r.classList.contains('field-ia') })));
+  const toasts = pg => pg.$$eval('#toastContainer > *', t => t.map(x => x.textContent));
+  page = await open();
+  const i0IA14 = await send(page, [semValor], 'cartao');
+  check(i0IA14.values[0] === '' && await page.$('#btnLerIA') === null && await page.$$eval('#iaProvedores .ia-prov', e => e.length) === 2,
+    `canhoto sem o valor impresso fica com o valor vazio (${i0IA14.status}); sem chave, o botão "Ler com IA" não aparece; Ajustes mostra os 2 provedores`);
+  await page.click('.nav-tab-btn[data-tab="tab-settings"]');
+  await page.fill('.ia-prov[data-prov="gemini"] .ia-chave', 'chave-errada');
+  await page.click('.ia-prov[data-prov="gemini"] button[data-acao="salvar"]');
+  await page.waitForFunction(() => /não parece uma chave/.test(document.querySelector('.ia-prov[data-prov="gemini"] .ia-prov-msg').textContent));
+  await page.fill('.ia-prov[data-prov="gemini"] .ia-chave', 'AIzaTESTE1234567890abcdefghij');
+  await page.click('.ia-prov[data-prov="gemini"] button[data-acao="salvar"]');
+  await page.waitForFunction(() => document.querySelector('.ia-prov[data-prov="gemini"] .ia-prov-status').textContent.includes('guardada'));
+  const cofreIA14 = await page.evaluate(() => [localStorage.getItem('dgo:global:chaves-ia'), localStorage.getItem('dgo:global:ia-modelos')]);
+  check(pedidosIA.filter(p => p.o === 'lista').length === 1 && cofreIA14[0] === JSON.stringify({ gemini: 'AIzaTESTE1234567890abcdefghij' }) && cofreIA14[1] === JSON.stringify({ gemini: 'gemini-3.1-flash' }),
+    `chave com formato errado é recusada sem sair do aparelho; a certa é testada na lista de modelos e guardada no cofre comum dos apps SolverONE (modelo ${JSON.parse(cofreIA14[1] || '{}').gemini})`);
+  await page.close();
+  page = await open();
+  await send(page, [semValor], 'cartao');
+  await page.click('#btnLerIA');
+  await page.waitForSelector('#iaDialog[open]');
+  const avisoIA14 = await page.$eval('#iaDialogText', e => e.textContent);
+  await page.check('#chkIaNaoPerguntar');
+  await page.click('#btnIaSim');
+  await page.waitForSelector('#btnUsarValorIA', { timeout: 30000 });
+  const depIA14 = await camposIA(page);
+  const leitura1IA14 = pedidosIA.filter(p => p.o === 'leitura');
+  const soFotoIA14 = leitura1IA14.length === 1 && leitura1IA14[0].partes.join(',') === 'texto,image/jpeg' && !/leitor_|dgo:|BAR EXEMPLO|654321/.test(leitura1IA14[0].corpo.replace(/"data":"[^"]*"/, ''));
+  check(/vai para Google/.test(avisoIA14) && soFotoIA14 && depIA14.find(f => f.key === 'Valor').val === '' && depIA14.find(f => f.key === 'Bandeira' && f.ia && f.val === 'MASTERCARD') && depIA14.find(f => f.key === 'Cartão' && f.ia && f.val === 'final 1234'),
+    `o botão pede confirmação ("${avisoIA14.slice(0, 60)}..."); só a foto e o pedido saem; a IA preenche o que faltava, marcado; o valor NÃO entra sozinho`);
+  await page.click('#btnUsarValorIA');
+  const dep2IA14 = await camposIA(page);
+  check(dep2IA14.find(f => f.key === 'Valor').val === 'R$ 36,00' && dep2IA14.find(f => f.key === 'Valor').ia && await page.$('#btnUsarValorIA') === null && await page.evaluate(() => localStorage.getItem('leitor_ia_avisado')) === '"sim"',
+    `um toque em "Usar R$ 36,00" preenche o valor, marcado como lido pela IA; "não perguntar de novo" fica guardado`);
+  await page.close();
+  // saúde sempre pergunta, mesmo depois de "não perguntar de novo"; "Agora não" não manda nada
+  page = await open();
+  // o tipo de saúde fica em "Outros tipos de documento", recolhido
+  await page.setInputFiles('#fileInputGallery', [semValor]);
+  await page.waitForSelector('#docTypeDialog[open]', { timeout: 60000 });
+  await page.click('#docTypeDialog .doc-type-more summary');
+  await page.click('#docTypeDialog button[data-tipo="receita-medica"]');
+  await readTabs(page);
+  const antesSaudeIA14 = pedidosIA.length;
+  await page.click('#btnLerIA');
+  await page.waitForSelector('#iaDialog[open]');
+  const avisoSaudeIA14 = await page.$eval('#iaDialogText', e => e.textContent), lembrarIA14 = await page.$eval('#iaDialogLembrar', e => e.style.display);
+  await page.click('#btnIaNao');
+  await page.waitForFunction(() => !document.getElementById('iaDialog').open);
+  check(/de saúde/.test(avisoSaudeIA14) && lembrarIA14 === 'none' && pedidosIA.length === antesSaudeIA14, `documento de saúde sempre pergunta (sem "não perguntar de novo"); "Agora não" não manda nada`);
+  await page.close();
+  // a cota acabou: avisoIA14 em linguagem simples, nada quebra
+  iaFora = 429;
+  page = await open();
+  await send(page, [semValor], 'cartao');
+  await page.click('#btnLerIA');
+  await page.waitForFunction(() => [...document.querySelectorAll('#toastContainer > *')].some(t => /cota/.test(t.textContent)), null, { timeout: 30000 });
+  check((await toasts(page)).some(t => /cota|crédito/.test(t)) && await page.$('#btnLerIA') !== null, `cota esgotada: avisoIA14 "${(await toasts(page)).find(t => /cota/.test(t)).slice(0, 70)}" e o botão continua para tentar depois`);
+  iaFora = 0;
+  await page.close();
+  // "usar a IA sozinho": o canhoto sem valor vai para a IA sem perguntar
+  page = await open();
+  await page.click('.nav-tab-btn[data-tab="tab-settings"]');
+  await page.check('#chkIaSozinha');
+  await page.click('.nav-tab-btn[data-tab="tab-capture"]');
+  await send(page, [semValor], 'cartao');
+  await page.waitForSelector('#btnUsarValorIA', { timeout: 30000 });
+  check(!(await page.$eval('#iaDialog', d => d.open)) && (await camposIA(page)).find(f => f.key === 'Bandeira' && f.ia), `com "usar a IA sozinho" ligado, o canhoto sem valor vai para a IA sem perguntar e volta com a sugestão`);
+  await page.click('.nav-tab-btn[data-tab="tab-settings"]');
+  await page.uncheck('#chkIaSozinha');
+  // a chave do Claude: cabeçalhos certos, resposta com cerca de código, "usar esta" e apagar
+  await page.fill('.ia-prov[data-prov="anthropic"] .ia-chave', 'sk-ant-teste-1234567890abcdef');
+  await page.click('.ia-prov[data-prov="anthropic"] button[data-acao="salvar"]');
+  await page.waitForFunction(() => document.querySelector('.ia-prov[data-prov="anthropic"] .ia-prov-status').textContent.includes('guardada'));
+  await page.check('input[name="iaUsar"][value="anthropic"]');
+  await page.click('.nav-tab-btn[data-tab="tab-capture"]');
+  await send(page, [semValor], 'cartao');
+  await page.click('#btnLerIA');
+  await page.waitForSelector('#btnUsarValorIA', { timeout: 30000 });
+  const claudeIA14 = pedidosIA.filter(p => p.quem === 'anthropic');
+  check(claudeIA14.length === 2 && claudeIA14[1].modelo === 'claudeIA14-sonnet-5' && claudeIA14[1].chave === 'sk-ant-teste-1234567890abcdef' && claudeIA14[1].versao === '2023-06-01' && claudeIA14[1].navegador === 'true'
+    && claudeIA14[1].partes.join(',') === 'image/jpeg,text' && /Claude/.test(await page.$eval('.ia-resumo', e => e.textContent)),
+    `Claude: chave testada, modelo ${claudeIA14[1] && claudeIA14[1].modelo}, cabeçalhos do navegador, só foto e pedido; a resposta com cerca de código é entendida`);
+  await page.click('.nav-tab-btn[data-tab="tab-settings"]');
+  await page.click('.ia-prov[data-prov="anthropic"] button[data-acao="apagar"]');
+  await page.click('.ia-prov[data-prov="gemini"] button[data-acao="apagar"]');
+  const cofreFimIA14 = await page.evaluate(() => [localStorage.getItem('dgo:global:chaves-ia'), localStorage.getItem('dgo:global:ia-modelos')]);
+  check(cofreFimIA14[0] === '{}' && cofreFimIA14[1] === '{}' && await page.$$eval('#iaProvedores .ia-prov-status', e => e.every(x => x.textContent === 'sem chave')), 'apagar as chaves limpa o cofreIA14 e os modelos');
+  await page.close();
 
   check(external.size === 0, 'nenhum pedido para fora do app' + (external.size ? ': ' + [...external].join(', ') : ''));
   check(logs.length === 0, 'nenhum erro de página' + (logs.length ? ': ' + logs.join(' | ') : ''));

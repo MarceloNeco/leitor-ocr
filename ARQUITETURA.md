@@ -23,7 +23,8 @@ O motor não é um pacote único. Cada capacidade mora em arquivos próprios e s
 | OFX (extrato/fatura do banco) | `formatos/ofx.js` | primeiro .ofx | — |
 | Planilha Excel (XLSX) | `formatos/zip.js` + `formatos/xlsx.js` | primeiro .xlsx | — (usa o descompactador do navegador) |
 | Word (DOCX) | `formatos/zip.js` + `formatos/docx.js` | primeiro .docx | — |
-| Visor de 7 segmentos, tabela por posição, IA online, rosto | — | ainda não existem | listadas no catálogo como `futuro` |
+| Ler com IA online, pela chave da pessoa (Gemini, Claude) | `leitura/ia.js` | sempre (página) | — |
+| Visor de 7 segmentos, tabela por posição, rosto | — | ainda não existem | listadas no catálogo como `futuro` |
 
 A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda o básico na primeira visita e as pastas `tesseract/` e `libs/` só ao passar por elas, numa cópia (`dgo-leitor-ocr-pesado-1`) que atravessa as atualizações sem baixar tudo de novo.
 
@@ -39,6 +40,7 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 | `leitura/relacoes.js` | `Leitura.relacionar(papeis)`: mesma compra (a nota e a via do cartão; o canhoto e o aviso do banco), aviso repetido em dois prints, pagamento dividido, quem pagou e "minha parte" (cartões da pessoa pelos 4 últimos dígitos, em `localStorage` `leitor_meus_cartoes`). |
 | `leitura/estabelecimentos.js` | Quem é a loja: `Leitura.estabelecimento({ razao, cnpj, cabecalho })` pela raiz do CNPJ na base, `Leitura.categoriaDe(descricao)` e o nome corrigido pela pessoa (`localStorage` `leitor_nomes_estabelecimentos`). Com internet, `Leitura.consultarCnpj(cnpj)` pergunta à consulta pública de CNPJ quem é a loja fora da base (resposta em `localStorage` `leitor_cnpj_consultados`; `Leitura.consultaCnpjLigada()` / `ligarConsultaCnpj(sim)` é a chave de Ajustes; `Leitura.categoriaDoCnae(cnae)` é a tabela atividade → categoria). Ver "Lojas". |
 | `dados/estabelecimentos.json` | A base de lojas: raiz do CNPJ, razão social, nome fantasia e categoria das redes comuns (dado público). |
+| `leitura/ia.js` | Ler a foto com uma IA online (nível C): `Leitura.ia.provedores()`, `guardarChave(prov, chave)` (testa na lista de modelos e guarda no cofre comum `dgo:global:chaves-ia`), `provedorAtual()`, `lerFoto(img)` (Gemini ou Claude, pedido em JSON), `aplicar(papel, lido, atuais)` (campos só onde estava vazio; valor vira sugestão), `explicar(erro)`, `precisaPerguntar(tipo)`, `sozinha()`. Ver "Ler com IA". |
 | `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce` (também o total do DANFE, conferido pela soma da nota, e os produtos do cupom; ver "Produtos da nota"), `conta`, `transferencia` (Pix, TED), `boleto` (valor e vencimento da linha digitável, conferidos pelos dígitos verificadores; as partes do valor; o valor pago no comprovante), `arrecadacao` (conta de luz, água, gás, telefone, imposto e multa pelo código de 48 números), `extrato` (o **leitor de lançamentos**: um só para extrato, fatura e print de notificação, de qualquer banco; ver "Lançamentos"). |
 | `formatos/*.js` | Um arquivo por tipo de arquivo. |
 | `index.html` | Telas: capturar, abas dos papéis, campos para conferir, histórico, exportar, ajustes. Janelas: `detailDialog`, `confirmDialog`, `docTypeDialog`, `cameraDialog`, `papersDialog`, `passwordDialog` (todas `<dialog>` nativo). |
@@ -164,6 +166,17 @@ No papel: `result.produtos` (a lista), `result.produtosConferido` e, quando não
 
 **Copiar o motor para os outros apps fica para depois**: MoneyTRIO, HyperNutry e OmniLife recebem esta versão do motor cada um no seu próprio PR.
 
+## Ler com IA (nível C, 0.8.0)
+
+- **A leitura no aparelho vem sempre primeiro.** A IA é um extra: só em foto, só com internet e só com uma chave da pessoa. Sem chave, o botão não existe e nada sai do aparelho.
+- **Cofre comum.** A chave fica em `localStorage` `dgo:global:chaves-ia` (`{ gemini, anthropic }`), o mesmo lugar que o módulo comum `DGO.ia` dos outros apps SolverONE usa; como todos moram na mesma origem, a chave colada em qualquer app vale em todos. `dgo:global:ia-por-uso` (`{ visao }`) diz qual provedor lê fotos quando há mais de uma chave; `dgo:global:ia-modelos` guarda o modelo escolhido por provedor. Nada disso entra no repositório.
+- **Provedores.** `gemini` (Google, grátis, `x-goog-api-key`, `generateContent` com `responseMimeType: application/json`) e `anthropic` (Claude, pago, `/v1/messages` com `anthropic-dangerous-direct-browser-access: true`). Ao guardar a chave, o app lista os modelos que ela aceita e escolhe um (o Flash mais novo sem variante; no Claude, Sonnet, senão Haiku); modelo aposentado (404) é trocado sozinho.
+- **O que sai.** A foto do papel reduzida a 1600 px em JPEG e o pedido em texto (os campos do app em JSON, com a ordem de usar `null` no ilegível e nunca inventar). Nunca o histórico, outros papéis ou a chave de outro provedor.
+- **O que entra.** `Leitura.ia.aplicar`: cada campo da IA entra só onde estava vazio, com `ia: true` (a tela mostra a borda tracejada); o valor nunca entra sozinho: fica em `result.ia.sugestao` e a tela mostra o botão "Usar R$ X" (um toque), também quando a leitura do aparelho e a IA discordam; quando concordam, `result.ia.concorda`. Produtos só quando o papel não tinha nenhum (`result.produtosIA`); o tipo da IA vira dica (`result.hint`) quando o papel ficou sem tipo.
+- **Consentimento.** `index.html` pergunta antes de mandar (diálogo `#iaDialog`, com "não perguntar de novo" para comprovantes e notas, guardado em `leitor_ia_avisado`); saúde, documento pessoal e rosto (classes do catálogo) perguntam sempre. A opção de Ajustes "usar a IA sozinho" (`leitor_ia_sozinha`) manda, sem perguntar, só os papéis de dinheiro que ficaram sem valor.
+- **Erros** em linguagem de gente (`Leitura.ia.explicar`): chave recusada, cota ou crédito no fim, fora do ar, demorou (45 s), resposta ilegível, sem internet.
+- **Ainda não**: a chamada da IA não roda no módulo `Fundo` da diretriz (trocar de tela no meio cancela a tela, não a chamada; a resposta chega ao papel de qualquer jeito).
+
 ## Abrir um formato novo de arquivo
 
 Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`, declarar a capacidade e o formato (extensões) no catálogo, pôr o arquivo no `sw.js` e um caso no `testes/offline.js`. Se precisar de biblioteca, ela vai para `libs/` (pesada: só baixa no uso).
@@ -178,6 +191,7 @@ Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`
    <script src="leitura/texto.js"></script>
    <script src="leitura/relacoes.js"></script>
    <script src="leitura/estabelecimentos.js"></script>
+   <script src="leitura/ia.js"></script>
    <script src="leitores/cartao.js"></script>   <!-- um por leitor -->
    ```
 3. No código do app:
@@ -192,11 +206,11 @@ Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`
 
 ## Privacidade
 
-- Tudo é lido no aparelho. Nada sai para a internet, com uma exceção que a pessoa pode desligar em Ajustes: com internet, o **número do CNPJ** de uma loja fora da base vai para a consulta pública de CNPJ (dados abertos da Receita), para o app mostrar o nome e a categoria da loja. Nunca a foto, o valor ou o cartão.
-- O catálogo marca a classe de cada tipo: `financeiro`, `saude`, `pessoal`, `biometrico`. Quando existir a leitura por IA online (capacidade `ia`), saúde, documento pessoal e rosto nunca serão enviados sem a pessoa escolher, com aviso do que sai.
+- Tudo é lido no aparelho. Nada sai para a internet, com duas exceções que a pessoa controla em Ajustes: com internet, o **número do CNPJ** de uma loja fora da base vai para a consulta pública de CNPJ (dados abertos da Receita), para o app mostrar o nome e a categoria da loja (nunca a foto, o valor ou o cartão); e, só quando a pessoa manda (botão "Ler com IA" ou a opção "usar a IA sozinho"), **a foto do papel** vai para a IA da chave dela (Google ou Anthropic), com aviso antes.
+- O catálogo marca a classe de cada tipo: `financeiro`, `saude`, `pessoal`, `biometrico`. Na leitura por IA online (capacidade `ia`), saúde, documento pessoal e rosto perguntam sempre antes de a foto sair, a cada vez; comprovantes e notas perguntam até a pessoa pedir para não perguntar mais.
 - Cartão: só os 4 últimos dígitos são lidos e guardados.
 - O repositório é público: nunca colocar foto real, número de cartão, CPF ou qualquer dado pessoal, nem em teste. Os testes geram material fictício.
 
 ## O que ainda não está aqui (diretriz SolverONE, regra zero: confirmar com o dono antes)
 
-Dos níveis com internet (PEDIDOS.md, 28), o B (sem IA) está na 0.7.8: loja pelo CNPJ na Receita e o botão da nota na Sefaz (ler os dados da nota na Sefaz exigiria um servidor; o leitor de português mais preciso foi medido e descartado). Falta o C, com IA (chave no cofre, aviso de que a foto sai do aparelho, só quando a pessoa escolhe); o app sempre funciona sem internet. `Fundo` (leitura que continua ao trocar de tela, Wake Lock, pílula de andamento), telas em PT e EN, `versoes.json` e novidades em Ajustes, `PENDENCIAS.md`, `janela.js` nas janelas, arrastar e soltar ou colar arquivo, compartilhar para o app (`share_target`), fila de arquivos com progresso e aviso de duplicado, medir a nitidez antes de aceitar a foto, preferência Wi-Fi/dados para baixar o pesado, código do app com "rede primeiro".
+Dos níveis com internet (PEDIDOS.md, 28), o B (sem IA) está na 0.7.8: loja pelo CNPJ na Receita e o botão da nota na Sefaz (ler os dados da nota na Sefaz exigiria um servidor; o leitor de português mais preciso foi medido e descartado). O C (com IA) está na 0.8.0 (`leitura/ia.js`, seção "Ler com IA"); o app sempre funciona sem internet. `Fundo` (leitura que continua ao trocar de tela, Wake Lock, pílula de andamento), telas em PT e EN, `versoes.json` e novidades em Ajustes, `PENDENCIAS.md`, `janela.js` nas janelas, arrastar e soltar ou colar arquivo, compartilhar para o app (`share_target`), fila de arquivos com progresso e aviso de duplicado, medir a nitidez antes de aceitar a foto, preferência Wi-Fi/dados para baixar o pesado, código do app com "rede primeiro".

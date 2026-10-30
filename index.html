@@ -1048,6 +1048,31 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       margin: 2px 0 6px;
     }
 
+    /* Campo preenchido pela IA: borda tracejada, para a pessoa saber o que conferir */
+    .field-row.field-ia .fld-val {
+      border-style: dashed;
+      border-color: var(--accent);
+    }
+
+    /* Ajustes → Ler com IA: um quadro por provedor */
+    .ia-prov {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      margin-top: 10px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .ia-prov-cabeca { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .ia-prov-status { color: var(--muted); }
+    .ia-prov-status.ok { color: var(--accent); font-weight: 600; }
+    .ia-prov-custo, .ia-prov-msg { color: var(--muted); margin: 4px 0 0; }
+    .ia-prov-msg:empty { display: none; }
+    .ia-passos { margin: 6px 0 0 18px; padding: 0; }
+    .ia-prov-acoes { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+    .ia-prov-acoes .ia-chave { flex: 1 1 160px; min-width: 0; }
+    .ia-usar { display: flex; align-items: center; gap: 6px; }
+
     .offline-parts ul {
       list-style: none;
       padding: 0;
@@ -1372,6 +1397,20 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           </label>
         </div>
 
+        <div class="app-card" id="iaCard">
+          <div class="card-title">
+            <span>🤖 Ler com IA (opcional)</span>
+          </div>
+          <p style="font-size: 13px; line-height: 1.6; color: var(--muted);">
+            Quando a leitura do aparelho não dá conta (letra apagada, papel amassado), uma IA de fora pode ler a foto. Para isso o app precisa de uma <strong>chave</strong>: uma senha comprida que a empresa da IA te dá, de graça (Google) ou com crédito (Anthropic). A chave fica só neste navegador e vale nos outros apps SolverONE. <strong>Com a IA, a foto do papel sai do seu celular</strong> e vai para a empresa escolhida, só quando você pede; sem chave, nada sai.
+          </p>
+          <div id="iaProvedores"></div>
+          <label style="display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; font-size: 13px; line-height: 1.6; cursor: pointer;">
+            <input type="checkbox" id="chkIaSozinha" style="margin-top: 4px; width: 18px; height: 18px; flex: none;">
+            <span><strong>Usar a IA sozinho</strong> quando o valor ficar vazio ou em dúvida (a foto de comprovantes e notas vai para a IA sem perguntar).</span>
+          </label>
+        </div>
+
         <div class="app-card">
           <div class="card-title">
             <span>📲 Usar sem internet</span>
@@ -1472,6 +1511,24 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
     <!-- TIPO DO DOCUMENTO: perguntado logo depois da foto, para o leitor saber
          quais campos esperar. O último tipo usado vem sugerido. -->
+    <!-- LER COM IA: a foto sai do aparelho só com a confirmação da pessoa -->
+    <dialog id="iaDialog">
+      <div class="dialog-header">
+        <div class="dialog-title">🤖 Mandar a foto para a IA?</div>
+      </div>
+      <div class="dialog-body">
+        <p id="iaDialogText" style="font-size:14px; color:var(--muted); line-height:1.5;"></p>
+        <label id="iaDialogLembrar" style="display:flex; gap:10px; align-items:flex-start; font-size:13px; margin-top:10px; cursor:pointer;">
+          <input type="checkbox" id="chkIaNaoPerguntar" style="margin-top:3px; width:18px; height:18px; flex:none;">
+          <span>Não perguntar de novo para comprovantes e notas</span>
+        </label>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" id="btnIaNao" class="btn btn-ghost" style="flex:1;">Agora não</button>
+        <button type="button" id="btnIaSim" class="btn btn-primary" style="flex:1;">Mandar para a IA</button>
+      </div>
+    </dialog>
+
     <dialog id="docTypeDialog">
       <div class="dialog-header">
         <div class="dialog-title">O que é essa foto?</div>
@@ -1542,6 +1599,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
   <script src="leitura/texto.js"></script>
   <script src="leitura/relacoes.js"></script>
   <script src="leitura/estabelecimentos.js"></script>
+  <script src="leitura/ia.js"></script>
   <script src="leitores/cartao.js"></script>
   <script src="leitores/nfce.js"></script>
   <script src="leitores/conta.js"></script>
@@ -1553,7 +1611,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.7.8';
+    const APP_VERSION = '0.8.0';
     const APP_UPDATED = '30/10/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
@@ -1992,7 +2050,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       fieldsListContainer.querySelectorAll('.field-row').forEach(r => {
         const k = r.querySelector('.fld-key').value.trim();
         const v = r.querySelector('.fld-val').value.trim();
-        if (k || v) out.push({ key: k || 'Campo', val: v, missing: !v && r.classList.contains('field-missing') });
+        if (k || v) out.push({ key: k || 'Campo', val: v, missing: !v && r.classList.contains('field-missing'), ia: r.classList.contains('field-ia') });
       });
       return out;
     }
@@ -2164,6 +2222,67 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       else if (first.candidates.length) showToast('Não tenho certeza do valor. Toque no valor certo.', 'warn');
       else showToast('Não consegui ler o valor. Digite no campo em vermelho.', 'warn');
       if (first.far) showToast('O texto está pequeno na foto. Tire mais de perto.', 'warn', 5000);
+
+      // Ajustes → "usar a IA sozinho": os papéis de dinheiro que ficaram sem valor vão para a IA
+      if (Leitura.ia.sozinha() && Leitura.ia.temChave()) {
+        for (let i = 0; i < papers.length; i++) {
+          const p = papers[i], classe = Leitura.tipo(p.tipo).privacidade;
+          if (p.img && p.result.expectsValue && p.result.valor === null && (classe === 'financeiro' || classe === 'comum')) await lerComIA(i, true);
+        }
+      }
+    }
+
+    // Lê a foto do papel com a IA (nível C), pela chave da pessoa. A foto sai
+    // do aparelho: a pessoa confirma antes (sempre, para saúde, documento
+    // pessoal e rosto; para os outros, até pedir para não perguntar mais).
+    // semPerguntar: a opção "usar a IA sozinho" de Ajustes já é a permissão
+    // para comprovantes e notas.
+    async function lerComIA(i, semPerguntar = false) {
+      const p = papers[i];
+      if (!p || !p.img) return;
+      const prov = Leitura.ia.provedorAtual();
+      if (!prov) { showToast('Falta a chave da IA: Ajustes → Ler com IA.', 'warn', 6000); return; }
+      const classe = Leitura.tipo(p.tipo).privacidade;
+      const perguntar = Leitura.ia.precisaPerguntar(p.tipo) && !(semPerguntar && (classe === 'financeiro' || classe === 'comum'));
+      if (perguntar && !(await confirmarIA(p.tipo, prov))) return;
+      stashEdits();
+      const b = document.getElementById('btnLerIA');
+      if (b) { b.disabled = true; b.textContent = '🤖 Lendo com a IA...'; }
+      try {
+        const lido = await Leitura.ia.lerFoto(p.img, { provedor: prov });
+        const ia = Leitura.ia.aplicar(p, lido, p.edited);
+        p.edited = null;
+        if (i === currentPaper) showPaper(i);
+        const temSugestao = ia.sugestao !== undefined && ia.sugestao !== null;
+        showToast(temSugestao ? 'A IA leu um valor: confira e toque em "Usar" se estiver certo.' : ia.concorda ? 'A IA leu o mesmo valor.' : ia.campos ? `A IA preencheu ${ia.campos} campo${ia.campos > 1 ? 's' : ''}: confira.` : 'A IA não achou nada a mais nesta foto.', temSugestao ? 'warn' : 'ok', 6000);
+      } catch (err) {
+        console.warn('IA falhou:', err);
+        showToast(Leitura.ia.explicar(err), 'err', 8000);
+        if (i === currentPaper) showPaper(i);
+      }
+    }
+
+    // "Mandar a foto para a IA?": devolve true quando a pessoa confirma
+    const iaDialog = document.getElementById('iaDialog');
+    function confirmarIA(tipo, prov) {
+      const t = Leitura.tipo(tipo), empresa = (Leitura.ia.provedores().find(x => x.id === prov) || {}).empresa || 'a empresa da IA';
+      const sensivel = t.privacidade === 'saude' || t.privacidade === 'pessoal' || t.privacidade === 'biometrico';
+      document.getElementById('iaDialogText').textContent = `A foto deste papel (${t.nome}) vai para ${empresa}, pela sua chave, para a IA ler. Só a foto vai: nada do histórico nem de outros papéis.`
+        + (sensivel ? ` Este documento é ${t.privacidade === 'saude' ? 'de saúde' : t.privacidade === 'pessoal' ? 'pessoal' : 'de uma pessoa (rosto)'}: pense duas vezes antes de mandar para fora do aparelho.` : '');
+      document.getElementById('iaDialogLembrar').style.display = sensivel ? 'none' : 'flex';
+      document.getElementById('chkIaNaoPerguntar').checked = false;
+      return new Promise(ok => {
+        const fecha = sim => {
+          btnIaSim.removeEventListener('click', simH); btnIaNao.removeEventListener('click', naoH); iaDialog.removeEventListener('cancel', cancelH);
+          if (sim && !sensivel && document.getElementById('chkIaNaoPerguntar').checked) Leitura.ia.naoPerguntarMais();
+          if (iaDialog.open) iaDialog.close();
+          ok(sim);
+        };
+        const btnIaSim = document.getElementById('btnIaSim'), btnIaNao = document.getElementById('btnIaNao');
+        const simH = () => fecha(true), naoH = () => fecha(false), cancelH = e => { e.preventDefault(); fecha(false); };
+        btnIaSim.addEventListener('click', simH); btnIaNao.addEventListener('click', naoH); iaDialog.addEventListener('cancel', cancelH);
+        iaDialog.showModal();
+      });
     }
 
     /* =========================================================
@@ -2183,7 +2302,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       }
 
       list.forEach(f => {
-        const row = createFieldRow(f.key, f.val, f.missing);
+        const row = createFieldRow(f.key, f.val, f.missing, f.ia);
         // A card slip: "this card is mine" teaches the app the person's card
         // (only the last 4 digits, kept on this device), to tell her part of a
         // bill paid by several people
@@ -2223,6 +2342,27 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           });
           fieldsListContainer.appendChild(box);
         }
+        // The amount the AI read: a one-tap suggestion right under the field, never filled in by itself
+        if (f.key === 'Valor' && result.ia && result.ia.sugestao !== undefined && result.ia.sugestao !== null) {
+          const sugestao = result.ia.sugestao, nome = (Leitura.ia.provedores().find(p => p.id === result.ia.provedor) || {}).nome || 'A IA';
+          const box = document.createElement('div');
+          box.className = 'valor-candidates ia-resumo';
+          box.innerHTML = `<span>🤖 ${escapeHtml(nome)} leu o valor ${escapeHtml(formatBRL(sugestao))}${f.val ? ', diferente da leitura do aparelho' : ''}:</span>`;
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'valor-chip';
+          chip.id = 'btnUsarValorIA';
+          chip.textContent = `Usar ${formatBRL(sugestao)}`;
+          chip.addEventListener('click', () => {
+            const input = row.querySelector('.fld-val');
+            input.value = formatBRL(sugestao);
+            input.dispatchEvent(new Event('input'));
+            row.classList.add('field-ia');
+            box.remove();
+          });
+          box.appendChild(chip);
+          fieldsListContainer.appendChild(box);
+        }
       });
 
       // The nota fiscal has a QR code with its official page: a button opens
@@ -2238,6 +2378,26 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           window.open(result.sefaz, '_blank', 'noopener');
         });
         fieldsListContainer.appendChild(ver);
+      }
+
+      // Read with AI (level C): photos only, only with a key; once read, the
+      // amount it found is a one-tap suggestion, never filled in by itself
+      const paper = papers[currentPaper];
+      if (paper && paper.img && Leitura.ia.temChave() && !result.ia) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.id = 'btnLerIA';
+        b.className = 'btn btn-secondary btn-sm card-mine-btn';
+        b.textContent = '🤖 Ler com IA (a foto sai do aparelho)';
+        b.addEventListener('click', () => lerComIA(currentPaper));
+        fieldsListContainer.appendChild(b);
+      }
+      if (result.ia && (result.ia.sugestao === undefined || result.ia.sugestao === null)) {
+        const box = document.createElement('div');
+        box.className = 'valor-candidates ia-resumo';
+        const nome = (Leitura.ia.provedores().find(p => p.id === result.ia.provedor) || {}).nome || 'A IA', n = result.ia.campos;
+        box.innerHTML = `<span>🤖 ${escapeHtml(nome)} leu esta foto${result.ia.concorda ? ' e leu o mesmo valor' : ''}${n ? `; preencheu ${n} campo${n > 1 ? 's' : ''} (borda tracejada: confira)` : ''}.${result.ia.observacao ? ' Ilegível: ' + escapeHtml(result.ia.observacao) : ''}</span>`;
+        fieldsListContainer.appendChild(box);
       }
 
       // Transactions of a bank statement or card bill (file, PDF or photo),
@@ -2278,9 +2438,10 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       fieldsEditorCard.scrollIntoView({ behavior: 'smooth' });
     }
 
-    function createFieldRow(key = '', val = '', missing = false) {
+    function createFieldRow(key = '', val = '', missing = false, ia = false) {
       const row = document.createElement('div');
       row.className = missing ? 'field-row field-missing' : 'field-row';
+      if (ia) { row.classList.add('field-ia'); row.title = 'Lido pela IA: confira'; }
       const multiline = key === 'Texto';
       row.innerHTML = `
         <input type="text" class="fld fld-sm fld-key" value="${escapeHtml(key)}" placeholder="Campo">
@@ -2899,6 +3060,74 @@ VALOR TOTAL: R$ 68,90
     /* =========================================================
        AJUSTES TAB
        ========================================================= */
+    /* ---------- Ler com IA (nível C): chaves, provedor e a opção de usar sozinho ---------- */
+    const iaProvedores = document.getElementById('iaProvedores');
+    const chkIaSozinha = document.getElementById('chkIaSozinha');
+    function renderIaCard() {
+      const provs = Leitura.ia.provedores(), atual = Leitura.ia.provedorAtual(), varios = provs.filter(p => p.temChave).length > 1;
+      iaProvedores.innerHTML = provs.map(p => `
+        <div class="ia-prov" data-prov="${p.id}">
+          <div class="ia-prov-cabeca"><strong>${escapeHtml(p.nome)}</strong><span class="ia-prov-status${p.temChave ? ' ok' : ''}">${p.temChave ? '✓ chave guardada' + (p.modelo ? ' · ' + escapeHtml(p.modelo) : '') : 'sem chave'}</span></div>
+          <p class="ia-prov-custo">${escapeHtml(p.custo)}</p>
+          ${p.temChave
+            ? `<div class="ia-prov-acoes">${varios ? `<label class="ia-usar"><input type="radio" name="iaUsar" value="${p.id}"${atual === p.id ? ' checked' : ''}> Usar esta para ler</label>` : ''}<button type="button" class="btn btn-secondary btn-sm" data-acao="apagar">Apagar a chave</button></div>`
+            : `<ol class="ia-passos"><li>Toque em <strong>Abrir o site da chave</strong>.</li>${p.passos.map(s => `<li>${escapeHtml(s)}</li>`).join('')}<li>Toque em <strong>Colar</strong> e depois em <strong>Salvar e testar</strong>.</li></ol>
+               <div class="ia-prov-acoes"><button type="button" class="btn btn-secondary btn-sm" data-acao="abrir">🔗 Abrir o site da chave</button></div>
+               <div class="ia-prov-acoes"><input type="password" class="fld fld-sm ia-chave" autocomplete="off" placeholder="Cole a chave aqui"><button type="button" class="btn btn-secondary btn-sm" data-acao="colar">📋 Colar</button><button type="button" class="btn btn-primary btn-sm" data-acao="salvar">Salvar e testar</button></div>`}
+          <p class="ia-prov-msg" aria-live="polite"></p>
+        </div>`).join('');
+      chkIaSozinha.checked = Leitura.ia.sozinha();
+    }
+    iaProvedores.addEventListener('click', async e => {
+      const b = e.target.closest('button[data-acao]');
+      if (!b) return;
+      const box = b.closest('.ia-prov'), prov = box.dataset.prov, msg = box.querySelector('.ia-prov-msg'), campo = box.querySelector('.ia-chave');
+      const p = Leitura.ia.provedores().find(x => x.id === prov);
+      if (b.dataset.acao === 'abrir') {
+        // marca a volta: ao voltar do site (outra aba ou o app reaberto), Ajustes já fica pronto para colar
+        try { sessionStorage.setItem('leitor_ia_volta', prov); } catch (err) { /* sem sessionStorage: segue */ }
+        window.open(p.onde, '_blank', 'noopener');
+        msg.textContent = 'Abri o site em outra aba. Crie a chave, copie e volte para cá.';
+      } else if (b.dataset.acao === 'colar') {
+        try {
+          campo.value = (await navigator.clipboard.readText()).trim();
+          msg.textContent = campo.value ? 'Colei. Agora toque em Salvar e testar.' : 'Nada copiado ainda. Copie a chave no site e toque em Colar.';
+        } catch (err) { msg.textContent = 'O navegador não deixou colar sozinho: toque e segure no campo e escolha "Colar".'; }
+        campo.focus();
+      } else if (b.dataset.acao === 'salvar') {
+        b.disabled = true;
+        msg.textContent = 'Testando a chave...';
+        try {
+          const modelo = await Leitura.ia.guardarChave(prov, campo.value);
+          showToast(`Chave guardada. ${p.nome} vai ler com ${modelo}.`, 'ok', 6000);
+          renderIaCard();
+        } catch (err) { msg.textContent = Leitura.ia.explicar(err); b.disabled = false; }
+      } else if (b.dataset.acao === 'apagar') {
+        Leitura.ia.apagarChave(prov);
+        showToast('Chave apagada deste navegador.', 'ok');
+        renderIaCard();
+      }
+    });
+    iaProvedores.addEventListener('change', e => {
+      if (e.target.name === 'iaUsar') { Leitura.ia.usarPara(e.target.value); showToast('Essa IA vai ler as próximas fotos.', 'ok'); }
+    });
+    chkIaSozinha.addEventListener('change', () => {
+      Leitura.ia.ligarSozinha(chkIaSozinha.checked);
+      showToast(chkIaSozinha.checked ? 'Quando o valor ficar vazio ou em dúvida, a foto vai para a IA sozinha.' : 'A IA só lê quando você tocar em "Ler com IA".', 'ok', 5000);
+    });
+    // Voltando do site da chave: Ajustes, no provedor certo, pronto para colar
+    function voltaDaChave() {
+      let prov = null;
+      try { prov = sessionStorage.getItem('leitor_ia_volta'); if (prov) sessionStorage.removeItem('leitor_ia_volta'); } catch (err) { /* segue */ }
+      if (!prov) return;
+      switchTab('tab-settings');
+      const campo = document.querySelector(`.ia-prov[data-prov="${prov}"] .ia-chave`);
+      if (campo) { campo.scrollIntoView({ behavior: 'smooth', block: 'center' }); campo.focus(); }
+    }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) voltaDaChave(); });
+    window.addEventListener('pageshow', voltaDaChave);
+    renderIaCard();
+
     btnClearAllData.addEventListener('click', async () => {
       const confirmed = await promptConfirm(
         'Limpar Todos os Dados',
