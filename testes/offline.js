@@ -58,6 +58,13 @@
 //    número do CNPJ sai do aparelho. O QR code de uma nota (endereço .gov.br
 //    da Sefaz) ganha o botão "Ver a nota no site da Sefaz"; outro endereço
 //    impresso num papel não ganha botão.
+// 15. Leitura que não cancela: a página recarregada no meio continua sozinha
+//    e termina; recarregada depois de pronta, o resultado (e o que a pessoa
+//    digitou) volta na hora, sem ler de novo; a tela é segurada acesa (Wake
+//    Lock) enquanto lê e solta no fim; a pílula de andamento aparece em outra
+//    aba do app; descartar apaga o trabalho guardado. Cupom: a linha dos
+//    impostos ("Lei Fed 12.741") nunca vira o valor, e "R$" sozinho não basta;
+//    ano velho demais num comprovante é erro de leitura (data vazia).
 // 14. Ler com IA (nível C), com o Gemini e o Claude simulados por rotas (nada
 //    sai de verdade): sem chave, o botão não aparece; a chave colada em
 //    Ajustes é testada (lista de modelos) e guardada no cofre comum dos apps
@@ -221,6 +228,11 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const base = `http://127.0.0.1:${server.address().port}/`;
   const browser = await chromium.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
   const context = await browser.newContext();
+  // Wake Lock de mentira (15): conta pedidos e liberações no localStorage, que sobrevive ao recarregar
+  await context.addInitScript(() => {
+    const conta = k => { try { localStorage.setItem('wl:' + k, String(+(localStorage.getItem('wl:' + k) || 0) + 1)); } catch (e) {} };
+    Object.defineProperty(navigator, 'wakeLock', { value: { request: async () => { conta('pedido'); const alvo = new EventTarget(); alvo.release = async () => { conta('solto'); alvo.dispatchEvent(new Event('release')); }; return alvo; } } });
+  });
   const external = new Set();
   await context.route(() => true, route => {
     const url = route.request().url();
@@ -369,12 +381,19 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const SENHA = '73915';
   const trancado = file('trancado.pdf', pdfComSenha(['LOJA FICTICIA LTDA', 'COMPROVANTE DE PAGAMENTO', 'VIA CLIENTE', 'DATA 12/10/2026 10:30', 'CREDITO A VISTA', 'VALOR TOTAL R$ 64,90'], SENHA));
   const cupomRede = file('cupom.txt', cupom(cnpjRede, '60,25')), cupomNaoFecha = file('cupom-nao-fecha.txt', cupom(cnpjFicticio, '63,25'));
+  // (15) cupom em que os totais saíram ilegíveis e só a linha dos impostos tem um "R$" limpo; canhoto com o ano lido errado
+  const cupomImpostos = file('cupom-impostos.txt', ['MERCADO FICTICIO', 'EMPRESA FICTICIA COMERCIO LTDA', 'CNPJ: ' + cnpjFicticio, 'DOCUMENTO AUXILIAR DA NOTA FISCAL DE CONSUMIDOR ELETRONICA',
+    '001 7890000000017 ARROZ BRANCO EXEMPLO 5KG 1 UN X 21,90 2I,90', '002 7890000000024 FEIJAO PRETO EXEMPLO 2 UN X 8,50 I7,00', 'QTD. TOTAL DE ITENS 2',
+    'VALOR TOTAL R$ 3B,9O', 'VALOR A PAGAR R$ 3B,9O', 'FORMA DE PAGAMENTO', 'CARTAO DE CREDITO 3B,9O', "'b Totais Incid (Lei Fed 12.741/2012): R$ 9,06", 'EMISSAO: 10/10/2026 14:05', ''].join('\n'));
+  const canhotoVelho = file('canhoto-velho.txt', ['VIA CLIENTE', 'BAR EXEMPLO ME', 'CNPJ: ' + cnpjFicticio, '10/10/2006 14:07', 'CREDITO A VISTA', 'MASTERCARD ****1234', 'VALOR R$ 36,00', 'AUT 654321 NSU 000123', ''].join('\n'));
   const receita = file('receita.txt', 'CONSULTORIO EXEMPLO\nRECEITUARIO\nUSO ORAL\nREMEDIO EXEMPLO 500 MG\nTOMAR 1 COMPRIMIDO DE 8 EM 8 HORAS POR 5 DIAS\nDRA. EXEMPLO - CRM 000000\n');
 
   // ---------- ajudantes ----------
   const logs = [];
   const open = async () => {
     const pg = await context.newPage();
+    // cada página começa sem trabalho guardado (15), a não ser quando o teste quer justamente retomá-lo
+    await pg.addInitScript(() => { try { if (sessionStorage.getItem('teste:manterTrabalho') !== '1') indexedDB.deleteDatabase('leitor-ocr'); } catch (e) { /* segue */ } });
     pg.on('pageerror', e => logs.push('pageerror: ' + e.message));
     pg.on('console', m => { if (m.text().includes('OCR falhou')) logs.push('OCR falhou: ' + m.text().slice(0, 200)); });
     await pg.goto(base + 'index.html');
@@ -698,8 +717,9 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     page = await open();
     const r = await send(page, [arquivo], 'auto', separar);
     const grandes = await page.evaluate(() => papers.map(p => (p.grandes || []).map(g => g.valor)));
+    const caixas = await page.evaluate(() => papers.map(p => !!p.box));
     await page.close();
-    return Object.assign(r, { grandes });
+    return Object.assign(r, { grandes, caixas });
   };
   const g1 = await canhoto(grandeInclinado), g2 = await canhoto(cabecaParaBaixo), g3 = await canhoto(deLado);
   check(g1.values[0] === 'R$ 36,00' && g1.grandes[0][0] === 36 && g1.fields[0].Estabelecimento === 'BAR EXEMPLO ME',
@@ -707,8 +727,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   check(g2.values[0] === 'R$ 16,00' && g2.fields[0].Hora === '14:07', `canhoto de cabeça para baixo: Valor=${g2.values[0]}, Hora=${g2.fields[0].Hora}`);
   check(g3.values[0] === 'R$ 23,00', `canhoto de lado, valor com ponto ("23.00"): Valor=${g3.values[0]}`);
   const g4 = await canhoto(doisGirados, true);
-  check(g4.tabs.length === 2 && g4.values.join('|') === 'R$ 40,00|R$ 25,50' && g4.fields[0].Estabelecimento === 'BAR EXEMPLO LTDA' && g4.fields[1].Estabelecimento === 'PADARIA EXEMPLO',
-    `dois canhotos girados numa foto, lidos separados: valores=${JSON.stringify(g4.values)} lojas=${JSON.stringify(g4.fields.map(f => f.Estabelecimento))}`);
+  check(g4.tabs.length === 2 && g4.values.join('|') === 'R$ 40,00|R$ 25,50' && g4.fields[0].Estabelecimento === 'BAR EXEMPLO LTDA' && g4.fields[1].Estabelecimento === 'PADARIA EXEMPLO' && g4.caixas.every(Boolean),
+    `dois canhotos girados numa foto, lidos separados: valores=${JSON.stringify(g4.values)} lojas=${JSON.stringify(g4.fields.map(f => f.Estabelecimento))}; cada papel guarda a própria caixa (para a IA ler só ele)`);
   page = await open();
   const nota = await send(page, [cupomRede, printNota], 'auto');
   check(nota.values[0] === 'R$ 60,25' && /aviso de 10\/10\/2026 às 14:07$/.test(nota.fields[0]['Mesma compra'] || ''),
@@ -780,6 +800,48 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     'só endereço .gov.br vira botão: outro endereço impresso num papel não abre nada');
   await page.close();
   check(consultas.every(u => /^https:\/\/(minhareceita\.org|brasilapi\.com\.br\/api\/cnpj\/v1)\/\d{14}$/.test(u)), `nas consultas de CNPJ só o número da loja sai do aparelho (${consultas.length} consultas)`);
+
+  // 15. cupom: a linha dos impostos nunca vira o valor; ano velho demais; leitura que não cancela
+  page = await open();
+  const imp = await send(page, [cupomImpostos], 'auto');
+  const chipsImp = await page.$$eval('.valor-chip', e => e.map(x => x.textContent));
+  check(imp.values[0] === '' && !chipsImp.some(c => /9,06/.test(c)) && imp.status === 'Valor não lido',
+    `cupom com os totais ilegíveis: o "R$ 9,06" da linha dos impostos não vira o valor nem opção (Valor="${imp.values[0]}", ${imp.status})`);
+  await page.close();
+  page = await open();
+  const velho = await send(page, [canhotoVelho], 'auto');
+  check(velho.values[0] === 'R$ 36,00' && !velho.fields[0].Data && velho.fields[0].Hora === '14:07', `comprovante com ano 2006 (lido errado): a data fica vazia, o resto segue (Valor=${velho.values[0]}, Data="${velho.fields[0].Data || ''}")`);
+  await page.close();
+  const trabalhoGuardado = pg => pg.evaluate(() => new Promise(ok => { const r = indexedDB.open('leitor-ocr', 1); r.onupgradeneeded = () => r.result.createObjectStore('trabalho'); r.onsuccess = () => { const q = r.result.transaction('trabalho').objectStore('trabalho').get('atual'); q.onsuccess = () => ok(q.result ? { estado: q.result.estado, papeis: (q.result.papeis || []).length } : null); q.onerror = () => ok(null); }; r.onerror = () => ok(null); }));
+  page = await open();
+  await page.evaluate(() => { localStorage.removeItem('wl:pedido'); localStorage.removeItem('wl:solto'); });
+  await page.setInputFiles('#fileInputGallery', [grandeInclinado]);
+  await page.waitForSelector('#docTypeDialog[open]', { timeout: 60000 });
+  await page.click('#docTypeDialog button[data-tipo="cartao"]');
+  await page.waitForFunction(() => document.getElementById('ocrProgressWrap').style.display === 'flex' && document.getElementById('ocrPercentText').textContent !== '10%', null, { timeout: 120000 });
+  await page.click('.nav-tab-btn[data-tab="tab-history"]');
+  const pilula = await page.$eval('#pilulaLeitura', e => ({ visivel: !e.hidden, texto: e.textContent }));
+  const guardadoNoMeio = await trabalhoGuardado(page);
+  await page.evaluate(() => sessionStorage.setItem('teste:manterTrabalho', '1'));
+  await page.reload();
+  const r15 = await readTabs(page);
+  check(pilula.visivel && /Lendo|papel|%/.test(pilula.texto) && guardadoNoMeio && guardadoNoMeio.estado === 'lendo' && r15.values[0] === 'R$ 36,00',
+    `página recarregada no meio da leitura: o trabalho estava guardado (${guardadoNoMeio && guardadoNoMeio.estado}), a pílula aparecia em outra aba ("${pilula.texto}") e a leitura continuou sozinha até o fim (Valor=${r15.values[0]})`);
+  const prontoGuardado = await trabalhoGuardado(page);
+  await page.fill('#fieldsListContainer .field-row:has(.fld-key[value="Estabelecimento"]) .fld-val', 'MEU BAR');
+  await page.evaluate(() => stashEdits());
+  await page.waitForTimeout(300);
+  const t15 = Date.now();
+  await page.reload();
+  const r15b = await readTabs(page);
+  const wl = await page.evaluate(() => [+(localStorage.getItem('wl:pedido') || 0), +(localStorage.getItem('wl:solto') || 0)]);
+  check(prontoGuardado && prontoGuardado.estado === 'pronto' && prontoGuardado.papeis === 1 && r15b.values[0] === 'R$ 36,00' && r15b.fields[0].Estabelecimento === 'MEU BAR' && Date.now() - t15 < 15000,
+    `página recarregada depois de pronta: o resultado e o que a pessoa digitou voltam na hora, sem ler de novo (${((Date.now() - t15) / 1000).toFixed(1)}s; Estabelecimento=${r15b.fields[0].Estabelecimento})`);
+  check(wl[0] >= 1 && wl[1] >= 1 && wl[0] >= wl[1], `a tela é segurada acesa enquanto lê e solta no fim (${wl[0]} pedidos, ${wl[1]} liberações)`);
+  await page.click('#btnDiscardReceipt');
+  await page.waitForTimeout(300);
+  check((await trabalhoGuardado(page)) === null, 'descartar apaga o trabalho guardado');
+  await page.close();
 
   // 14. ler com IA (nível C), com as IAs simuladas
   const camposIA = pg => pg.$$eval('#fieldsListContainer .field-row', rows => rows.map(r => ({ key: r.querySelector('.fld-key').value, val: r.querySelector('.fld-val').value, ia: r.classList.contains('field-ia') })));

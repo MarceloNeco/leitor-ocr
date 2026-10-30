@@ -1048,6 +1048,29 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       margin: 2px 0 6px;
     }
 
+    /* Pílula de andamento: aparece quando a leitura corre e a pessoa está em outra aba do app */
+    .pilula-leitura {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 84px;
+      z-index: 60;
+      padding: 8px 14px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: var(--shadow);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      max-width: 90vw;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pilula-leitura[hidden] { display: none; }
+
     /* Campo preenchido pela IA: borda tracejada, para a pessoa saber o que conferir */
     .field-row.field-ia .fld-val {
       border-style: dashed;
@@ -1453,6 +1476,9 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
     </main>
 
+    <!-- Pílula de andamento: a leitura continua enquanto a pessoa vê outra aba do app -->
+    <button type="button" id="pilulaLeitura" class="pilula-leitura" hidden>⏳ <span id="pilulaTexto">Lendo...</span></button>
+
     <!-- FIXED BOTTOM NAVIGATION -->
     <nav class="app-bottom-nav">
       <button class="nav-tab-btn active" data-tab="tab-capture">
@@ -1611,7 +1637,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.8.0';
+    const APP_VERSION = '0.8.1';
     const APP_UPDATED = '30/10/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
@@ -1629,6 +1655,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     let papers = [];               // papéis da última foto: { readings, tipo, codes, result, edited }
     let currentPaper = 0;          // aba mostrada
     let sources = [];              // o que vai ser lido: as fontes de Leitura.abrir ({ img, nome, boxes } numa foto)
+    let arquivosAtuais = null;     // os arquivos escolhidos (para guardar o trabalho e continuar depois)
+    let trabalhoAtual = null;      // o trabalho guardado no aparelho (ver "Leitura que não cancela")
     let lastTipo = 'livre';        // tipo que valeu na última leitura
 
     // Seed mock data if none exists
@@ -2043,6 +2071,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       const p = papers[currentPaper];
       if (!p) return;
       p.edited = readFieldRows();
+      if (trabalhoAtual && trabalhoAtual.estado === 'pronto') guardarPronto();   // o que a pessoa digitou também espera no aparelho
     }
 
     function readFieldRows() {
@@ -2150,6 +2179,105 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       imageControls.style.display = 'flex';
     }
 
+    /* =========================================================
+       LEITURA QUE NÃO CANCELA (pedido 29): tela acesa enquanto lê; o trabalho
+       (arquivos, escolhas e, no fim, o resultado de cada papel) fica guardado
+       no aparelho para continuar sozinho se o Android recarregar a página;
+       aviso antes de sair com leitura em andamento; pílula de andamento
+       quando a pessoa está em outra aba do app.
+       ========================================================= */
+    const Trabalho = {
+      db: null,
+      abrir() {
+        return this.db ? Promise.resolve(this.db) : new Promise((ok, erro) => {
+          const r = indexedDB.open('leitor-ocr', 1);
+          r.onupgradeneeded = () => r.result.createObjectStore('trabalho');
+          r.onsuccess = () => { this.db = r.result; ok(this.db); };
+          r.onerror = () => erro(r.error);
+        });
+      },
+      async op(modo, fn) {
+        const db = await this.abrir();
+        return new Promise((ok, erro) => { const q = fn(db.transaction('trabalho', modo).objectStore('trabalho')); q.onsuccess = () => ok(q.result); q.onerror = () => erro(q.error); });
+      },
+      salvar(obj) { return this.op('readwrite', s => s.put(obj, 'atual')).catch(err => console.warn('Trabalho não guardado:', err)); },
+      ler() { return this.op('readonly', s => s.get('atual')).catch(() => null); },
+      apagar() { return this.op('readwrite', s => s.delete('atual')).catch(() => {}); }
+    };
+
+    // A tela não apaga enquanto lê (Wake Lock); sem suporte, segue sem
+    let wakeLock = null;
+    async function segurarTela() {
+      try {
+        if (navigator.wakeLock && !wakeLock) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener('release', () => { wakeLock = null; });
+        }
+      } catch (err) { /* bateria baixa ou sem permissão: segue sem */ }
+    }
+    function soltarTela() {
+      if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stashEdits();
+      else if (lendo) segurarTela();   // o navegador solta a trava quando a aba some; ao voltar, pede de novo
+    });
+    window.addEventListener('beforeunload', e => { if (lendo) { e.preventDefault(); e.returnValue = ''; } });
+
+    const pilulaLeitura = document.getElementById('pilulaLeitura');
+    const pilulaTexto = document.getElementById('pilulaTexto');
+    function atualizarPilula() {
+      const ativa = document.querySelector('.nav-tab-btn.active');
+      pilulaLeitura.hidden = !(lendo && ativa && ativa.dataset.tab !== 'tab-capture');
+    }
+    pilulaLeitura.addEventListener('click', () => { switchTab('tab-capture'); atualizarPilula(); });
+    document.querySelectorAll('.nav-tab-btn').forEach(b => b.addEventListener('click', () => setTimeout(atualizarPilula, 0)));
+
+    // Um papel do jeito que cabe no aparelho: sem a imagem (ela volta do arquivo) e sem o texto palavra a palavra
+    function papelGuardavel(p) {
+      const r = Object.assign({}, p.result);
+      delete r.debug;
+      return { tipo: p.tipo, label: p.label, fonte: sources.indexOf(p.fonte), box: p.box || null, codes: p.codes || [], tilt: p.tilt, grandes: p.grandes || [],
+        edited: p.edited || null, result: r, readings: (p.readings || []).map(x => Object.assign({}, x, { words: [] })) };
+    }
+    async function guardarPronto() {
+      if (!trabalhoAtual || !papers.length) return;
+      trabalhoAtual.estado = 'pronto';
+      trabalhoAtual.papeis = papers.map(papelGuardavel);
+      await Trabalho.salvar(trabalhoAtual);
+    }
+    // Ao abrir o app: um trabalho interrompido continua sozinho; um pronto volta para a tela
+    async function retomarTrabalho() {
+      const t = await Trabalho.ler();
+      if (!t || !t.arquivos || !t.arquivos.length) return;
+      if (Date.now() - (t.quando || 0) > 24 * 3600 * 1000) { Trabalho.apagar(); return; }   // de ontem: não vale mais
+      switchTab('tab-capture');
+      ocrProgressWrap.style.display = 'flex';
+      ocrStatusText.textContent = t.estado === 'pronto' ? 'Recuperando a leitura que ficou pronta...' : 'Continuando a leitura que foi interrompida...';
+      const { fontes } = await Leitura.abrir(t.arquivos, text => { ocrStatusText.textContent = text; });
+      if (!fontes.length) { Trabalho.apagar(); ocrProgressWrap.style.display = 'none'; return; }
+      fontes.forEach((f, i) => { f.boxes = (t.boxes && t.boxes[i]) || null; });
+      arquivosAtuais = t.arquivos;
+      sources = fontes;
+      currentDocType = t.tipo;
+      currentRotation = t.rotacao || 0;
+      const firstPhoto = fontes.find(f => f.img);
+      currentImage = firstPhoto ? firstPhoto.img : textPreview(fontes[0]);
+      processImageToCanvas(currentImage, currentRotation);
+      btnRotate.style.display = fontes.length > 1 || !firstPhoto ? 'none' : '';
+      trabalhoAtual = t;
+      if (t.estado === 'pronto' && t.papeis && t.papeis.length) {
+        if (firstPhoto) await Leitura.precisa('foto');   // o recorte do papel para a IA
+        papers = t.papeis.map(q => { const fonte = sources[q.fonte] || sources[0]; return Object.assign({}, q, { fonte, img: fonte && fonte.img ? fonte.img : undefined, result: Object.assign({ debug: {} }, q.result) }); });
+        ocrProgressWrap.style.display = 'none';
+        showPaper(0);
+        showToast('A leitura terminou enquanto você estava fora. Aqui está o resultado.', 'ok', 6000);
+      } else {
+        showToast('Continuando a leitura que foi interrompida.', 'ok', 5000);
+        executeOCR();
+      }
+    }
+
     // Reads what was chosen (photos, PDF pages, files) with the reading engine
     // (leitura.js) and shows one tab per paper
     // While a reading runs, a new version waits: its banner shows at the end
@@ -2157,10 +2285,14 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     let atualizacaoPendente = false;
     async function executeOCR() {
       lendo = true;
+      segurarTela();
+      atualizarPilula();
       try {
         await lerAgora();
       } finally {
         lendo = false;
+        soltarTela();
+        atualizarPilula();
         if (atualizacaoPendente) showUpdateToast();
       }
     }
@@ -2176,8 +2308,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         list = await Leitura.ler(sources, {
           tipo: currentDocType,
           rotacao: currentRotation,
-          aviso: text => { ocrStatusText.textContent = text; },
-          progresso: p => { ocrProgressBar.style.width = `${Math.max(15, p)}%`; ocrPercentText.textContent = `${p}%`; }
+          aviso: text => { ocrStatusText.textContent = text; pilulaTexto.textContent = text; },
+          progresso: p => { ocrProgressBar.style.width = `${Math.max(15, p)}%`; ocrPercentText.textContent = `${p}%`; pilulaTexto.textContent = `${ocrStatusText.textContent} ${p}%`; }
         });
       } catch (err) {
         console.warn('OCR falhou:', err);
@@ -2186,6 +2318,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         const preset = sources.length === 1 && sources[0].img && sources[0].img._presetText;
         if (!preset) {
           ocrProgressWrap.style.display = 'none';
+          Trabalho.apagar(); trabalhoAtual = null;
           showToast(navigator.onLine ? 'Não consegui ler. Tente de novo.'
             : 'Sem internet, e o leitor de fotos ainda não está guardado neste aparelho. Com internet, abra Ajustes → Usar sem internet → Guardar tudo.', 'err', 8000);
           return;
@@ -2208,6 +2341,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       papers = list;
       const { pares, divisoes } = Leitura.relacionar(papers);
       showPaper(0);
+      guardarPronto();   // o resultado espera no aparelho, mesmo se a página for recarregada
 
       const first = papers[0].result;
       if (papers.length > 1) {
@@ -2249,7 +2383,9 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       const b = document.getElementById('btnLerIA');
       if (b) { b.disabled = true; b.textContent = '🤖 Lendo com a IA...'; }
       try {
-        const lido = await Leitura.ia.lerFoto(p.img, { provedor: prov });
+        // numa foto com vários papéis, só o recorte deste papel vai para a IA
+        const foto = p.box && p.fonte && p.fonte.img && Leitura.foto ? Leitura.foto.cropBox(p.fonte.img, p.box) : p.img;
+        const lido = await Leitura.ia.lerFoto(foto, { provedor: prov });
         const ia = Leitura.ia.aplicar(p, lido, p.edited);
         p.edited = null;
         if (i === currentPaper) showPaper(i);
@@ -2469,6 +2605,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     });
 
     btnDiscardReceipt.addEventListener('click', () => {
+      Trabalho.apagar(); trabalhoAtual = null;
       fieldsEditorCard.style.display = 'none';
       fieldsListContainer.innerHTML = '';
       editingReceiptId = null;
@@ -2514,6 +2651,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       }
 
       saveReceipts(list);
+      Trabalho.apagar(); trabalhoAtual = null;
       fieldsEditorCard.style.display = 'none';
       papers = [];
       resetPhotoState();
@@ -2542,6 +2680,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     async function handleFiles(fileList) {
       const files = Array.from(fileList || []).filter(Boolean);
       if (!files.length) return;
+      arquivosAtuais = files;
       ocrProgressWrap.style.display = 'flex';
       const { fontes, recusados } = await Leitura.abrir(files, text => { ocrStatusText.textContent = text; }, askPassword);
       ocrProgressWrap.style.display = 'none';
@@ -2569,6 +2708,9 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       }
       sources = fontes;
       btnRotate.style.display = fontes.length > 1 || !firstPhoto ? 'none' : '';   // turning one photo at a time only
+      // o trabalho fica guardado para continuar se a página for recarregada no meio
+      trabalhoAtual = arquivosAtuais ? { estado: 'lendo', arquivos: arquivosAtuais, tipo, rotacao: currentRotation, boxes: fontes.map(f => f.boxes || null), quando: Date.now() } : null;
+      if (trabalhoAtual) Trabalho.salvar(trabalhoAtual); else Trabalho.apagar();
       executeOCR();
     }
 
@@ -2615,7 +2757,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       c.width = cameraVideo.videoWidth; c.height = cameraVideo.videoHeight;
       c.getContext('2d').drawImage(cameraVideo, 0, 0);
       closeLiveCamera();
-      startReading([{ img: c, nome: '' }]);
+      // vira um arquivo, para o trabalho poder ser guardado e continuado
+      c.toBlob(b => handleFiles([new File([b], 'camera.jpg', { type: 'image/jpeg' })]), 'image/jpeg', 0.92);
     });
 
     btnCamera.addEventListener('click', () => hasLiveCamera() ? openLiveCamera() : fileInputCamera.click());
@@ -2628,6 +2771,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       if (!currentImage) return;
       currentRotation = (currentRotation + 90) % 360;
       processImageToCanvas(currentImage, currentRotation);
+      if (trabalhoAtual) { trabalhoAtual.rotacao = currentRotation; trabalhoAtual.estado = 'lendo'; delete trabalhoAtual.papeis; Trabalho.salvar(trabalhoAtual); }
       executeOCR();
     });
 
@@ -2775,6 +2919,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         currentRotation = 0;
         currentDocType = 'cartao';
         sources = [{ img, nome: '', boxes: null }];
+        arquivosAtuais = null; trabalhoAtual = null; Trabalho.apagar();   // o exemplo não é guardado
         processImageToCanvas(img, 0);
         executeOCR();
       };
@@ -3166,6 +3311,7 @@ VALOR TOTAL: R$ 68,90
       getReceipts(); // initialize mock data if first load
       renderHistory();
       renderExportStats();
+      retomarTrabalho();
     });
   </script>
 <script>

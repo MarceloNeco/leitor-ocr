@@ -115,6 +115,9 @@ function grade(fields, chips, expected) {
 
   const browser = await chromium.launch();
   const context = await browser.newContext();
+  // Cada foto numa página nova e limpa: o trabalho guardado da foto anterior
+  // (leitura que não cancela, index.html) não pode voltar na tela
+  await context.addInitScript(() => { try { indexedDB.deleteDatabase('leitor-ocr'); } catch (e) { /* segue */ } });
   const blocked = new Set();
   await context.route(() => true, route => {
     const url = route.request().url();

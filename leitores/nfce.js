@@ -245,8 +245,12 @@
     id: 'nfce',
     vitais: ['Valor'],
     sinais: /NFC-?E|NOTA FISCAL|CUPOM FISCAL|DANFE|CONSUMIDOR|CHAVE DE ACESSO|PROTOCOLO DE AUTORIZA|TRIBUT|\bSAT\b|ITENS|UN\s?X|VL\.?\s?ITEM|EMISS[AÃ]O|QTDE?\b/g,
-    palavras: /VALOR\s?\S{0,2}\s?PAGAR|VALOR PAGO|TOTAL A PAGAR|VALOR TOTAL|[TIF1]OTAL|A PAGAR|PAGO|VALOR/,   // "VALOR à PAGAR": a foto troca o A
-    ignorar: /TRIB|DESCONTO|UN\s?X|VL\.?\s?ITEM|UNIT|ITE[MN]S|QTD|TROCO|DINHEIRO|SUB-?\s?TOTAL|ECONOMIZOU|\bTAX\b|CHANGE|CASH|ACESS[OÓ]RIO|PRODUTOS|SERVI[CÇ]O|\bTX\b|TAXA|\(\s?[+-]\s?\)/,
+    // "VALOR à PAGAR": a foto troca o A; a forma de pagamento (CARTAO DE CREDITO 150,45; CRÉDITO À VISTA R$ 53,29 num canhoto lido como cupom) também carrega o valor pago
+    palavras: /VALOR\s?\S{0,2}\s?PAGAR|VALOR PAGO|TOTAL A PAGAR|VALOR TOTAL|[TIF1]OTAL|A PAGAR|PAGO|VALOR|CR[EÉ]DITO|D[EÉ]BITO|CART[AÃ]O|\bPIX\b/,
+    // a linha dos tributos também pelo número da lei (12.741) e por "Incid": no papel amassado a palavra "Trib" some
+    ignorar: /TRIB|12\.?741|LEI FED|INCID|DESCONTO|UN\s?X|VL\.?\s?ITEM|UNIT|ITE[MN]S|QTD|TROCO|DINHEIRO|SUB-?\s?TOTAL|ECONOMIZOU|\bTAX\b|CHANGE|CASH|ACESS[OÓ]RIO|PRODUTOS|SERVI[CÇ]O|\bTX\b|TAXA|\(\s?[+-]\s?\)/,
+    // num cupom, "R$" sozinho não basta: o valor só vale numa linha de total, "a pagar" ou "pago" (a linha dos impostos também traz "R$")
+    exigePalavra: true,
     exato, produtos: produtosDe
   });
 })(window.Leitura);
