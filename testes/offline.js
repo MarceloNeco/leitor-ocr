@@ -51,8 +51,10 @@
 //    por uma rota, nada sai de verdade): um cupom com um CNPJ fora da base
 //    ganha o nome fantasia, a razão social exata e a categoria pela
 //    atividade; sem internet, a resposta guardada vale; se o primeiro
-//    serviço falha, o segundo responde; atividade sem categoria mostra a
-//    descrição; a chave em Ajustes desliga a consulta (e religa). Só o
+//    serviço falha, o segundo responde; loja sem nome fantasia registrado
+//    mostra a razão social, ou o nome impresso no papel quando é outro;
+//    atividade sem categoria mostra a descrição; a chave em Ajustes desliga
+//    a consulta (e religa). Só o
 //    número do CNPJ sai do aparelho. O QR code de uma nota (endereço .gov.br
 //    da Sefaz) ganha o botão "Ver a nota no site da Sefaz"; outro endereço
 //    impresso num papel não ganha botão.
@@ -284,14 +286,15 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     + '<b>Compra aprovada</b><br>Compra de R$ 37,50 aprovada em PADARIA EXEMPLO em 12/10, às 13h25. Cartão final 0001.</div>', 'print.png');
   // lojas de mentira "na Receita": com nome fantasia, sem nome fantasia, com atividade fora da tabela de categorias, e uma para a chave desligada
   const soNumeros = c => c.replace(/\D/g, '');
-  const cnpjLanche = cnpjCom('987654320001'), cnpjPadaria = cnpjCom('112233440001'), cnpjAgencia = cnpjCom('556677880001'), cnpjMercearia = cnpjCom('998877660001');
+  const cnpjLanche = cnpjCom('987654320001'), cnpjPadaria = cnpjCom('112233440001'), cnpjAgencia = cnpjCom('556677880001'), cnpjMercearia = cnpjCom('998877660001'), cnpjBoteco = cnpjCom('443322110001');
   lojasReceita[soNumeros(cnpjLanche)] = { razao_social: 'LANCHONETE EXEMPLO LTDA', nome_fantasia: 'LANCHE DO ZE', cnae_fiscal: 5611203, cnae_fiscal_descricao: 'Lanchonetes, casas de chá, de sucos e similares' };
   lojasReceita[soNumeros(cnpjPadaria)] = { razao_social: 'PANIFICADORA EXEMPLO LTDA', nome_fantasia: '', cnae_fiscal: 4721102, cnae_fiscal_descricao: 'Padaria e confeitaria com predominância de revenda' };
   lojasReceita[soNumeros(cnpjAgencia)] = { razao_social: 'FULANO EXEMPLO ***12345***', nome_fantasia: 'EXEMPLO AGENCIA', cnae_fiscal: 7490104, cnae_fiscal_descricao: 'Atividades de intermediação e agenciamento de serviços e negócios em geral, exceto imobiliários' };
+  lojasReceita[soNumeros(cnpjBoteco)] = { razao_social: 'FULANO COMERCIO DE BEBIDAS LTDA', nome_fantasia: '', cnae_fiscal: 5611204, cnae_fiscal_descricao: 'Bares e outros estabelecimentos especializados em servir bebidas, com entretenimento' };
   lojasReceita[soNumeros(cnpjMercearia)] = { razao_social: 'MERCEARIA EXEMPLO LTDA', nome_fantasia: 'MERCEARIA DA ESQUINA', cnae_fiscal: 4712100, cnae_fiscal_descricao: 'Comércio varejista de mercadorias em geral, com predominância de produtos alimentícios - minimercados, mercearias e armazéns' };
   const cupomDe = (nome, cnpj) => file(`cupom-${soNumeros(cnpj).slice(0, 8)}.txt`, [nome, 'CNPJ: ' + cnpj, 'DOCUMENTO AUXILIAR DA NOTA FISCAL DE CONSUMIDOR ELETRONICA', '001 7890000000017 COXINHA EXEMPLO 2 UN X 8,00 16,00',
     'VALOR TOTAL R$ 16,00', 'VALOR A PAGAR R$ 16,00', 'FORMA DE PAGAMENTO', 'CARTAO DE CREDITO 16,00', 'EMISSAO: 10/10/2026 12:00', ''].join('\n'));
-  const cupomLanche = cupomDe('LANCHONETE DO ZE', cnpjLanche), cupomPadaria = cupomDe('PADARIA EXEMPLO', cnpjPadaria), cupomAgencia = cupomDe('EXEMPLO AGENCIA', cnpjAgencia), cupomMercearia = cupomDe('MERCEARIA EXEMPLO ME', cnpjMercearia);
+  const cupomLanche = cupomDe('LANCHONETE DO ZE', cnpjLanche), cupomPadaria = cupomDe('PADARIA EXEMPLO', cnpjPadaria), cupomAgencia = cupomDe('EXEMPLO AGENCIA', cnpjAgencia), cupomMercearia = cupomDe('MERCEARIA EXEMPLO ME', cnpjMercearia), cupomBoteco = cupomDe('BOTECO DO ZE', cnpjBoteco);
   // a nota fotografada da 13 (o QR code vem de um leitor de códigos trocado no teste)
   const cupomFoto = await shot(`<div style="width:560px;padding:30px;font:bold 22px monospace;color:#111;background:#fff;line-height:1.5;white-space:pre-line">${cupom(cnpjLanche, '61,75').replace(/DESCONTO R\$ 1,50\n/, '')}</div>`, 'cupom-foto.png');
   await gen.close();
@@ -699,6 +702,11 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   check(q3.fields[0].Estabelecimento === 'PANIFICADORA EXEMPLO LTDA' && !q3.fields[0]['Razão social'] && q3.fields[0].Categoria === 'Padaria' && chamadas(cnpjPadaria) === 2
     && consultas[consultas.length - 1].startsWith('https://brasilapi.com.br/'),
     `primeiro serviço fora do ar, o segundo responde; loja sem nome fantasia mostra a razão social: Estabelecimento=${q3.fields[0].Estabelecimento}, Categoria=${q3.fields[0].Categoria}`);
+  await page.close();
+  page = await open();
+  const q3b = await send(page, [cupomBoteco], 'auto');
+  check(q3b.fields[0].Estabelecimento === 'BOTECO DO ZE' && q3b.fields[0]['Razão social'] === 'FULANO COMERCIO DE BEBIDAS LTDA' && q3b.fields[0].Categoria === 'Restaurante e lanchonete',
+    `sem nome fantasia registrado e com outro nome no papel, o nome do papel fica: Estabelecimento=${q3b.fields[0].Estabelecimento}, Razão social=${q3b.fields[0]['Razão social']}`);
   await page.close();
   page = await open();
   const q4 = await send(page, [cupomAgencia], 'auto');

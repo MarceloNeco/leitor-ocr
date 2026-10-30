@@ -91,6 +91,14 @@
   ];
   const categoriaDoCnae = cnae => (CATEGORIAS.find(([re]) => re.test(String(cnae || ''))) || [])[1] || '';
 
+  // O nome lido no papel é a própria razão social (com ruído de leitura) quando
+  // a primeira palavra que identifica a loja aparece na razão social oficial;
+  // palavras de ramo (BAR, POSTO, PADARIA...) não contam. Nome curto demais
+  // para comparar vale como igual.
+  const GENERICAS = new Set(['AUTO', 'BAR', 'CASA', 'CENTRO', 'COMERCIO', 'COMERCIAL', 'DROGARIA', 'ESTACIONAMENTO', 'ESTACIONAMENTOS', 'FARMACIA', 'LANCHONETE', 'LOJA', 'LOJAS', 'MERCADO', 'PADARIA', 'POSTO', 'RESTAURANTE', 'SUPERMERCADO', 'VIA', 'CLIENTE']);
+  const palavraChave = s => sem(s).replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).find(w => w.length >= 3 && !/^\d+$/.test(w) && !GENERICAS.has(w)) || '';
+  const mesmoNome = (lido, oficial) => { const p = palavraChave(lido); return !p || sem(oficial).includes(p); };
+
   const SERVICOS = [c => 'https://minhareceita.org/' + c, c => 'https://brasilapi.com.br/api/cnpj/v1/' + c];
   const ESPERA = 8000;   // ms: a consulta não pode segurar a leitura
 
@@ -145,8 +153,13 @@
       const marca = rede.marcasRe.find(m => m.re.test(sem(cabecalho)));
       Object.assign(e, { razao: c ? rede.razao : razao, fantasia: marca ? marca.fantasia : rede.fantasia, categoria: rede.categoria });
     } else if (receita && receita.razao) {
+      // O nome impresso no papel é o que a pessoa viu: quando a Receita não
+      // registra nome fantasia e esse nome não é a razão social (um boteco
+      // "DO ZE" operado por "FULANO COMERCIO DE BEBIDAS LTDA"), ele fica como
+      // Estabelecimento e a razão social exata ganha o campo dela
       e.razao = receita.razao;
       if (receita.fantasia) e.fantasia = receita.fantasia;
+      else if (razao && !mesmoNome(razao, receita.razao)) e.fantasia = razao;
       const categoria = categoriaDoCnae(receita.cnae);
       if (categoria) e.categoria = categoria; else if (receita.atividade) e.atividade = receita.atividade;
     }
