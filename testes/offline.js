@@ -863,14 +863,14 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   await page.click('#btnLerIA');
   await page.waitForSelector('#btnUsarValorIA', { timeout: 30000 });
   const claudeIA14 = pedidosIA.filter(p => p.quem === 'anthropic');
-  check(claudeIA14.length === 2 && claudeIA14[1].modelo === 'claudeIA14-sonnet-5' && claudeIA14[1].chave === 'sk-ant-teste-1234567890abcdef' && claudeIA14[1].versao === '2023-06-01' && claudeIA14[1].navegador === 'true'
+  check(claudeIA14.length === 2 && claudeIA14[1].modelo === 'claude-sonnet-5' && claudeIA14[1].chave === 'sk-ant-teste-1234567890abcdef' && claudeIA14[1].versao === '2023-06-01' && claudeIA14[1].navegador === 'true'
     && claudeIA14[1].partes.join(',') === 'image/jpeg,text' && /Claude/.test(await page.$eval('.ia-resumo', e => e.textContent)),
-    `Claude: chave testada, modelo ${claudeIA14[1] && claudeIA14[1].modelo}, cabeçalhos do navegador, só foto e pedido; a resposta com cerca de código é entendida`);
+    `Claude: chave testada, modelo ${claudeIA14[1] && claudeIA14[1].modelo}, cabeçalhos do navegador, só foto e pedido; a resposta com cerca de código é entendida (${JSON.stringify(claudeIA14.map(c => Object.assign({}, c, { corpo: undefined })))})`);
   await page.click('.nav-tab-btn[data-tab="tab-settings"]');
   await page.click('.ia-prov[data-prov="anthropic"] button[data-acao="apagar"]');
   await page.click('.ia-prov[data-prov="gemini"] button[data-acao="apagar"]');
   const cofreFimIA14 = await page.evaluate(() => [localStorage.getItem('dgo:global:chaves-ia'), localStorage.getItem('dgo:global:ia-modelos')]);
-  check(cofreFimIA14[0] === '{}' && cofreFimIA14[1] === '{}' && await page.$$eval('#iaProvedores .ia-prov-status', e => e.every(x => x.textContent === 'sem chave')), 'apagar as chaves limpa o cofreIA14 e os modelos');
+  check(cofreFimIA14[0] === '{}' && cofreFimIA14[1] === '{}' && await page.$$eval('#iaProvedores .ia-prov-status', e => e.every(x => x.textContent === 'sem chave')), 'apagar as chaves limpa o cofre e os modelos');
   await page.close();
 
   check(external.size === 0, 'nenhum pedido para fora do app' + (external.size ? ': ' + [...external].join(', ') : ''));
