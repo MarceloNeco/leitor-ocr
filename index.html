@@ -1366,6 +1366,10 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           <p style="font-size: 13px; line-height: 1.6; color: var(--muted);">
             Toda a leitura OCR ocorre <strong>100% no seu navegador</strong>. Nenhuma foto, valor ou dado de cartão é enviado para servidores externos.
           </p>
+          <label style="display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; font-size: 13px; line-height: 1.6; cursor: pointer;">
+            <input type="checkbox" id="chkConsultaCnpj" style="margin-top: 4px; width: 18px; height: 18px; flex: none;">
+            <span><strong>Com internet, descobrir a loja pelo CNPJ.</strong> Quando o CNPJ da loja não está na lista do app, ele é consultado nos dados abertos da Receita Federal (um serviço público), para mostrar o nome e o tipo da loja. <span style="color: var(--muted);">Só o número do CNPJ da loja sai do aparelho; a resposta fica guardada aqui e vale depois sem internet.</span></span>
+          </label>
         </div>
 
         <div class="app-card">
@@ -1549,8 +1553,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.7.7';
-    const APP_UPDATED = '29/10/2026';   // data desta versão
+    const APP_VERSION = '0.7.8';
+    const APP_UPDATED = '30/10/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
     const formatBRL = Leitura.texto.formatBRL;
@@ -1753,6 +1757,15 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
     themeToggleBtn.addEventListener('click', toggleTheme);
     btnToggleThemeSetting.addEventListener('click', toggleTheme);
+
+    // Ajustes → descobrir a loja pelo CNPJ (consulta nos dados abertos da
+    // Receita, só com internet; leitura/estabelecimentos.js)
+    const chkConsultaCnpj = document.getElementById('chkConsultaCnpj');
+    chkConsultaCnpj.checked = Leitura.consultaCnpjLigada();
+    chkConsultaCnpj.addEventListener('change', () => {
+      Leitura.ligarConsultaCnpj(chkConsultaCnpj.checked);
+      showToast(chkConsultaCnpj.checked ? 'Com internet, a loja passa a ser descoberta pelo CNPJ.' : 'O app não consulta mais o CNPJ da loja.', 'ok');
+    });
 
     /* =========================================================
        CUSTOM TOAST & CONFIRM MODAL (NO ALERT/CONFIRM)
@@ -2211,6 +2224,21 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           fieldsListContainer.appendChild(box);
         }
       });
+
+      // The nota fiscal has a QR code with its official page: a button opens
+      // it (with internet) for the person to check the nota at the Sefaz
+      if (result.sefaz) {
+        const ver = document.createElement('button');
+        ver.type = 'button';
+        ver.id = 'btnVerSefaz';
+        ver.className = 'btn btn-secondary btn-sm card-mine-btn';
+        ver.textContent = '🧾 Ver a nota no site da Sefaz (com internet)';
+        ver.addEventListener('click', () => {
+          if (navigator.onLine === false) { showToast('Sem internet agora. Tente de novo quando tiver.', 'warn'); return; }
+          window.open(result.sefaz, '_blank', 'noopener');
+        });
+        fieldsListContainer.appendChild(ver);
+      }
 
       // Transactions of a bank statement or card bill (file, PDF or photo),
       // or the purchases of a notification screenshot; a payment and its

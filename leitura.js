@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.6.0';
+  L.versao = '1.7.0';
   // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
   L.app = L.app || null;
 
@@ -181,6 +181,14 @@
       } else juntos.push(p);
     });
     juntos.forEach(p => { p.result = L.resultado(p); });
+    // Com internet, a loja de um CNPJ fora da base vem dos dados abertos da
+    // Receita (leitura/estabelecimentos.js); a resposta guardada vale depois sem internet
+    for (const p of juntos) {
+      const e = p.result.estabelecimento;
+      if (!e || !e.cnpj || !L.consultarCnpj || !L.consultaCnpjLigada()) continue;
+      o.aviso('Consultando o CNPJ da loja...');
+      if (await L.consultarCnpj(e.cnpj)) p.result = L.resultado(p);
+    }
     return juntos;
   };
 

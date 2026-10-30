@@ -47,6 +47,17 @@
 //    para baixo, de lado (e com ponto, "23.00"), e dois girados numa foto só,
 //    lidos separados: cada um com o valor certo. A nota de mentira fica
 //    ligada ao aviso do banco da mesma compra (mesmo valor, dia e hora perto).
+// 13. Loja pelo CNPJ na Receita (com internet; o serviço público é simulado
+//    por uma rota, nada sai de verdade): um cupom com um CNPJ fora da base
+//    ganha o nome fantasia, a razão social exata e a categoria pela
+//    atividade; sem internet, a resposta guardada vale; se o primeiro
+//    serviço falha, o segundo responde; loja sem nome fantasia registrado
+//    mostra a razão social, ou o nome impresso no papel quando é outro;
+//    atividade sem categoria mostra a descrição; a chave em Ajustes desliga
+//    a consulta (e religa). Só o
+//    número do CNPJ sai do aparelho. O QR code de uma nota (endereço .gov.br
+//    da Sefaz) ganha o botão "Ver a nota no site da Sefaz"; outro endereço
+//    impresso num papel não ganha botão.
 // Também avisa se a versão do sw.js não bate com a do index.html.
 
 const fs = require('fs');
@@ -207,6 +218,19 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     if (url.startsWith(base)) return route.continue();
     external.add(url.split('?')[0]); return route.abort();
   });
+  // O serviço público de CNPJ (nível B), simulado: responde só os CNPJs de
+  // mentira de lojasReceita; os outros, "não encontrado". receitaFora derruba o
+  // primeiro serviço, para o app tentar o segundo.
+  const consultas = [], lojasReceita = {};
+  let receitaFora = false;
+  const servicoCnpj = route => {
+    const url = route.request().url(), d = lojasReceita[(url.match(/(\d{14})$/) || [])[1]];
+    consultas.push(url);
+    if (receitaFora && url.includes('minhareceita')) return route.fulfill({ status: 503, body: 'fora do ar' });
+    return route.fulfill({ status: d ? 200 : 404, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(d || { message: 'não encontrado' }) });
+  };
+  await context.route('https://minhareceita.org/**', servicoCnpj);
+  await context.route('https://brasilapi.com.br/api/cnpj/v1/**', servicoCnpj);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'leitor-ocr-'));
   const file = (name, content) => { const f = path.join(tmp, name); fs.writeFileSync(f, content); return f; };
 
@@ -260,6 +284,19 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const printNota = await shot(telaAvisos(compra('60,25', 'MERCADO EXEMPLO', '14h07')), 'print-nota.png');
   const printUm = await shot(`<div style="width:520px;padding:24px;border-radius:18px;background:#fff;font:22px Arial;color:#111;line-height:1.4"><b>Banco Exemplo</b> · agora<br>`
     + '<b>Compra aprovada</b><br>Compra de R$ 37,50 aprovada em PADARIA EXEMPLO em 12/10, às 13h25. Cartão final 0001.</div>', 'print.png');
+  // lojas de mentira "na Receita": com nome fantasia, sem nome fantasia, com atividade fora da tabela de categorias, e uma para a chave desligada
+  const soNumeros = c => c.replace(/\D/g, '');
+  const cnpjLanche = cnpjCom('987654320001'), cnpjPadaria = cnpjCom('112233440001'), cnpjAgencia = cnpjCom('556677880001'), cnpjMercearia = cnpjCom('998877660001'), cnpjBoteco = cnpjCom('443322110001');
+  lojasReceita[soNumeros(cnpjLanche)] = { razao_social: 'LANCHONETE EXEMPLO LTDA', nome_fantasia: 'LANCHE DO ZE', cnae_fiscal: 5611203, cnae_fiscal_descricao: 'Lanchonetes, casas de chá, de sucos e similares' };
+  lojasReceita[soNumeros(cnpjPadaria)] = { razao_social: 'PANIFICADORA EXEMPLO LTDA', nome_fantasia: '', cnae_fiscal: 4721102, cnae_fiscal_descricao: 'Padaria e confeitaria com predominância de revenda' };
+  lojasReceita[soNumeros(cnpjAgencia)] = { razao_social: 'FULANO EXEMPLO ***12345***', nome_fantasia: 'EXEMPLO AGENCIA', cnae_fiscal: 7490104, cnae_fiscal_descricao: 'Atividades de intermediação e agenciamento de serviços e negócios em geral, exceto imobiliários' };
+  lojasReceita[soNumeros(cnpjBoteco)] = { razao_social: 'FULANO COMERCIO DE BEBIDAS LTDA', nome_fantasia: '', cnae_fiscal: 5611204, cnae_fiscal_descricao: 'Bares e outros estabelecimentos especializados em servir bebidas, com entretenimento' };
+  lojasReceita[soNumeros(cnpjMercearia)] = { razao_social: 'MERCEARIA EXEMPLO LTDA', nome_fantasia: 'MERCEARIA DA ESQUINA', cnae_fiscal: 4712100, cnae_fiscal_descricao: 'Comércio varejista de mercadorias em geral, com predominância de produtos alimentícios - minimercados, mercearias e armazéns' };
+  const cupomDe = (nome, cnpj) => file(`cupom-${soNumeros(cnpj).slice(0, 8)}.txt`, [nome, 'CNPJ: ' + cnpj, 'DOCUMENTO AUXILIAR DA NOTA FISCAL DE CONSUMIDOR ELETRONICA', '001 7890000000017 COXINHA EXEMPLO 2 UN X 8,00 16,00',
+    'VALOR TOTAL R$ 16,00', 'VALOR A PAGAR R$ 16,00', 'FORMA DE PAGAMENTO', 'CARTAO DE CREDITO 16,00', 'EMISSAO: 10/10/2026 12:00', ''].join('\n'));
+  const cupomLanche = cupomDe('LANCHONETE DO ZE', cnpjLanche), cupomPadaria = cupomDe('PADARIA EXEMPLO', cnpjPadaria), cupomAgencia = cupomDe('EXEMPLO AGENCIA', cnpjAgencia), cupomMercearia = cupomDe('MERCEARIA EXEMPLO ME', cnpjMercearia), cupomBoteco = cupomDe('BOTECO DO ZE', cnpjBoteco);
+  // a nota fotografada da 13 (o QR code vem de um leitor de códigos trocado no teste)
+  const cupomFoto = await shot(`<div style="width:560px;padding:30px;font:bold 22px monospace;color:#111;background:#fff;line-height:1.5;white-space:pre-line">${cupom(cnpjLanche, '61,75').replace(/DESCONTO R\$ 1,50\n/, '')}</div>`, 'cupom-foto.png');
   await gen.close();
 
   const txt = file('recibo.txt', 'LOJA EXEMPLO LTDA\nCNPJ 12.345.678/0001-90\nVIA CLIENTE\nCREDITO A VISTA\nMASTERCARD ************4321\nDATA 09/10/2026 14:22\nVALOR TOTAL R$ 42,50\n');
@@ -642,6 +679,72 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   check(nota.values[0] === 'R$ 60,25' && /aviso de 10\/10\/2026 às 14:07$/.test(nota.fields[0]['Mesma compra'] || ''),
     `nota fiscal e aviso do banco da mesma compra ligados: "${nota.fields[0]['Mesma compra'] || ''}"`);
   await page.close();
+
+  // 13. loja pelo CNPJ na Receita (serviço simulado); sem internet; serviço reserva; atividade sem categoria; a chave em Ajustes; o botão da Sefaz
+  const chamadas = cnpj => consultas.filter(u => u.endsWith('/' + soNumeros(cnpj))).length;
+  page = await open();
+  const q1 = await send(page, [cupomLanche], 'auto');
+  check(q1.fields[0].Estabelecimento === 'LANCHE DO ZE' && q1.fields[0]['Razão social'] === 'LANCHONETE EXEMPLO LTDA' && q1.fields[0].Categoria === 'Restaurante e lanchonete'
+    && q1.fields[0].CNPJ === cnpjLanche && q1.values[0] === 'R$ 16,00' && chamadas(cnpjLanche) === 1 && consultas[consultas.length - 1].startsWith('https://minhareceita.org/'),
+    `loja fora da base, pelo CNPJ na Receita: Estabelecimento=${q1.fields[0].Estabelecimento}, Razão social=${q1.fields[0]['Razão social']}, Categoria=${q1.fields[0].Categoria} (${chamadas(cnpjLanche)} consulta)`);
+  await page.close();
+  await context.setOffline(true);
+  page = await open();
+  const q2 = await send(page, [cupomLanche], 'auto');
+  check(q2.fields[0].Estabelecimento === 'LANCHE DO ZE' && q2.fields[0].Categoria === 'Restaurante e lanchonete' && chamadas(cnpjLanche) === 1,
+    `sem internet, a resposta guardada vale: Estabelecimento=${q2.fields[0].Estabelecimento}, Categoria=${q2.fields[0].Categoria}, sem consulta nova`);
+  await page.close();
+  await context.setOffline(false);
+  receitaFora = true;
+  page = await open();
+  const q3 = await send(page, [cupomPadaria], 'auto');
+  receitaFora = false;
+  check(q3.fields[0].Estabelecimento === 'PANIFICADORA EXEMPLO LTDA' && !q3.fields[0]['Razão social'] && q3.fields[0].Categoria === 'Padaria' && chamadas(cnpjPadaria) === 2
+    && consultas[consultas.length - 1].startsWith('https://brasilapi.com.br/'),
+    `primeiro serviço fora do ar, o segundo responde; loja sem nome fantasia mostra a razão social: Estabelecimento=${q3.fields[0].Estabelecimento}, Categoria=${q3.fields[0].Categoria}`);
+  await page.close();
+  page = await open();
+  const q3b = await send(page, [cupomBoteco], 'auto');
+  check(q3b.fields[0].Estabelecimento === 'BOTECO DO ZE' && q3b.fields[0]['Razão social'] === 'FULANO COMERCIO DE BEBIDAS LTDA' && q3b.fields[0].Categoria === 'Restaurante e lanchonete',
+    `sem nome fantasia registrado e com outro nome no papel, o nome do papel fica: Estabelecimento=${q3b.fields[0].Estabelecimento}, Razão social=${q3b.fields[0]['Razão social']}`);
+  await page.close();
+  page = await open();
+  const q4 = await send(page, [cupomAgencia], 'auto');
+  check(q4.fields[0].Estabelecimento === 'EXEMPLO AGENCIA' && q4.fields[0]['Razão social'] === 'FULANO EXEMPLO' && !q4.fields[0].Categoria && (q4.fields[0].Atividade || '').startsWith('Atividades de intermediação'),
+    `atividade fora da tabela: sem categoria, com a descrição da Receita (Atividade="${(q4.fields[0].Atividade || '').slice(0, 40)}..."); MEI: o CPF mascarado sai da razão social ("${q4.fields[0]['Razão social']}")`);
+  await page.click('.nav-tab-btn[data-tab="tab-settings"]');
+  check(await page.isChecked('#chkConsultaCnpj'), 'em Ajustes, a consulta do CNPJ vem ligada');
+  await page.uncheck('#chkConsultaCnpj');
+  await page.close();
+  page = await open();
+  const q5 = await send(page, [cupomMercearia], 'auto');
+  check(q5.fields[0].Estabelecimento === 'MERCEARIA EXEMPLO ME' && !q5.fields[0].Categoria && chamadas(cnpjMercearia) === 0,
+    `com a consulta desligada, nada sai do aparelho: Estabelecimento=${q5.fields[0].Estabelecimento} (lido do papel), ${chamadas(cnpjMercearia)} consultas`);
+  await page.click('.nav-tab-btn[data-tab="tab-settings"]');
+  await page.check('#chkConsultaCnpj');
+  await page.close();
+  page = await open();
+  const q6 = await send(page, [cupomMercearia], 'auto');
+  check(q6.fields[0].Estabelecimento === 'MERCEARIA DA ESQUINA' && q6.fields[0].Categoria === 'Mercado' && chamadas(cnpjMercearia) === 1,
+    `religada, a mesma loja é consultada: Estabelecimento=${q6.fields[0].Estabelecimento}, Categoria=${q6.fields[0].Categoria}`);
+  await page.close();
+  // o QR code de uma nota: o leitor de códigos é trocado por um que "lê" o endereço da Sefaz
+  const qrSefaz = 'https://www.nfce.fazenda.sp.gov.br/qrcode?p=35261012345678000195650010000012341000012345|2|1|1|ABCDEF0123456789';
+  page = await open();
+  await page.evaluate(async url => { await Leitura.precisa('codigos'); Leitura.codigos.readCodes = async () => [{ format: 'QR_CODE', text: url }]; window.open = u => { window._aberto = u; }; }, qrSefaz);
+  const q7 = await send(page, [cupomFoto], 'nfce');
+  const sefaz = await page.evaluate(() => papers[0].result.sefaz);
+  const botao = await page.$('#btnVerSefaz');
+  if (botao) await botao.click();
+  const aberto = await page.evaluate(() => window._aberto);
+  check(sefaz === qrSefaz && botao !== null && aberto === qrSefaz && (q7.fields[0]['QR code'] || '') === qrSefaz,
+    `nota com QR code da Sefaz: botão "Ver a nota no site da Sefaz" abre ${aberto ? aberto.split('?')[0] : 'nada'}`);
+  const links = await page.evaluate(() => [Leitura.texto.linkSefaz('http://www.sefaz.rs.gov.br/NFCE/x?p=1'), Leitura.texto.linkSefaz('https://exemplo.com.br/gov.br/x'), Leitura.texto.linkSefaz('CFe35|1|2|3'),
+    Leitura.texto.buildResult([{ text: 'LOJA\nVALOR TOTAL R$ 10,00', conf: 90, words: [], lines: [] }], 'nfce', [{ format: 'QR_CODE', text: 'https://golpe.exemplo.com/nota' }]).sefaz || null]);
+  check(links[0] === 'http://www.sefaz.rs.gov.br/NFCE/x?p=1' && links[1] === null && links[2] === null && links[3] === null,
+    'só endereço .gov.br vira botão: outro endereço impresso num papel não abre nada');
+  await page.close();
+  check(consultas.every(u => /^https:\/\/(minhareceita\.org|brasilapi\.com\.br\/api\/cnpj\/v1)\/\d{14}$/.test(u)), `nas consultas de CNPJ só o número da loja sai do aparelho (${consultas.length} consultas)`);
 
   check(external.size === 0, 'nenhum pedido para fora do app' + (external.size ? ': ' + [...external].join(', ') : ''));
   check(logs.length === 0, 'nenhum erro de página' + (logs.length ? ': ' + logs.join(' | ') : ''));

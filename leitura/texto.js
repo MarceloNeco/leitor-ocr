@@ -13,6 +13,7 @@
     'Razão social',
     'CNPJ',
     'Categoria',
+    'Atividade',
     'Nota',
     'Valor',
     'Vencimento',
@@ -53,6 +54,17 @@
       };
     }
     return null;
+  }
+
+  // The QR code of a nota fiscal is the address of its page at the state
+  // tax office (Sefaz): the app can open it for the person to check the
+  // nota. Only official addresses (.gov.br): never any address printed on
+  // a paper. Returns the address, or null.
+  function linkSefaz(texto) {
+    try {
+      const u = new URL(String(texto || '').trim());
+      return /^https?:$/.test(u.protocol) && /\.gov\.br$/.test(u.hostname) ? u.href : null;
+    } catch (e) { return null; }
   }
 
   // The establishment's name: among the lines of every reading, the one the
@@ -303,6 +315,7 @@
           if (e.fantasia && e.razao && e.fantasia !== e.razao) depois('Razão social', e.razao);
           if (e.cnpj) { if (cnpjF) cnpjF.val = e.cnpj; else depois('CNPJ', e.cnpj); }
           if (e.categoria) depois('Categoria', e.categoria);
+          else if (e.atividade) depois('Atividade', e.atividade);
         }
       }
     }
@@ -347,6 +360,8 @@
 
     const r = { fields, tipo, expectsValue, valor, candidates, status, hint, textKind, far, debug };
     if (estabelecimento) r.estabelecimento = estabelecimento;
+    const sefaz = (codes || []).map(c => c.format === 'QR_CODE' ? linkSefaz(c.text) : null).find(Boolean);
+    if (sefaz) r.sefaz = sefaz;
     // The products of the receipt: detail of the one amount, not transactions
     const prod = def.produtos ? def.produtos(readings) : null;
     if (prod) Object.assign(r, { produtos: prod.produtos, produtosConferido: prod.conferido, produtosDiferenca: prod.diferenca !== null ? prod.diferenca / 100 : undefined });
@@ -494,5 +509,5 @@
       .sort((a, b) => b.score - a.score || b.num - a.num);
   }
 
-  L.texto = { CAMPOS: ORDERED_FIELD_KEYS, parseDocument, findMoney, parseChave, pickEstablishment, detectDocType, mostCommon, agreedValue, decidirValor, valorGrande, goodWords, classifyTextKind, formatBRL, buildResult };
+  L.texto = { CAMPOS: ORDERED_FIELD_KEYS, parseDocument, findMoney, parseChave, pickEstablishment, detectDocType, mostCommon, agreedValue, decidirValor, valorGrande, goodWords, classifyTextKind, formatBRL, buildResult, linkSefaz };
 })(window.Leitura);
