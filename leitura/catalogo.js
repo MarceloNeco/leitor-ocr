@@ -42,7 +42,7 @@
     // Ainda não existem: cada tipo já diz do que vai precisar
     visor: { pt: 'Números de visor (esteira, bicicleta, painel do carro)', en: 'Display digits (treadmill, bike, car dashboard)', futuro: true },
     tabela: { pt: 'Tabela pela posição das palavras (grade, boletim, extrato em foto)', en: 'Tables from word positions', futuro: true },
-    ia: { pt: 'Ler com IA online, pela chave da pessoa', en: 'Read with online AI, with the person’s key', futuro: true },
+    ia: { pt: 'Ler com IA online, pela chave da pessoa', en: 'Read with online AI, with the person’s key', modulos: ['leitura/ia.js'] },
     rosto: { pt: 'Reconhecer rosto', en: 'Face recognition', futuro: true }
   };
 
