@@ -839,7 +839,7 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   await send(page, [semValor], 'cartao');
   await page.click('#btnLerIA');
   await page.waitForFunction(() => [...document.querySelectorAll('#toastContainer > *')].some(t => /cota/.test(t.textContent)), null, { timeout: 30000 });
-  check((await toasts(page)).some(t => /cota|crédito/.test(t)) && await page.$('#btnLerIA') !== null, `cota esgotada: avisoIA14 "${(await toasts(page)).find(t => /cota/.test(t)).slice(0, 70)}" e o botão continua para tentar depois`);
+  check((await toasts(page)).some(t => /cota|crédito/.test(t)) && await page.$('#btnLerIA') !== null, `cota esgotada: aviso "${(await toasts(page)).find(t => /cota/.test(t)).slice(0, 70)}" e o botão continua para tentar depois`);
   iaFora = 0;
   await page.close();
   // "usar a IA sozinho": o canhoto sem valor vai para a IA sem perguntar
@@ -857,7 +857,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   await page.click('.ia-prov[data-prov="anthropic"] button[data-acao="salvar"]');
   await page.waitForFunction(() => document.querySelector('.ia-prov[data-prov="anthropic"] .ia-prov-status').textContent.includes('guardada'));
   await page.check('input[name="iaUsar"][value="anthropic"]');
-  await page.click('.nav-tab-btn[data-tab="tab-capture"]');
+  await page.close();
+  page = await open();
   await send(page, [semValor], 'cartao');
   await page.click('#btnLerIA');
   await page.waitForSelector('#btnUsarValorIA', { timeout: 30000 });

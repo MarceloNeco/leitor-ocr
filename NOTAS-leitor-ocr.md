@@ -411,6 +411,16 @@ Valor errado mostrado: nenhum. Pedidos para fora do app: só as consultas de CNP
 
 `testes/offline.js`: 61 de 61 (eram 50). Os 11 novos simulam o serviço de CNPJ por uma rota (nada sai de verdade): loja fora da base ganha nome fantasia, razão social e categoria; sem internet a resposta guardada vale; o segundo serviço responde quando o primeiro cai; loja sem nome fantasia mostra a razão social, ou o nome impresso no papel quando é outro; atividade fora da tabela mostra a descrição e o CPF mascarado de um MEI sai da razão social; a chave em Ajustes desliga e religa a consulta; só o número do CNPJ sai do aparelho; o QR code `.gov.br` de uma nota ganha o botão da Sefaz, e outro endereço impresso num papel não ganha nada.
 
+## Resultado da 0.8.0 (ler com IA pela chave da pessoa, 30/10/2026)
+
+A 0.8.0 não mexe na leitura do aparelho (os arquivos `leitura/foto.js`, `leitura/texto.js` e `leitores/*` não mudaram): a IA entra depois, só quando a pessoa manda. Por isso não há tabela de valores antes e depois; os testes anteriores continuam passando iguais.
+
+A leitura por IA de verdade **não foi medida aqui**: não há chave de IA no ambiente (e uma chave nunca entra no chat nem no repositório). O Marcelo testa no celular com a chave dele; se quiser a medição nas mesmas fotos, a chave pode entrar como segredo do ambiente do Claude Code, sem aparecer para ninguém.
+
+`testes/offline.js`: **70 de 70** (eram 61). Os 9 novos usam o Gemini e o Claude simulados por rotas, com um canhoto de mentira sem o valor impresso: sem chave o botão não existe; chave com formato errado é recusada sem sair do aparelho e a certa é testada na lista de modelos e guardada no cofre comum (`dgo:global:chaves-ia`, modelo escolhido `gemini-3.1-flash` na lista de mentira); o botão pede confirmação e só a foto e o pedido saem (o corpo do pedido não traz nada do aparelho); a IA preenche o que faltava, marcado, e o valor não entra sozinho; um toque em "Usar R$ 36,00" preenche; saúde sempre pergunta e "Agora não" não manda nada; cota esgotada vira aviso em linguagem simples e o botão continua; "usar a IA sozinho" lê sem perguntar; a chave do Claude vai com os três cabeçalhos do navegador e a resposta com cerca de código é entendida; apagar as chaves limpa o cofre.
+
+Prints em tamanho de celular (fora do repositório): Ajustes → Ler com IA sem e com chave, o diálogo "Mandar a foto para a IA?", o resultado com a sugestão "Usar R$ 36,00" logo abaixo do campo Valor e os campos da IA com borda tracejada.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **PDF escaneado de várias páginas:** cada página é lida como um papel; o saldo do fim não confere os lançamentos das páginas de antes, e a fatura escaneada não acha o total na página das compras. Juntar as páginas escaneadas num papel só, como já acontece com as páginas de texto.
@@ -423,6 +433,7 @@ Valor errado mostrado: nenhum. Pedidos para fora do app: só as consultas de CNP
 - **Print claro de notificações sobre papel de parede escuro:** os avisos são cartões brancos separados; o recorte do papel pega só o mais claro. O print escuro (modo noturno) e a tela branca são lidos inteiros.
 - **Produtos de cupom amassado:** a linha do peso que cola na linha do produto seguinte e o mesmo produto duas vezes seguidas (o alinhamento das leituras junta os dois) ficam de fora; a lista aparece marcada para conferir.
 
+- **Chamada da IA fora do módulo `Fundo` da diretriz:** a resposta chega ao papel mesmo trocando de aba, mas não há pílula de andamento nem aviso antes de fechar; entra quando o `Fundo` for feito neste app (regra zero).
 - **Arquivo único para copiar ao celular:** ver decisões da etapa 7.
 - **PDF com mais de 10 páginas:** só as 10 primeiras são lidas (o app avisa).
 
