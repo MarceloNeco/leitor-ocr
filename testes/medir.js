@@ -5,7 +5,9 @@
 // Abre o index.html num Chromium invisível (Playwright), envia cada foto (ou
 // arquivo: PDF, OFX, CSV, XLSX, DOCX, TXT) pelo botão "Fotos ou PDF" e lê os
 // campos que apareceram na tela. Nada sai para a
-// internet: todo pedido fora do servidor local é bloqueado e listado.
+// internet: todo pedido fora do servidor local é bloqueado e listado. Com
+// INTERNET=cnpj no ambiente, só a consulta do CNPJ da loja (dados abertos da
+// Receita, nível B) passa, para medir a loja e a categoria com internet.
 //
 // Se a pasta tiver um gabarito.json, imprime a tabela certo/incerto/vazio/errado:
 //   { "foto.jpg": { "tipo": "cartao", "valores": ["558,80"], "datas": ["08/10/2026"],
@@ -117,6 +119,7 @@ function grade(fields, chips, expected) {
   await context.route(() => true, route => {
     const url = route.request().url();
     if (url.startsWith(base)) return route.continue();
+    if (process.env.INTERNET === 'cnpj' && /^https:\/\/(minhareceita\.org|brasilapi\.com\.br)\//.test(url)) return route.continue();
     blocked.add(url.split('?')[0]);
     return route.abort();
   });
@@ -204,7 +207,7 @@ function grade(fields, chips, expected) {
         + (itens.length ? `  lançamentos=${itens.length} (${conf})` : '') + (lanc ? `  [lançamentos certos=${lanc.certos} faltam=${lanc.faltam} a mais=${lanc.aMais}]` : '')
         + (prod ? `  [produtos certos=${prod.certos} faltam=${prod.faltam} a mais=${prod.aMais}${prod.conferido ? ', soma confere' : ''}]` : '');
       const same = g('Mesma compra');
-      console.log(`${label}  ${pi === 0 ? secs + 's' : ''}  leituras=${passes}${rots ? ' [' + rots + ']' : ''}${fallback ? ' FALLBACK' : ''}  tipo=${tipo}>${debug.tipo || '?'}${sinais}  Valor=${g('Valor')}${chips.length ? ' opções=' + chips.join('|') : ''}  Data=${g('Data')}  Hora=${g('Hora')}  Estab=${g('Estabelecimento').slice(0, 30)}${nota !== '-' ? '  Nota=' + nota : ''}${codes ? '  codigo=' + codes : ''}${same !== '-' ? '  mesma-compra=' + same : ''}  ${kind}${tag}`);
+      console.log(`${label}  ${pi === 0 ? secs + 's' : ''}  leituras=${passes}${rots ? ' [' + rots + ']' : ''}${fallback ? ' FALLBACK' : ''}  tipo=${tipo}>${debug.tipo || '?'}${sinais}  Valor=${g('Valor')}${chips.length ? ' opções=' + chips.join('|') : ''}  Data=${g('Data')}  Hora=${g('Hora')}  Estab=${g('Estabelecimento').slice(0, 30)}${g('Categoria') !== '-' ? '  Categ=' + g('Categoria') : ''}${nota !== '-' ? '  Nota=' + nota : ''}${codes ? '  codigo=' + codes : ''}${same !== '-' ? '  mesma-compra=' + same : ''}  ${kind}${tag}`);
     }
     if (papersFound !== expectedPapers || askedPapers) console.log(`   papéis: encontrados ${papersFound}, esperados ${expectedPapers}${askedPapers ? ' (perguntou por ' + askedPapers + ')' : ''}`);
     fs.writeFileSync(out, JSON.stringify(results, null, 1));
@@ -226,6 +229,8 @@ function grade(fields, chips, expected) {
     console.log(`| valor | ${count('valor', 'certo')} | ${count('valor', 'incerto-ok')} | ${count('valor', 'incerto')} | ${count('valor', 'vazio')} | ${count('valor', 'errado')} |`);
     console.log(`| data | ${count('data', 'certo')} | - | - | ${count('data', 'vazio')} | ${count('data', 'errado')} |`);
     console.log(`| estab | ${count('estab', 'certo')} | - | - | - | ${count('estab', 'nao')} |`);
+    const comCnpj = results.filter(r => (r.fields || []).some(f => f.key === 'CNPJ'));
+    console.log(`Loja com categoria: ${results.filter(r => (r.fields || []).some(f => f.key === 'Categoria')).length} de ${results.length} papéis (${comCnpj.length} com CNPJ lido)`);
     const comProd = results.filter(r => r.prod);
     if (comProd.length) {
       const soma = k => comProd.reduce((a, r) => a + r.prod[k], 0);
