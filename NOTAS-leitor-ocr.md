@@ -422,6 +422,30 @@ A leitura por IA de verdade **não foi medida aqui**: não há chave de IA no am
 
 Prints em tamanho de celular (fora do repositório): Ajustes → Ler com IA sem e com chave, o diálogo "Mandar a foto para a IA?", o resultado com a sugestão "Usar R$ 36,00" logo abaixo do campo Valor e os campos da IA com borda tracejada.
 
+## Resultado da 0.8.1 (leitura que não cancela, a linha dos impostos, 30/10/2026)
+
+Medido antes (0.7.8/0.8.0) e depois (0.8.1) nas mesmas fotos (fora do repositório; "Não sei, descobrir"; medidor com `INTERNET=cnpj`). Valor: certo / em dúvida com o certo entre as opções / em dúvida / vazio / errado.
+
+| Conjunto | antes | 0.8.1 |
+|---|---|---|
+| Foto de 4 papéis amassados em mesa escura (30/10): valor | 0 / 0 / 1 / 3 / 0, com **39,06 (a linha dos impostos) oferecido como opção**; no celular, preenchido como certo | 0 / 0 / 1 / 3 / 0, **sem o 39,06** (a opção que sobra é 157,38, o total antes do desconto com um dígito trocado; o valor fica vazio) |
+| 37 fotos das etapas 2 a 5 (43 papéis): valor | 33 / 3 / 1 / 6 / 0 | 32 / 3 / 1 / 7 / 0 (uma conta de gás lida como cupom, com o valor numa célula de tabela sem palavra nenhuma, passou de certo a vazio) |
+| 14 fotos com vários papéis (27 papéis): valor | 21 / 3 / 1 / 2 / 0 | igual |
+| Canhotos e prints da mesma compra (33 papéis) | 3 / 0 / 2 / 4 / 0; 36 de 36 lançamentos | igual |
+| Cupom de supermercado e sacolão | 2 certos; 10 produtos | igual |
+| 4 canhotos amassados (25/10) | 3 / 0 / 0 / 1 / 0 | igual |
+| 52 fotos de tipos variados: tipo certo | 35 de 55 | igual |
+| Estabelecimento certo / com categoria (164 papéis) | 40 / 43 | igual |
+| Tempo médio por foto (37 / 14 fotos) | 13,3 s / 17,3 s | 15,3 s / 20,2 s (oscilação da máquina; a mudança não acrescenta leitura) |
+
+Valor errado mostrado: nenhum. A primeira versão da regra ("R$" sozinho não basta num cupom) perdeu também dois canhotos lidos como cupom, com o valor na linha "CRÉDITO À VISTA R$ 53,29"; as palavras de pagamento (crédito, débito, cartão, Pix) passaram a contar como palavra do valor e os dois voltaram. Sobrou a conta de gás: vazio em vez de certo, o lado certo da regra do app.
+
+A primeira rodada da medição saiu inválida por causa do próprio "trabalho guardado": o medidor abre uma página por foto no mesmo navegador, e o resultado pronto da foto anterior voltava na tela antes de a nova leitura começar. O medidor passou a apagar o trabalho guardado antes de cada foto (`testes/medir.js`); o mesmo vale para `testes/offline.js`, menos no teste que retoma de propósito.
+
+`testes/offline.js`: **76 de 76** (eram 70). Os 6 novos: o cupom com os totais ilegíveis não mostra o "R$ 9,06" da linha dos impostos nem como opção; o comprovante com ano 2006 fica sem data; a página recarregada no meio da leitura continua sozinha até o fim (com o trabalho guardado e a pílula de andamento em outra aba); recarregada depois de pronta, o resultado e o que a pessoa digitou voltam em menos de um segundo, sem ler de novo; a tela é segurada acesa e solta no fim; descartar apaga o trabalho. O teste dos dois canhotos girados confere que cada papel guarda a própria caixa (a IA recebe só o recorte).
+
+Não medido aqui: o comportamento no celular de verdade (tela apagando, troca de app); o Marcelo testa.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **PDF escaneado de várias páginas:** cada página é lida como um papel; o saldo do fim não confere os lançamentos das páginas de antes, e a fatura escaneada não acha o total na página das compras. Juntar as páginas escaneadas num papel só, como já acontece com as páginas de texto.
