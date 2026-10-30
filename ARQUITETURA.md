@@ -175,7 +175,8 @@ No papel: `result.produtos` (a lista), `result.produtosConferido` e, quando não
 - **O que entra.** `Leitura.ia.aplicar`: cada campo da IA entra só onde estava vazio, com `ia: true` (a tela mostra a borda tracejada); o valor nunca entra sozinho: fica em `result.ia.sugestao` e a tela mostra o botão "Usar R$ X" (um toque), também quando a leitura do aparelho e a IA discordam; quando concordam, `result.ia.concorda`. Produtos só quando o papel não tinha nenhum (`result.produtosIA`); o tipo da IA vira dica (`result.hint`) quando o papel ficou sem tipo.
 - **Consentimento.** `index.html` pergunta antes de mandar (diálogo `#iaDialog`, com "não perguntar de novo" para comprovantes e notas, guardado em `leitor_ia_avisado`); saúde, documento pessoal e rosto (classes do catálogo) perguntam sempre. A opção de Ajustes "usar a IA sozinho" (`leitor_ia_sozinha`) manda, sem perguntar, só os papéis de dinheiro que ficaram sem valor.
 - **Erros** em linguagem de gente (`Leitura.ia.explicar`): chave recusada, cota ou crédito no fim, fora do ar, demorou (45 s), resposta ilegível, sem internet.
-- **Ainda não**: a chamada da IA não roda no módulo `Fundo` da diretriz (trocar de tela no meio cancela a tela, não a chamada; a resposta chega ao papel de qualquer jeito).
+- **Vários papéis numa foto**: a IA recebe só o recorte do papel (`papel.box`, guardado por `lerFotos` em `leitura/foto.js`), não a foto inteira.
+- **Ainda não**: a chamada da IA não entra no trabalho guardado (ver "Leitura que não cancela"); a resposta chega ao papel mesmo trocando de aba, mas uma página recarregada no meio perde a chamada.
 
 ## Abrir um formato novo de arquivo
 
@@ -204,6 +205,18 @@ Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`
 4. No `sw.js` do app: os arquivos do motor na lista do básico; `tesseract/` e `libs/` guardados no primeiro uso (ver o `sw.js` daqui).
 5. Atualizar: copiar de novo as pastas a partir daqui. `Leitura.versao` diz qual versão do motor o app tem.
 
+## Leitura que não cancela (0.8.1, pedido 29)
+
+A leitura de fotos leva minutos no celular, e o Android apaga a tela, congela ou descarta a página em segundo plano. A tela (`index.html`) não impede isso; ela faz o trabalho sobreviver:
+
+- **Tela acesa**: `segurarTela()` pede `navigator.wakeLock.request('screen')` ao começar a ler e `soltarTela()` solta no fim; quando a aba volta a aparecer com a leitura em andamento, pede de novo (o navegador solta a trava ao esconder a aba). Sem suporte, segue sem.
+- **Trabalho guardado**: `Trabalho` é uma chave só (`atual`) no IndexedDB `leitor-ocr`, loja `trabalho`: `{ estado: 'lendo' | 'pronto', arquivos: [File], tipo, rotacao, boxes, quando, papeis? }`. `startReading` grava `lendo` com os arquivos escolhidos (a foto da câmera do computador vira um arquivo antes); `lerAgora` grava `pronto` com os papéis (`papelGuardavel`: tudo menos a imagem, que volta do arquivo, e as palavras do OCR); `stashEdits` regrava o que a pessoa digitou; Salvar e Descartar apagam. Os comprovantes de exemplo não são guardados.
+- **Retomar**: `retomarTrabalho()` ao abrir o app: um trabalho de hoje em `lendo` reabre os arquivos (`Leitura.abrir`), devolve as caixas dos papéis e chama `executeOCR()` ("Continuando a leitura que foi interrompida"); um `pronto` monta `papers` com os resultados guardados e mostra na hora, sem OCR ("A leitura terminou enquanto você estava fora"). Trabalho de mais de um dia é apagado.
+- **Aviso antes de sair**: `beforeunload` só enquanto `lendo`.
+- **Pílula de andamento** (`#pilulaLeitura`): aparece quando a leitura corre e a pessoa está em outra aba do app, com o texto do andamento; um toque volta para Capturar.
+
+É a parte da leitura do módulo `Fundo` da diretriz SolverONE, sem a lista de trabalhos nem a notificação do sistema (regra zero: entram quando o dono pedir).
+
 ## Privacidade
 
 - Tudo é lido no aparelho. Nada sai para a internet, com duas exceções que a pessoa controla em Ajustes: com internet, o **número do CNPJ** de uma loja fora da base vai para a consulta pública de CNPJ (dados abertos da Receita), para o app mostrar o nome e a categoria da loja (nunca a foto, o valor ou o cartão); e, só quando a pessoa manda (botão "Ler com IA" ou a opção "usar a IA sozinho"), **a foto do papel** vai para a IA da chave dela (Google ou Anthropic), com aviso antes.
@@ -213,4 +226,4 @@ Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`
 
 ## O que ainda não está aqui (diretriz SolverONE, regra zero: confirmar com o dono antes)
 
-Dos níveis com internet (PEDIDOS.md, 28), o B (sem IA) está na 0.7.8: loja pelo CNPJ na Receita e o botão da nota na Sefaz (ler os dados da nota na Sefaz exigiria um servidor; o leitor de português mais preciso foi medido e descartado). O C (com IA) está na 0.8.0 (`leitura/ia.js`, seção "Ler com IA"); o app sempre funciona sem internet. `Fundo` (leitura que continua ao trocar de tela, Wake Lock, pílula de andamento), telas em PT e EN, `versoes.json` e novidades em Ajustes, `PENDENCIAS.md`, `janela.js` nas janelas, arrastar e soltar ou colar arquivo, compartilhar para o app (`share_target`), fila de arquivos com progresso e aviso de duplicado, medir a nitidez antes de aceitar a foto, preferência Wi-Fi/dados para baixar o pesado, código do app com "rede primeiro".
+Dos níveis com internet (PEDIDOS.md, 28), o B (sem IA) está na 0.7.8: loja pelo CNPJ na Receita e o botão da nota na Sefaz (ler os dados da nota na Sefaz exigiria um servidor; o leitor de português mais preciso foi medido e descartado). O C (com IA) está na 0.8.0 (`leitura/ia.js`, seção "Ler com IA"); o app sempre funciona sem internet. o resto do módulo `Fundo` da diretriz (a leitura já segura a tela, continua e retoma: 0.8.1; faltam a lista de trabalhos, a chamada da IA guardada e o aviso do sistema com o app fechado), telas em PT e EN, `versoes.json` e novidades em Ajustes, `PENDENCIAS.md`, `janela.js` nas janelas, arrastar e soltar ou colar arquivo, compartilhar para o app (`share_target`), fila de arquivos com progresso e aviso de duplicado, medir a nitidez antes de aceitar a foto, preferência Wi-Fi/dados para baixar o pesado, código do app com "rede primeiro".

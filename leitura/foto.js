@@ -781,7 +781,7 @@
           o.aviso(`Lendo ${label || 'o papel'}...`);
           const img = boxes[i] ? Object.assign(cropBox(src.img, boxes[i]), { cutOut: true }) : src.img;
           const paper = await readPaper(img, worker, o.rotacao, label ? label + ': ' : '', o.tipo, o.aviso);
-          list.push(Object.assign(paper, { label, img: src.img, fonte: src }));
+          list.push(Object.assign(paper, { label, img: src.img, fonte: src, box: boxes[i] }));
         }
       }
     } finally {

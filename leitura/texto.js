@@ -396,7 +396,9 @@
       if (yr.length === 3) continue;
       if (yr.length === 2) yr = '20' + yr;
       const d = +dm[1], mo = +dm[2], y = +yr;
-      const minYear = def.vitais.includes('Valor') ? 2010 : 1900;
+      // a money paper older than five years is a misread year (thermal paper
+      // does not last that long; "2020" and "2006" came out of "2026")
+      const minYear = def.vitais.includes('Valor') ? new Date().getFullYear() - 5 : 1900;
       if (d < 1 || d > 31 || mo < 1 || mo > 12 || y < minYear || y > new Date().getFullYear() + 1) continue;
       const key = `${dm[1]}/${dm[2]}/${yr}`;
       const lineStart = textUpper.lastIndexOf('\n', dm.index) + 1;
@@ -493,6 +495,7 @@
         if (!m[1] && before && /[\d.\/-]/.test(before)) continue;
         const num = parseFloat(m[2].replace(/[.,\s]/g, '') + '.' + m[3]);
         if (!(num > 0 && num < 100000)) continue;
+        if (def.exigePalavra && !keyword) continue;   // cupom: "R$" sozinho não basta (ver leitores/nfce.js)
         found = true;
         add(num, (m[1] ? 4 : 0) + (keyword ? 3 : 0));
       }
