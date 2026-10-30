@@ -385,6 +385,31 @@ Valor errado mostrado: nenhum (o 23,09 da 0.7.6 sumiu). Durante o trabalho a fai
 
 `testes/offline.js`: 50 de 50 (eram 45). Os 5 novos usam canhotos de mentira: valor em letra grande inclinado, de cabeça para baixo, de lado com "23.00", dois girados numa foto só lidos separados, e a nota de mentira ligada ao aviso do banco.
 
+## Resultado da 0.7.8 (loja pelo CNPJ na Receita e a nota na Sefaz, 30/10/2026)
+
+Medido antes (0.7.7) e depois (0.7.8) nas mesmas fotos e arquivos (fora do repositório; "Não sei, descobrir"; o medidor com `INTERNET=cnpj`, que deixa passar só a consulta do CNPJ). A consulta roda depois da leitura, então o valor, a data e os lançamentos não podiam mudar, e não mudaram em nenhum papel. Valor: certo / em dúvida com o certo entre as opções / em dúvida / vazio / errado.
+
+| Conjunto | 0.7.7 | 0.7.8 |
+|---|---|---|
+| 37 fotos das etapas 2 a 5 (43 papéis): valor | 33 / 3 / 1 / 6 / 0 | 33 / 3 / 1 / 6 / 0 (igual) |
+| As mesmas 37: estabelecimento certo | 13 | **16** |
+| As mesmas 37: papéis com categoria | 2 | **10** (de 13 com CNPJ lido; mais 2 com a atividade, sem categoria) |
+| 14 fotos com vários papéis (27 papéis): valor | 21 / 3 / 1 / 2 / 0 | igual |
+| As mesmas 14: estabelecimento certo | 12 | **17** |
+| As mesmas 14: papéis com categoria | 1 | **13** (de 16 com CNPJ lido) |
+| Canhotos e prints da mesma compra (33 papéis): lançamentos certos | 36 de 36 | 36 de 36; estabelecimento certo 2 → 3; com categoria 0 → 8 (8 com CNPJ lido) |
+| Cupom de supermercado e sacolão | estabelecimento 1 de 2, categoria 1 | **2 de 2**, categoria 2 |
+| Foto de 4 canhotos amassados: valor | 3 / 0 / 0 / 1 / 0 | igual; estabelecimento certo 1 → 2, categoria 0 → 2 |
+| 52 fotos de tipos variados: tipo certo | 35 de 55 | 35 de 55 (igual); 8 papéis ganharam categoria |
+| **Total das pastas de dinheiro (109 papéis, 41 com CNPJ lido): estabelecimento certo / com categoria** | 29 / 4 | **40 / 35** (mais 3 com a atividade sem categoria); nenhum papel piorou |
+| Tempo médio por foto (37 fotos / 14 fotos / 4 canhotos) | 15,4 s / 19,6 s / 37,6 s | 13,3 s / 17,3 s / 39,7 s (a consulta leva menos de 1 s; o resto é a oscilação da máquina) |
+
+Na primeira medição dois papéis pioraram: a Receita não registra nome fantasia para essas lojas, e o app trocou o nome impresso no papel pela razão social, que a pessoa não reconhece. Daí a regra de manter o nome do papel em Estabelecimento (e a razão social exata no campo dela) quando a Receita não tem nome fantasia; na medição final nenhum papel piorou. Dos 41 CNPJs lidos, 3 ficaram sem nada: dois sem CNPJ válido na Receita (dígito trocado na leitura que passou na conferência, ou CNPJ que não existe) e um com a atividade fora da tabela, mostrada em "Atividade". Num DANFE o único CNPJ lido era o da transportadora (pendência abaixo).
+
+Valor errado mostrado: nenhum. Pedidos para fora do app: só as consultas de CNPJ, uma por loja nova.
+
+`testes/offline.js`: 61 de 61 (eram 50). Os 11 novos simulam o serviço de CNPJ por uma rota (nada sai de verdade): loja fora da base ganha nome fantasia, razão social e categoria; sem internet a resposta guardada vale; o segundo serviço responde quando o primeiro cai; loja sem nome fantasia mostra a razão social, ou o nome impresso no papel quando é outro; atividade fora da tabela mostra a descrição e o CPF mascarado de um MEI sai da razão social; a chave em Ajustes desliga e religa a consulta; só o número do CNPJ sai do aparelho; o QR code `.gov.br` de uma nota ganha o botão da Sefaz, e outro endereço impresso num papel não ganha nada.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **PDF escaneado de várias páginas:** cada página é lida como um papel; o saldo do fim não confere os lançamentos das páginas de antes, e a fatura escaneada não acha o total na página das compras. Juntar as páginas escaneadas num papel só, como já acontece com as páginas de texto.
