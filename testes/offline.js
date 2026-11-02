@@ -386,6 +386,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     '001 7890000000017 ARROZ BRANCO EXEMPLO 5KG 1 UN X 21,90 2I,90', '002 7890000000024 FEIJAO PRETO EXEMPLO 2 UN X 8,50 I7,00', 'QTD. TOTAL DE ITENS 2',
     'VALOR TOTAL R$ 3B,9O', 'VALOR A PAGAR R$ 3B,9O', 'FORMA DE PAGAMENTO', 'CARTAO DE CREDITO 3B,9O', "'b Totais Incid (Lei Fed 12.741/2012): R$ 9,06", 'EMISSAO: 10/10/2026 14:05', ''].join('\n'));
   const canhotoVelho = file('canhoto-velho.txt', ['VIA CLIENTE', 'BAR EXEMPLO ME', 'CNPJ: ' + cnpjFicticio, '10/10/2006 14:07', 'CREDITO A VISTA', 'MASTERCARD ****1234', 'VALOR R$ 36,00', 'AUT 654321 NSU 000123', ''].join('\n'));
+  // canhoto com o valor ilegível e a linha dos tributos com "Trib" lido como "Trip" (foto de 02/11): o 6,53 não pode virar valor nem opção
+  const canhotoImpostos = file('canhoto-impostos.txt', ['VIA CLIENTE', 'LOJA EXEMPLO ME', 'CREDITO A VISTA', 'MASTERCARD ****1234', 'VALOR R$ 4B,OO', 'Conf. Lei 12.741/2012 Triputacao aprox. R$6.53 (13.45%) Federal', 'AUT 654321 NSU 000123', ''].join('\n'));
   const receita = file('receita.txt', 'CONSULTORIO EXEMPLO\nRECEITUARIO\nUSO ORAL\nREMEDIO EXEMPLO 500 MG\nTOMAR 1 COMPRIMIDO DE 8 EM 8 HORAS POR 5 DIAS\nDRA. EXEMPLO - CRM 000000\n');
 
   // ---------- ajudantes ----------
@@ -812,6 +814,12 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const velho = await send(page, [canhotoVelho], 'auto');
   check(velho.values[0] === 'R$ 36,00' && !velho.fields[0].Data && velho.fields[0].Hora === '14:07', `comprovante com ano 2006 (lido errado): a data fica vazia, o resto segue (Valor=${velho.values[0]}, Data="${velho.fields[0].Data || ''}")`);
   await page.close();
+  page = await open();
+  const impC = await send(page, [canhotoImpostos], 'auto');
+  const chipsImpC = await page.$$eval('.valor-chip', e => e.map(x => x.textContent));
+  check(impC.values[0] === '' && !chipsImpC.some(c => /6,53/.test(c)),
+    `canhoto com o total ilegível: a linha dos tributos ("Triputacao aprox. R$6.53", Lei 12.741) não vira valor nem opção (Valor="${impC.values[0]}", opções=${chipsImpC.join('|') || 'nenhuma'})`);
+  await page.close();
   const trabalhoGuardado = pg => pg.evaluate(() => new Promise(ok => { const r = indexedDB.open('leitor-ocr', 1); r.onupgradeneeded = () => r.result.createObjectStore('trabalho'); r.onsuccess = () => { const q = r.result.transaction('trabalho').objectStore('trabalho').get('atual'); q.onsuccess = () => ok(q.result ? { estado: q.result.estado, papeis: (q.result.papeis || []).length } : null); q.onerror = () => ok(null); }; r.onerror = () => ok(null); }));
   page = await open();
   await page.evaluate(() => { localStorage.removeItem('wl:pedido'); localStorage.removeItem('wl:solto'); });
@@ -820,6 +828,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   await page.click('#docTypeDialog button[data-tipo="cartao"]');
   await page.waitForFunction(() => document.getElementById('ocrProgressWrap').style.display === 'flex' && document.getElementById('ocrPercentText').textContent !== '10%', null, { timeout: 120000 });
   await page.click('.nav-tab-btn[data-tab="tab-history"]');
+  // a pílula aparece logo depois do toque na aba (setTimeout 0 no app): esperar por ela, não olhar no mesmo instante
+  await page.waitForSelector('#pilulaLeitura:not([hidden])', { timeout: 500 }).catch(() => {});
   const pilula = await page.$eval('#pilulaLeitura', e => ({ visivel: !e.hidden, texto: e.textContent }));
   const guardadoNoMeio = await trabalhoGuardado(page);
   await page.evaluate(() => sessionStorage.setItem('teste:manterTrabalho', '1'));

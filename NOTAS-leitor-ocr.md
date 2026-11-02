@@ -446,6 +446,28 @@ A primeira rodada da medição saiu inválida por causa do próprio "trabalho gu
 
 Não medido aqui: o comportamento no celular de verdade (tela apagando, troca de app); o Marcelo testa.
 
+## Resultado da 0.8.2 (a linha dos impostos no canhoto e o dígito trocado, 02/11/2026)
+
+Foto nova de 02/11 (fora do repositório): 7 papéis na mesma mesa clara, vários de lado ou de cabeça para baixo (3 cupons NFC-e e 4 canhotos). Medida inteira e também com cada papel recortado da mesma foto, como se fosse fotografado sozinho.
+
+Duas correções, as duas para não mostrar valor errado:
+
+1. **A linha dos impostos no canhoto.** Um cupom amassado, achado só pela metade de baixo, foi lido como canhoto; a regra que tira a linha dos tributos (0.8.1) estava só no leitor de cupom, e o do canhoto só olhava "TRIB", que no papel saiu "Triputacao". Agora o leitor de canhoto (`leitores/cartao.js`) ignora também a linha com "12.741", "Lei Fed", "Incid" e "aprox".
+2. **O dígito trocado.** Num cupom recortado, duas leituras leram "VALOR A PAGAR 106,27" (o papel diz 106,22) e o app preenchia 106,27; a terceira leitura trazia 106,22 na linha do cartão. Quando outra leitura do mesmo papel traz, numa linha de total ou de pagamento, um valor que só difere num dígito do combinado, o app fica em dúvida e oferece os dois (`leitura/texto.js`, `decidirValor`; e no cupom, `leitores/nfce.js`, `aPagarDe`). Os valores conferidos por soma (da nota, dos produtos, do cupom) e os de arquivo continuam valendo sozinhos.
+
+Valor: certo / em dúvida com o certo entre as opções / em dúvida / vazio / errado.
+
+| Conjunto | 0.8.1 | 0.8.2 |
+|---|---|---|
+| Foto de 7 papéis inteira: papéis achados | 4 de 7 | 4 de 7 |
+| Foto de 7 papéis inteira: valor nos 4 achados | 1 / 1 / 1 / 1 / 0, com **a linha dos tributos oferecida como opção** | 1 / 1 / 0 / 2 / 0 |
+| Os 7 papéis recortados: valor | 3 / 1 / 0 / 2 / **1 errado** (106,27) | 3 / 2 / 0 / 2 / **0** |
+| `testes/offline.js` | 76 de 76 (o canhoto inventado do teste novo saía com o valor dos tributos **preenchido**) | 77 de 77 |
+
+**Não medido:** as 37, as 14 e as outras coleções ficaram no ambiente de trabalho anterior e não existem mais aqui. A regra do dígito pode passar algum papel de "certo" para "em dúvida com o certo entre as opções" (um toque a mais), nunca para errado. O dígito trocado só pode ser testado com foto (com texto de arquivo há uma leitura só), então não ganhou teste no `testes/offline.js`. O teste "página recarregada no meio da leitura" falhava às vezes nesta máquina, também na 0.8.1: olhava a pílula no mesmo instante do toque na aba, antes de o app mostrá-la; agora espera por ela (até meio segundo).
+
+Ainda não resolvido nesta foto: na foto inteira, 3 dos 7 papéis não são achados (um cupom comprido de cabeça para baixo, um canhoto pequeno e um canhoto de lado) e um canhoto pequeno é juntado ao cupom vizinho; recortados, a via da PagBank girada (valor em letra grande) e o cupom amassado do delivery saem vazios. Recortar melhora muito: de 1 certo e 1 em dúvida-certo em 7 papéis para 3 e 2.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **PDF escaneado de várias páginas:** cada página é lida como um papel; o saldo do fim não confere os lançamentos das páginas de antes, e a fatura escaneada não acha o total na página das compras. Juntar as páginas escaneadas num papel só, como já acontece com as páginas de texto.
