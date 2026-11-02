@@ -6,7 +6,8 @@ Leitura.registrarLeitor({
   vitais: ['Valor'],
   sinais: /VIA CLIENTE|VIA DO CLIENTE|COMPROVANTE DE (?:VENDA|PAGAMENTO)|CART[AÃ]O|CR[EÉ]DITO|D[EÉ]BITO|MASTERCARD|\bVISA\b|\bELO\b|\bNSU\b|\bAUTH?[:=\s]|\bAID\b|GETNET|CIELO|\bSTONE\b|\bREDE\b|PAGSEGURO|INFINITEPAY|SENHA APROVADA|PARCELA|VALOR:|\bCARD\b|APPROVAL|AMOUNT/g,
   palavras: /VALOR|[TIF1]OTAL|CR[EÉ]DITO|D[EÉ]BITO|COMPRA|VENDA|APROVAD|PAGO|PAGAR|AMOUNT/,
-  ignorar: /\d\s?X\s|PARCELA|POR PESSOA|TRIB|DESCONTO|TROCO|SALDO|TAXA|JUROS|LIMITE|SUB-?\s?TOTAL|\bTIP\b|SUGGEST/,
+  // a linha dos tributos também pelo número da lei (12.741), "Incid" e "aprox": no papel amassado "Trib" vira "Trip"
+  ignorar: /\d\s?X\s|PARCELA|POR PESSOA|TRIB|12\.?741|LEI FED|INCID|APROX|DESCONTO|TROCO|SALDO|TAXA|JUROS|LIMITE|SUB-?\s?TOTAL|\bTIP\b|SUGGEST/,
   // Campos só da via do cartão
   campos(textUpper, fieldsMap) {
     // 5. Bandeira: MASTERCARD, VISA, ELO, AMEX, AMERICAN EXPRESS, HIPERCARD, DINERS
