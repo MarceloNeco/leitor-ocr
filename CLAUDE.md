@@ -97,7 +97,9 @@ Antes de qualquer alteração neste repositório, leia e siga **inteira** a dire
 Resumo do que nunca pode ser esquecido (o detalhe está na diretriz):
 
 - **Regra zero**: antes de implementar no app um requisito da diretriz que ainda não existe aqui, liste o que
-  falta e confirme com o dono. Não crie repositórios nem publique (push/Pages) sem permissão explícita.
+  falta e confirme com o dono. Não crie repositórios sem permissão explícita.
+  **Publicar é sempre autorizado** (dono, 02/Nov/2026): ao terminar e testar, faça o pull request e o merge sem
+  perguntar e conte o que mudou.
 - **Segurança**: nenhuma senha, chave de API, token ou segredo entra no código, no repositório, no chat ou em
   arquivo. Chaves de IA ficam só no cofre do navegador da pessoa. Se uma chave aparecer no chat, peça para revogar.
 - **Idioma**: textos para o usuário em PT e EN; instruções para o dono em português, passo a passo, como para

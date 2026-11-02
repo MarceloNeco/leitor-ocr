@@ -32,6 +32,10 @@ naquele app**, listar quais são e confirmar com o usuário quais entram agora. 
 em silêncio o que ele não pediu naquela conversa. O que já está no módulo comum vem junto sem
 perguntar; o que é novo, pergunta.
 
+**Publicar é sempre autorizado** (decisão do dono, 02/Nov/2026: ele comanda pelo celular). Ao terminar uma mudança e
+testar, fazer o pull request e o merge (publicar) sem perguntar e, depois, contar em linguagem simples o que mudou e
+onde ver. Criar repositório novo continua pedindo permissão.
+
 ## Planilha de controle
 
 O usuário mantém a lista-mestre em `SolverONE DIRETRIZES GERAIS vN <data>.xlsx`: aba
@@ -881,6 +885,37 @@ com ícone e guarda os dados separados do site.
   essa cópia guarda os dados **separados** do site (use exportar/importar para levar dados).
 - Config: `offline: { ativo: true, arquivos: [...], wizard: true }`; nos três apps de fora,
   `offline: { ativo: false }`.
+- **Aviso de versão nova dentro do app, com "Atualizar"** (decisão do dono, 02/Nov/2026; primeiro nos jogos do
+  Bolinho de Chuva, `FeatureTesting/atualizar.js`). O app instalado é um site guardado no aparelho: com internet,
+  o service worker já busca a versão nova (rede primeiro) e troca a cópia sozinho; sem internet, abre a cópia. O que
+  vale para todo app:
+  - ao abrir, anotar a versão que está rodando (`versoes.json`) e conferir de novo no site ao voltar para o app
+    (`visibilitychange`), quando a internet volta (`online`) e a cada 30 min com o app aberto (TV e tablet ficam horas
+    abertos);
+  - versão do site diferente → aviso no topo **"✨ Versão nova do <app> (x.y.z) — Atualizar / Depois"**, PT/EN, alvo de
+    44 px, sem cobrir controle e sem repassar toque/tecla para o app;
+  - **Atualizar** = `registration.update()`, esperar a cópia nova instalar no aparelho (no máximo 15 s) e recarregar;
+    **Depois** = não pergunta de novo pela mesma versão naquela aba;
+  - **nunca recarregar sozinho** (partida, formulário ou leitura no meio);
+  - o arquivo do aviso entra na lista do `sw.js` (abre sem internet) e fica fora da cópia em arquivo único.
+- **Tela cheia no celular e no tablet** (decisão do dono, 02/Nov/2026, pelo tablet Fire da Amazon, cujo navegador abre o
+  atalho da tela inicial ainda com a barra de endereço): pedir `requestFullscreen({ navigationUI: 'hide' })` num toque
+  da pessoa, só em tela de toque (`pointer: coarse`) e fora do modo aplicativo (`display-mode` standalone/fullscreen).
+  - Página de lista ou leitura (hub, Contador): no **primeiro toque** em qualquer lugar. Jogo: no botão de começar
+    (**Jogar**), porque mudar o tamanho da tela no meio de um toque da partida atrapalha.
+  - Pedir quando o dedo **sai** da tela (`pointerup`/`touchend`/`click`/`keydown`); no `pointerdown` de toque o
+    navegador ainda não libera. Recusou → tenta no próximo toque; a pessoa saiu da tela cheia → não insiste.
+  - Toque no botão de instalar não conta (a janela "Instalar" do navegador precisa daquele toque).
+  - Limites, para dizer ao usuário: sem um toque não dá; trocar de página encerra a tela cheia (cada página pede de
+    novo); iPhone não tem tela cheia de página.
+- **Vários apps de uma vez (hub, ex.: Bolinho de Chuva)**: navegador nenhum instala vários ícones de uma vez — cada app só
+  se instala a partir da própria página. O hub oferece: **"Guardar todos neste aparelho"** (registra o service worker de
+  cada app, com andamento, e todos abrem sem internet) e **"Instalar um por um"** (abre cada app com `?instalar=1&fila=1`,
+  a barra de instalar dele aparece e, depois de instalar ou pular, segue para o próximo e volta ao hub no fim). Cada
+  cartão também tem o seu **📲 Instalar**. App que depende de internet (YouTube, TV) mostra **"🌐 Só com internet"**.
+- **Cache do service worker só do próprio app** (achado em 01/Nov/2026): o `sw.js` antigo do Contador apagava, no
+  `activate`, todo cache que não fosse o dele, e abrir o Contador apagava o modo sem internet dos jogos do Bolinho.
+  Conferir em todo app: nome do cache com o nome do app e `activate` apagando só esse prefixo (ver "Versionamento").
 
 ## Rede: Wi-Fi ou dados
 
