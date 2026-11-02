@@ -20,6 +20,7 @@ seção "Domínio".
 | RiseONE | exercício, dieta e saúde | `rise-one` | beta |
 | Eleições 2026 | infográficos dos planos de governo (réplica alpha no ChatGPT Sites) | `planos-candidatos-2026` | beta |
 | Contador de Histórias | acervo, leitura e criação de histórias | `contador-de-historias` | beta |
+| **Bolinho de Chuva** | brincadeiras para criança e família: estante + Bagunçolândia, Peluqueria, Vruuum!, Purpurina, Rabiscolândia, Dança na Sala; em **solverone.com.br/kids** (saiu do FeatureTesting e do Portal em 02/Nov/2026) | `kids` | beta |
 | CifrasONE (Cifras e Acordes) | cifras com auto-rolagem, acordes, afinador | `cifras-violao` | beta |
 | PetLover | a definir | — | backlog |
 
