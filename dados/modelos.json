@@ -223,11 +223,13 @@
     "Dia do vencimento": {
      "ancora": "VENC[IÍ]VEIS NO DIA",
      "onde": "mesma-linha",
+     "inteira": true,
      "pega": "regex:VENC[IÍ]VEIS NO DIA\\s*(\\d{1,2})"
     },
     "Parcelas": {
      "ancora": "MENSAIS IGUAIS",
      "onde": "mesma-linha",
+     "inteira": true,
      "pega": "regex:(\\d{1,2})\\s+MENSAIS"
     }
    },

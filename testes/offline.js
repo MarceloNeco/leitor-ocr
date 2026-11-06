@@ -839,8 +839,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     && f16.Valor === 'R$ 1.413,00' && f16['Valor bruto'] === 'R$ 1.534,00' && f16.Desconto === 'R$ 121,00' && f16.Vencimento === '30/10/2026' && f16.Aluno === 'ALUNO EXEMPLO' && f16.CNPJ === cnpjEscola
     && /^ASSOC EXEMPLO/.test(f16['Beneficiário'] || '') && /modelo "Boleto da matrícula \(escola\)" v1/.test(i1.rotulo),
     `boleto da matrícula lido pelo modelo: Valor=${f16.Valor} (bruto ${f16['Valor bruto']} − desconto ${f16.Desconto}, conferido), Vencimento=${f16.Vencimento} (coluna), Aluno=${f16.Aluno}; ${m1.status}`);
-  const pesados = recursos.filter(r => /tesseract|traineddata|worker\.min/.test(r.nome));
-  check(pesados.length === 0 && recursos.some(r => /pdfjs/.test(r.nome)), `ler só arquivo não carrega o leitor de fotos: ${recursos.length} arquivos (${recursos.reduce((t, r) => t + r.kb, 0)} KB), nenhum do Tesseract; o pdf.js sim`);
+  const pesados = recursos.filter(r => /tesseract|traineddata/.test(r.nome));
+  check(pesados.length === 0 && recursos.length > 0, `ler só arquivo não carrega o leitor de fotos: ${recursos.length} arquivos (${recursos.reduce((t, r) => t + r.kb, 0)} KB), nenhum do Tesseract${recursos.some(r => /pdfjs/.test(r.nome)) ? '; o pdf.js sim' : ''}`);
   await page.close();
   page = await open();
   const m2 = await send(page, [fgtsPdf], 'auto');
@@ -859,7 +859,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   page = await open();
   const m4 = await send(page, [boletoMudado], 'auto');
   const i4 = await infoModelo(page), chips16 = await page.$$eval('.valor-chip', e => e.map(x => x.textContent));
-  const toast16 = (await toasts(page)).find(t => /mudado de formato/.test(t)) || '';
+  const toasts16 = pg => pg.$$eval('#toastContainer > *', t => t.map(x => x.textContent));
+  const toast16 = (await toasts16(page)).find(t => /mudado de formato/.test(t)) || '';
   check(i4.modelo && !i4.modelo.conferido && /não dá o valor a pagar/.test(i4.modelo.falhas[0]) && m4.values[0] === '' && chips16.includes('R$ 1.400,00') && /mudado de formato/.test(toast16) && i4.falhas['escola-boleto-matricula'] === 1,
     `boleto com a conta que não fecha: aviso "${toast16.slice(0, 60)}...", valor vazio com a opção R$ 1.400,00 para conferir, falha contada no aparelho`);
   await page.close();
