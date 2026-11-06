@@ -1,0 +1,26 @@
+# Amostra-esqueleto (MODELOS.md): o texto que o pdf.js tira do documento, com os dígitos trocados por 0 e os nomes de pessoas por X. Só o layout. Documento fictício.
+COLÉGIO ESCOLA EXEMPLO
+Rua Escola Exemplo, 00
+BAIRRO - São Paulo/SP
+Cnpj: 00.000.000/0000-00
+Aluno XXXX XXXX Matricula 00000000
+CursoEnsino Fundamental - Anos Iniciais Série / Turma 0º Ano _ Manhã Numero
+Tipo Parcela Parcela Valor Bruto Descontos Valor a Pagar
+0ª Parcela da Anuidade -
+0 0.000,00 000,00 0.000,00
+EFAI
+Valor do Documento
+Observações:
+0) APÓS O VENCIMENTO COBRAR MULTA DE 0,00% ao mês
+0.000,00
+0) COBRAR MORA DE 0,000% a.d.
+000-0 Recibo do Pagador
+Beneficiário CNPJ
+ASSOC XXXX "COLEGIO ESCOLA EXEMPLO" 00.000.000/0000-00
+00.000.000/0000-00
+Rua Escola Exemplo, 00 - BAIRRO - Cep: 00000-000
+Vencimento Carteira Especie
+Agencia/Código do Beneficiário Quantidade Valor do Documento
+00/00/0000 R$ 0.000,00
+0000/0000000 0
+(-) Desconto/Abatimento (-) Outras Deduções (+) Mora/Multa

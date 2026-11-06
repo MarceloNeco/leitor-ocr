@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.8.1';
+  L.versao = '1.9.0';
   // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
   L.app = L.app || null;
 
@@ -143,6 +143,7 @@
   L.ler = async (fontes, opcoes = {}) => {
     const o = Object.assign({ tipo: 'auto', rotacao: 0, aviso: () => {}, progresso: () => {} }, opcoes);
     if (L.carregarEstabelecimentos) await L.carregarEstabelecimentos();   // as redes conhecidas, para o nome da loja
+    if (L.carregarModelos) await L.carregarModelos();                       // os modelos de documento (leitura/modelos.js)
     const fotos = fontes.filter(f => f.img);
     let lidas = [];
     if (fotos.length) {
@@ -150,8 +151,30 @@
       lidas = await L.lerFotos(fotos, o);
     }
     const papeis = [];
+    // Modelos (leitura/modelos.js): um arquivo com texto (PDF, TXT, DOCX, planilha) é
+    // um documento só quando um modelo o reconhece pelas páginas juntas
+    const porModelo = new Map();   // fonte → papel do grupo (só na primeira fonte do arquivo)
+    if (L.modelos) {
+      const grupos = new Map();
+      fontes.filter(f => !f.img).forEach(f => { const k = f.arquivo || f.nome || ''; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(f); });
+      for (const grupo of grupos.values()) {
+        const textoDe = f => f.texto || (f.linhas || []).map(l => l.join('  ')).join('\n');
+        const texto = grupo.map(textoDe).join('\n');
+        if (!texto.trim() || !L.modelos.reconhecer(texto, o.tipo)) continue;
+        let inicio = 0;
+        const fonte = grupo.length === 1 ? grupo[0] : Object.assign({}, grupo[0], {
+          texto, nome: (grupo[0].nome || '').replace(/,? ?[Pp]ágina \d+$/, ''), posicoes: grupo.flatMap(f => f.posicoes || []),
+          paginas: grupo.map(f => { const p = { n: f.pagina, inicio }; inicio += textoDe(f).split('\n').length; return p; })
+        });
+        const papel = L.lerArquivo(Object.assign({}, fonte, { itens: undefined, linhas: undefined }), o.tipo);
+        papel.modelo = L.modelos.aplicarEm(papel.readings[0], o.tipo);
+        if (papel.modelo && o.tipo === 'auto' && papel.modelo.modelo.tipo) papel.tipo = papel.modelo.modelo.tipo;
+        grupo.forEach((f, i) => porModelo.set(f, i === 0 ? papel : null));
+      }
+    }
     fontes.forEach(f => {
       if (f.img) papeis.push(...lidas.filter(p => p.fonte === f));
+      else if (porModelo.has(f)) { if (porModelo.get(f)) papeis.push(porModelo.get(f)); }
       else papeis.push(L.lerArquivo(f, o.tipo));
     });
     // Um PDF de fatura, extrato ou informe é um documento só: o tipo vem do
@@ -245,6 +268,33 @@
     const base = L.texto.buildResult(papel.readings, papel.tipo, papel.codes, papel.tilt, papel.grandes);
     const leitor = L.leitores[L.tipo(papel.tipo).leitor];
     const lidos = leitor && leitor.itens ? leitor.itens(papel.readings, papel.tipo) : null;
-    return lidos ? L.leitores.extrato.resultado(Object.assign({}, papel, { itens: lidos.itens }), base, lidos) : base;
+    const r = lidos ? L.leitores.extrato.resultado(Object.assign({}, papel, { itens: lidos.itens }), base, lidos) : base;
+    return papel.modelo ? comModelo(r, papel.modelo, papel.tipo) : r;
   };
+
+  // O resultado de um papel lido por modelo: os campos do modelo vêm primeiro
+  // (os outros que a leitura comum achou completam); o Valor é o do modelo quando
+  // o modelo o define (vazio se ele falhou: antes vazio do que errado); a tabela
+  // do modelo vira os itens; a situação diz o modelo e o que não conferiu.
+  function comModelo(r, md, tipo) {
+    const ja = new Set(md.fields.map(f => f.key));
+    // da leitura comum só fica o resumo dos lançamentos (o resto é chute que o modelo substitui)
+    const resumo = new Set(['Período', 'Lançamentos', 'Entradas', 'Saídas', 'Saldo']);
+    r.fields = md.fields.concat(r.fields.filter(f => !ja.has(f.key) && resumo.has(f.key)));
+    if ('Valor' in md.campos) {
+      // conta que não fecha: o valor lido vira opção, não certeza (antes vazio do que errado)
+      const duvida = !md.conferido && md.campos.Valor !== null;
+      r.valor = duvida ? null : md.campos.Valor;
+      r.candidates = duvida ? [md.campos.Valor] : [];
+      if (duvida) r.fields = r.fields.filter(f => f.key !== 'Valor');
+    }
+    if (md.itens && md.itens.length && md.itens[0].data !== undefined && md.itens[0].valor !== undefined && L.leitores.extrato) {
+      r.itens = md.itens.map(i => L.leitores.extrato.contrato({ data: i.data, descricao: i.descricao || '', valor: i.valor }, { tipo, conferido: md.conferido, papel: '' }));
+    } else if (md.itens) r.tabela = md.itens;
+    r.status = md.conferido ? { cls: 'ok', text: `Lido pelo modelo "${md.modelo.nome}": conferido` }
+      : { cls: 'warn', text: `Modelo "${md.modelo.nome}": ${md.falhas[0]}` };
+    r.hint = null;
+    r.modelo = md;
+    return r;
+  }
 })();

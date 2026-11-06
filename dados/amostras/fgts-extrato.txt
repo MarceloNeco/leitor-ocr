@@ -1,0 +1,11 @@
+# Amostra-esqueleto (MODELOS.md): o texto que o pdf.js tira do documento, com os dígitos trocados por 0 e os nomes de pessoas por X. Só o layout. Documento fictício.
+EXTRATO DO FGTS
+Empregador: XXXXXXX XXXXXXX XXXXXXXXXX LTDA CNPJ: 00.000.000/0000-00
+Data de admissao: 00/00/0000
+Data e codigo de afastamento: 00/00/0000 - I0
+DATA LANCAMENTOS VALOR TOTAL
+00/00/0000 000-DEPOSITO MARCO/0000 R$ 0,00 R$ 000.000,00
+00/00/0000 CREDITO DE JAM 0,000000 R$ 000,00 R$ 000.000,00
+00/00/0000 SAQUE DEP JAM R$ 000,00 R$ 000.000,00
+Saldo disponivel: R$ 000.000,00
+Atualizado em 00/00/0000

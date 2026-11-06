@@ -65,6 +65,14 @@
 //    aba do app; descartar apaga o trabalho guardado. Cupom: a linha dos
 //    impostos ("Lei Fed 12.741") nunca vira o valor, e "R$" sozinho não basta;
 //    ano velho demais num comprovante é erro de leitura (data vazia).
+// 16. Modelos (MODELOS.md): PDFs de mentira lidos por modelo, sem IA: boleto
+//    da matrícula (valores, vencimento na coluna, beneficiário, aluno; a soma
+//    conferida), extrato do FGTS (campos e a tabela de lançamentos) e contrato
+//    da escola (escola, ano, aluno, tabela de etapas). Boleto com a conta que
+//    não fecha: aviso "mudou de formato", valor vazio com a opção para
+//    conferir, falha contada. Modelo ensinado no aparelho tem preferência.
+//    O esqueleto troca dígitos por 0 e nomes por X e mantém os rótulos. Ler
+//    só arquivo não carrega o leitor de fotos (Tesseract).
 // 14. Ler com IA (nível C), com o Gemini e o Claude simulados por rotas (nada
 //    sai de verdade): sem chave, o botão não aparece; a chave colada em
 //    Ajustes é testada (lista de modelos) e guardada no cofre comum dos apps
@@ -344,6 +352,26 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const semValor = await shot(`<div style="width:520px;padding:40px 30px;font:bold 26px monospace;color:#111;background:#fff;line-height:1.6;">VIA CLIENTE (1)<br>BAR EXEMPLO ME<br>10/10/2026 14:07<br>CREDITO A VISTA<br><br>AUT 654321 NSU 000123</div>`, 'sem-valor.png');
   // a nota fotografada da 13 (o QR code vem de um leitor de códigos trocado no teste)
   const cupomFoto = await shot(`<div style="width:560px;padding:30px;font:bold 22px monospace;color:#111;background:#fff;line-height:1.5;white-space:pre-line">${cupom(cnpjLanche, '61,75').replace(/DESCONTO R\$ 1,50\n/, '')}</div>`, 'cupom-foto.png');
+  // (16) documentos de mentira para os modelos
+  const pre = ls => `<div style="font:13px monospace;line-height:1.5;white-space:pre">${ls.join('\n')}</div>`;
+  const cnpjEscola = cnpjCom('112233440001');
+  const boletoEscola = await folha('boleto-escola.pdf', pre(['COLÉGIO ESCOLA EXEMPLO', 'Rua Escola Exemplo, 36', 'Cnpj: ' + cnpjEscola, 'Aluno ALUNO EXEMPLO Matricula 12345678',
+    'Tipo Parcela Parcela Valor Bruto Descontos Valor a Pagar', '1ª Parcela da Anuidade -', '1 1.534,00 121,00 1.413,00', 'EFAI', 'Valor do Documento', 'Observações:',
+    '1) APÓS O VENCIMENTO COBRAR MULTA DE 2,00% ao mês', '1.413,00', '033-7 Recibo do Pagador', 'Beneficiário CNPJ', 'ASSOC EXEMPLO "COLEGIO ESCOLA EXEMPLO" ' + cnpjEscola,
+    'Rua Escola Exemplo, 36 - BAIRRO - Cep: 00000-000', 'Vencimento Carteira Especie', 'Agencia/Código do Beneficiário Quantidade Valor do Documento', '30/10/2026 R$ 1.534,00', '0000/0000000 5']));
+  const boletoMudado = await folha('boleto-mudado.pdf', pre(['COLÉGIO ESCOLA EXEMPLO', 'Aluno ALUNO EXEMPLO Matricula 12345678', 'Tipo Parcela Parcela Valor Bruto Descontos Valor a Pagar',
+    '1ª Parcela da Anuidade -', '1 1.534,00 121,00 1.400,00', 'Beneficiário CNPJ', 'ASSOC EXEMPLO ' + cnpjEscola, 'Vencimento Carteira Especie', '30/10/2026 R$ 1.534,00']));
+  const fgtsPdf = await folha('fgts.pdf', pre(['EXTRATO DO FGTS', 'Empregador: EMPRESA EXEMPLO TECNOLOGIA LTDA CNPJ: ' + cnpjEscola, 'Data de admissao: 01/03/2018',
+    'Data e codigo de afastamento: 30/06/2024 - I1', 'DATA LANCAMENTOS VALOR TOTAL', '10/04/2026 115-DEPOSITO MARCO/2026 R$ 0,00 R$ 100.000,00',
+    '21/04/2026 CREDITO DE JAM 0,002470 R$ 247,00 R$ 100.247,00', '21/06/2026 SAQUE DEP JAM R$ 247,00 R$ 100.000,00', 'Saldo disponivel: R$ 100.000,00', 'Atualizado em 01/07/2026']));
+  const contratoPdf = await folha('contrato.pdf', pre(['ASSOCIAÇÃO EDUCACIONAL EXEMPLO', 'CONTRATO DE SERVIÇOS DE EDUCAÇÃO ESCOLAR - 2027', 'Informações do(a) educando(a)', 'RA: 99999',
+    'Nome Completo:    ANA TESTE EXEMPLO', 'Informações do Pai', 'Nome Completo:    PEDRO TESTE EXEMPLO',
+    'CLÁUSULA 7ª: O valor da anuidade para o ano letivo de janeiro a dezembro de 2027 poderá ser parcelado em até 13 parcelas,',
+    'sendo a primeira parcela devida no ato da contratação, como antecipação da própria anuidade e 12 mensais iguais, de janeiro',
+    'a dezembro, vencíveis no dia 10. Havendo feriado, o primeiro ocorrerá em 11/01/2027.',
+    'Curso / Etapa         Valor da Anuidade    1ª Parcela Antecipada    Valor Restante    Número de Parcela    Valor de Cada Parcela',
+    '  Educação Infantil                R$ 36.788,00   R$ 1.472,00   R$ 35.316,00   12    R$ 2.943,00', '  Ens. Fundamental',
+    '                                   R$ 38.338,00   R$ 1.534,00   R$ 36.804,00   12    R$ 3.067,00', '  (1º ao 5º ano)', 'CLÁUSULA 8ª: outras coisas']));
   await gen.close();
 
   const txt = file('recibo.txt', 'LOJA EXEMPLO LTDA\nCNPJ 12.345.678/0001-90\nVIA CLIENTE\nCREDITO A VISTA\nMASTERCARD ************4321\nDATA 09/10/2026 14:22\nVALOR TOTAL R$ 42,50\n');
@@ -800,6 +828,54 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     'só endereço .gov.br vira botão: outro endereço impresso num papel não abre nada');
   await page.close();
   check(consultas.every(u => /^https:\/\/(minhareceita\.org|brasilapi\.com\.br\/api\/cnpj\/v1)\/\d{14}$/.test(u)), `nas consultas de CNPJ só o número da loja sai do aparelho (${consultas.length} consultas)`);
+
+  // 16. modelos: documentos lidos por modelo, sem IA
+  const infoModelo = pg => pg.evaluate(() => ({ tipo: papers[0].tipo, rotulo: document.getElementById('docTypeLabel').textContent, modelo: papers[0].result.modelo && { id: papers[0].result.modelo.modelo.id, conferido: papers[0].result.modelo.conferido, falhas: papers[0].result.modelo.falhas }, itens: (papers[0].result.itens || []).length, tabela: papers[0].result.tabela || null, falhas: Leitura.modelos.falhas() }));
+  page = await open();
+  const m1 = await send(page, [boletoEscola], 'auto');
+  const i1 = await infoModelo(page), f16 = m1.fields[0];
+  const recursos = await page.evaluate(() => performance.getEntriesByType('resource').map(e => ({ nome: e.name.replace(location.origin + '/', ''), kb: Math.round((e.transferSize || e.encodedBodySize || e.decodedBodySize || 0) / 1024) })));
+  check(i1.tipo === 'boleto' && i1.modelo && i1.modelo.id === 'escola-boleto-matricula' && i1.modelo.conferido && m1.status === 'Lido pelo modelo "Boleto da matrícula (escola)": conferido'
+    && f16.Valor === 'R$ 1.413,00' && f16['Valor bruto'] === 'R$ 1.534,00' && f16.Desconto === 'R$ 121,00' && f16.Vencimento === '30/10/2026' && f16.Aluno === 'ALUNO EXEMPLO' && f16.CNPJ === cnpjEscola
+    && /^ASSOC EXEMPLO/.test(f16['Beneficiário'] || '') && /modelo "Boleto da matrícula \(escola\)" v1/.test(i1.rotulo),
+    `boleto da matrícula lido pelo modelo: Valor=${f16.Valor} (bruto ${f16['Valor bruto']} − desconto ${f16.Desconto}, conferido), Vencimento=${f16.Vencimento} (coluna), Aluno=${f16.Aluno}; ${m1.status}`);
+  const pesados = recursos.filter(r => /tesseract|traineddata|worker\.min/.test(r.nome));
+  check(pesados.length === 0 && recursos.some(r => /pdfjs/.test(r.nome)), `ler só arquivo não carrega o leitor de fotos: ${recursos.length} arquivos (${recursos.reduce((t, r) => t + r.kb, 0)} KB), nenhum do Tesseract; o pdf.js sim`);
+  await page.close();
+  page = await open();
+  const m2 = await send(page, [fgtsPdf], 'auto');
+  const i2 = await infoModelo(page), f2 = m2.fields[0];
+  check(i2.tipo === 'extrato' && i2.modelo && i2.modelo.id === 'fgts-extrato' && i2.modelo.conferido && f2.Empregador === 'EMPRESA EXEMPLO TECNOLOGIA LTDA' && f2.CNPJ === cnpjEscola && f2['Admissão'] === '01/03/2018'
+    && f2.Afastamento === '30/06/2024' && f2.Valor === 'R$ 100.000,00' && f2['Atualizado em'] === '01/07/2026' && i2.itens === 3 && f2['Lançamentos'] === '3',
+    `extrato do FGTS lido pelo modelo: empregador, CNPJ, admissão, afastamento, saldo=${f2.Valor}, ${i2.itens} lançamentos da tabela (o último bate com o saldo)`);
+  await page.close();
+  page = await open();
+  const m3 = await send(page, [contratoPdf], 'auto');
+  const i3 = await infoModelo(page), f3 = m3.fields[0];
+  check(i3.tipo === 'contrato' && i3.modelo && i3.modelo.conferido && f3.Escola === 'ASSOCIAÇÃO EDUCACIONAL EXEMPLO' && f3['Ano letivo'] === '2027' && f3.Aluno === 'ANA TESTE EXEMPLO' && f3['Dia do vencimento'] === '10' && f3.Parcelas === '12'
+    && i3.tabela && i3.tabela.length === 2 && i3.tabela[0].etapa === 'Educação Infantil' && i3.tabela[0].parcela === 2943 && i3.tabela[1].parcela === 3067 && i3.tabela[1].parcelas === '12',
+    `contrato da escola lido pelo modelo: escola, ano ${f3['Ano letivo']}, aluno (o 1º "Nome Completo", nunca o pai), dia ${f3['Dia do vencimento']}, ${f3.Parcelas} parcelas, tabela de etapas com ${i3.tabela && i3.tabela.length} linhas`);
+  await page.close();
+  page = await open();
+  const m4 = await send(page, [boletoMudado], 'auto');
+  const i4 = await infoModelo(page), chips16 = await page.$$eval('.valor-chip', e => e.map(x => x.textContent));
+  const toast16 = (await toasts(page)).find(t => /mudado de formato/.test(t)) || '';
+  check(i4.modelo && !i4.modelo.conferido && /não dá o valor a pagar/.test(i4.modelo.falhas[0]) && m4.values[0] === '' && chips16.includes('R$ 1.400,00') && /mudado de formato/.test(toast16) && i4.falhas['escola-boleto-matricula'] === 1,
+    `boleto com a conta que não fecha: aviso "${toast16.slice(0, 60)}...", valor vazio com a opção R$ 1.400,00 para conferir, falha contada no aparelho`);
+  await page.close();
+  page = await open();
+  await page.evaluate(() => Leitura.modelos.adicionar({ id: 'meu-boleto', versao: 1, tipo: 'boleto', nome: { pt: 'Meu boleto (ensinado)' }, sinais: ['PARCELA DA ANUIDADE', 'VALOR A PAGAR', 'VENCIMENTO'],
+    campos: { Apelido: { ancora: '^ALUNO', onde: 'mesma-linha', pega: 'regex:^\\s*(\\S+)' }, Valor: { ancora: 'PARCELA DA ANUIDADE', onde: 'linha-abaixo', pega: 'dinheiro', indice: 2 } }, vitais: ['Valor'] }));
+  const m5 = await send(page, [boletoEscola], 'auto');
+  const i5 = await infoModelo(page);
+  const esq = await page.evaluate(() => Leitura.esqueleto('Aluno JOAO DA SILVA Matricula 12345678\nCPF: 123.456.789-00 email: fulano@exemplo.com\nValor a Pagar R$ 1.413,00'));
+  await page.evaluate(() => Leitura.modelos.remover('meu-boleto'));
+  const depoisRemover = await page.evaluate(() => Leitura.modelos.lista().some(m => m.id === 'meu-boleto'));
+  check(i5.modelo && i5.modelo.id === 'meu-boleto' && m5.fields[0].Apelido === 'ALUNO' && m5.values[0] === 'R$ 1.413,00' && !depoisRemover,
+    `modelo ensinado no aparelho tem preferência sobre o do catálogo (${i5.modelo && i5.modelo.id}) e some ao ser removido`);
+  check(esq === 'Aluno XXXX XX XXXXX Matricula 00000000\nCPF: 000.000.000-00 email: XXX@XXX.XXX\nValor a Pagar R$ 0.000,00',
+    `esqueleto: dígitos viram 0, nomes e e-mails viram X, os rótulos ficam ("${esq.split('\n')[0]}")`);
+  await page.close();
 
   // 15. cupom: a linha dos impostos nunca vira o valor; ano velho demais; leitura que não cancela
   page = await open();
