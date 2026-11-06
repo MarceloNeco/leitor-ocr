@@ -208,10 +208,11 @@ Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`
 4. No `sw.js` do app: os arquivos do motor na lista do básico; `tesseract/` e `libs/` guardados no primeiro uso (ver o `sw.js` daqui).
 5. Atualizar: copiar de novo as pastas a partir daqui. `Leitura.versao` diz qual versão do motor o app tem.
 
-## Modelos de documento (0.9.0, pedido 31; especificação em MODELOS.md)
+## Modelos de documento (0.9.0 e 0.9.1, pedido 31; especificação em MODELOS.md)
 
 - `Leitura.ler` carrega `dados/modelos.json` e, para cada arquivo com texto (as páginas de um PDF juntas: um PDF = um documento), pergunta a `Leitura.modelos.reconhecer`. Com modelo, o arquivo vira um papel só, lido por `Leitura.lerArquivo` e com `papel.modelo = Leitura.modelos.aplicarEm(...)`; em "Não sei, descobrir", o tipo do modelo vence.
 - `Leitura.resultado` → `comModelo`: os campos do modelo primeiro (da leitura comum só fica o resumo dos lançamentos), o Valor é o do modelo (vazio, com o valor lido como opção, quando a conta não fechou), a tabela vira `itens` (formato combinado, quando tem data/descrição/valor) ou `result.tabela`, e `result.modelo` leva tudo; a situação diz o modelo e a primeira falha.
+- Um modelo pode dar `classes` aos itens (a primeira regex que bate na descrição): cada lançamento sai com `classe`, e `result.modelo.divisao` traz total e quantidade por classe (a fatura Porto: `consorcio`, `anuidade`, `seguro`, `pontos`, `pagamento`, `outros`). Data sem ano na tabela ("30/09") ganha o ano do campo `anoDe`.
 - A tela mostra o modelo no rótulo do tipo e avisa "parece ter mudado de formato" quando o modelo falhou.
 - Fotos não passam por modelo (texto com erros de OCR): a leitura de foto é a de sempre.
 

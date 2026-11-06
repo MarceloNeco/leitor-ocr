@@ -41,7 +41,8 @@ Um arquivo `dados/modelos.json` com `{ "versao": 1, "modelos": [ ... ] }`. Cada 
 | `exclui` | Lista de regex: se **um** bater, não é este modelo. |
 | `impressao` | Rótulos fixos que o layout tem ("ALUNO", "VENCIMENTO", "VALOR BRUTO"...). A fração presente (0 a 1) é a **impressão do layout**; abaixo de `impressaoMinima` (padrão 0,6) o motor avisa que o documento mudou. Entre dois modelos que batem, ganha a maior impressão. |
 | `campos` | `{ "Nome do campo": { ancora, onde, pega, n, indice, ate, inteira } }`, na ordem em que aparecem na tela. |
-| `tabela` | Opcional: `{ inicio, fim, colunas, nomes, minimo }` para a lista de itens (lançamentos, etapas). |
+| `tabela` | Opcional: `{ inicio, fim, colunas, nomes, minimo, anoDe }` para a lista de itens (lançamentos, etapas). |
+| `classes` | Opcional: `{ "nome": "<regex>", ... }`, em ordem; dá a `classe` de cada item e a `divisao` por classe (abaixo). |
 | `vitais` | Campos que não podem faltar; faltando, o modelo "falhou". |
 | `conferencias` | Lista de regras (abaixo). Qualquer uma falhando, o modelo "falhou". |
 | `amostra` | Caminho da amostra-esqueleto em `dados/amostras/` (texto do pdf.js, dígitos → 0, nomes → X). |
@@ -63,7 +64,13 @@ Um arquivo `dados/modelos.json` com `{ "versao": 1, "modelos": [ ... ] }`. Cada 
 pelas `colunas` na ordem (`data`, `texto`, `dinheiro`, `numero`): os valores saem da direita para a esquerda,
 a data da esquerda, e o que sobra é o `texto`. Linha que não tem a forma é pulada. `nomes` dá o nome de cada
 coluna no item; com `data`, `descricao` e `valor`, os itens viram lançamentos no formato combinado dos apps
-(ver `ARQUITETURA.md`, "Lançamentos").
+(ver `ARQUITETURA.md`, "Lançamentos"). Com `anoDe: "Vencimento"`, uma data sem ano ("30/09", como nas faturas de
+cartão) ganha o ano desse campo, ou o anterior quando ficaria depois dele (fatura de janeiro com compras de dezembro).
+
+**As classes** (`classes`): `{ "consorcio": "\\bCONSORCIO\\b", "anuidade": "\\bANUIDADE\\b", ... }`. A primeira regex
+que bate na descrição (maiúsculas, sem acento) dá a `classe` do item; sem nenhuma, `outros`. O resultado traz
+`divisao`: `{ classe: { total, quantos } }`. É com isso que um app reparte um débito (as 7 cartas de consórcio da
+fatura Porto são 7 itens `consorcio`, na ordem impressa); o que fazer com cada classe é decisão do app.
 
 **As conferências** (`conferencias`):
 
@@ -73,7 +80,7 @@ coluna no item; com `data`, `descricao` e `valor`, os itens viram lançamentos n
 | `igual` | o campo `a` igual ao `b`. |
 | `presente` | os `campos` não podem estar vazios. |
 | `cnpj` | o `campo` tem os dígitos verificadores certos. |
-| `soma-itens` | a `coluna` dos itens somada tem que dar `igual`. |
+| `soma-itens` | a `coluna` dos itens somada tem que dar `igual`. `somente: "positivos"` (ou `"negativos"`) soma só esses; `mais: ["Saldo anterior", "-X"]` soma campos junto. |
 | `ultimo-item` | a `coluna` do último item tem que ser `igual` (o saldo no fim do extrato). |
 
 `opcional: true` numa regra faz ela passar quando falta o campo que ela usa. `nome` é a frase que a pessoa vê
@@ -167,11 +174,11 @@ Exemplo (o boleto da matrícula, encurtado):
 
 | # | Modelo | Situação |
 |---|---|---|
-| 1 | **Fatura do cartão Porto (PDF)**: cartas de consórcio por grupo e cota, seguro do carro, anuidade, crédito de pontos; a fatura só diz como **dividir** o débito automático do Itaú ("DEB AUTOR PORTOSEG"), sem duplicar; sem fatura no mês, vale a última divisão | **Precisa da amostra**: o PDF de uma fatura (fica fora do repositório; só o esqueleto entra). |
+| 1 | **Fatura do cartão Porto (PDF)**: cartas de consórcio por grupo e cota, seguro do carro, anuidade, crédito de pontos; a fatura só diz como **dividir** o débito automático do Itaú ("DEB AUTOR PORTOSEG"), sem duplicar; sem fatura no mês, vale a última divisão | **Feito na 0.9.1** (`porto-fatura-cartao`), a partir da fatura real (a amostra-esqueleto fica em `dados/amostras/`). Lê total, vencimento, pagamento mínimo, saldo anterior, pagamentos, despesas, fechamento da próxima e os lançamentos (data sem ano completada pelo vencimento); confere saldo anterior − pagamentos + despesas = total e compras = despesas. **A fatura não diz grupo nem cota**: as 7 cartas vêm como 7 itens da classe `consorcio`, na ordem impressa, e a `divisao` traz o total e a quantidade por classe (`consorcio`, `anuidade`, `seguro`, `pontos`, `pagamento`, `outros`); ligar cada parcela à cota (pelo valor, ou ensinado uma vez) e a regra "só divide o débito do Itaú; sem fatura, vale a última divisão" ficam no MoneyTRIO. As classes `seguro` e `pontos` foram previstas sem amostra (a fatura recebida não tinha seguro nem crédito de pontos): confirmar com uma fatura que os tenha. |
 | 2 | Extrato do BS2 em PDF | Precisa da amostra. OFX e CSV já funcionam pelo leitor de lançamentos. |
 | 3 | Contrato da escola + boleto da matrícula | **Feitos** (`escola-contrato`, `escola-boleto-matricula`), a partir das amostras-esqueleto do MoneyTRIO (`modulos/compromisso-de.js`, `teste/teste-contrato-fgts.js`). Os boletos das mensalidades entram quando houver amostra. |
 | 4 | Extrato do FGTS (PDF) | **Feito** (`fgts-extrato`), a partir da amostra do MoneyTRIO (`modulos/fgts.js`). |
-| 5 | Apólice de seguro do carro (OmniLifeONE) | Precisa da amostra. |
+| 5 | Apólice de seguro do carro (OmniLifeONE) | **Travado pela amostra**: a apólice recebida (Porto, PDF de 19 páginas) não tem camada de texto (as letras são desenho vetorial, sem fonte): o pdf.js não tira nada e o app só a leria por OCR, página a página (10 páginas, minutos no celular). Modelo por texto só com um PDF que tenha texto (o "documento da apólice" do app ou do portal da seguradora costuma ter); por OCR fica como pendência (modelo tolerante a erros de leitura). O que o modelo vai tirar quando houver amostra: seguradora, apólice, item, vigência, veículo e placa, coberturas com LMI e prêmio, franquias, prêmio total, parcelas, telefones de assistência, corretor. |
 
 ## 10. Notas para os outros chats (eles não mexem em leitura; recebem daqui)
 
@@ -179,13 +186,17 @@ Exemplo (o boleto da matrícula, encurtado):
   `dados/modelos.json`). Quando o motor for copiado para o MoneyTRIO (PR próprio), `modulos/compromisso-de.js`
   (contrato e boleto da escola) e `modulos/fgts.js` (extrato do FGTS) passam a chamar
   `Leitura.ler(fontes, { tipo: 'auto' })` e a ler `papel.result.modelo` (`{ modelo: { id, versao, nome, tipo },
-  fields, campos, itens | tabela, conferido, falhas }`), em vez dos regex próprios. A área única "Carregar
+  fields, campos, itens | tabela, divisao, conferido, falhas }`), em vez dos regex próprios. A área única "Carregar
   arquivos" nasce daí: o motor descobre o tipo (modelo ou leitor) e devolve para onde mandar. A divisão da
-  fatura Porto vem no modelo `porto-fatura` quando houver amostra; a regra "a fatura só divide o débito do
-  Itaú" fica no app, não no modelo.
-- **Para o chat do OmniLifeONE**: apólice do seguro e "Vida do carro" (notas e serviços por foto, com IA)
-  ficam para quando houver amostra da apólice; a leitura por foto com IA já existe no motor (`leitura/ia.js`,
-  0.8.0).
+  fatura Porto já vem no modelo `porto-fatura-cartao` (0.9.1): `result.modelo.divisao` (total e quantidade por
+  classe) e `classe` em cada lançamento (`consorcio`, `anuidade`, `seguro`, `pontos`, `pagamento`, `outros`); a
+  fatura não diz grupo nem cota, então ligar cada parcela de consórcio à cota (pelo valor, ou ensinado uma vez) e
+  a regra "a fatura só divide o débito do Itaú (DEB AUTOR PORTOSEG); sem fatura no mês, vale a última divisão"
+  ficam no app, não no modelo.
+- **Para o chat do OmniLifeONE**: a apólice da Porto que chegou é um PDF sem camada de texto (seção 9, item 5):
+  por enquanto o app a leria só por OCR, 10 páginas, lento. Quando houver um PDF com texto, o modelo sai; até lá,
+  "Vida do carro" (notas e serviços por foto, com IA) pode usar a leitura por foto com IA que já existe no motor
+  (`leitura/ia.js`, 0.8.0).
 - **Para o chat do RootifyONE**: a tela "Modelos de documentos" (catálogo, amostras-esqueleto, testar,
   publicar em `solverone-dados/modelos.json`, aposentar, falhas por modelo, opção paga desligada) lê e escreve o
   formato da seção 3; o leitor já conta falhas por modelo no aparelho (`Leitura.modelos.falhas()`).

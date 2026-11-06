@@ -1,0 +1,154 @@
+# Amostra-esqueleto (MODELOS.md): o texto que o pdf.js tira do documento, com os dígitos trocados por 0 e os nomes de pessoas por X. Só o layout. Documento fictício.
+XXXXXXX XXXXXXX
+Cartão 0000 00** **** *000
+Esta fatura vence em
+00/00/0000
+O valor total é
+R$ 0.000,00
+Este demonstrativo é para simples conferência. Pagamento
+programado para débito automático em sua conta corrente.
+Confira outras opções de pagamento
+Em caso de pagamento entre o mínimo e o total, o valor
+Pagamento mínimo de restante será lançado na próxima fatura, acrescido de
+encargos compostos de juros remuneratórios e IOF.
+R$ 0.000,00 Lembre-se, ao pagar um valor inferior ao mínimo, você
+estará em atraso e serão cobrados juros, multa e mora.
+Caso haja contratação do financiamento deste saldo na modalidade de crédito rotativo, o valor total será cobrado
+integralmente na próxima fatura. Deste modo, o valor máximo dos encargos para o próximo vencimento, em caso de
+efetivação do pagamento mínimo desta fatura até a data de vencimento será de R$ 00,00.
+Parcelamento 00x de R$ 000,00
+com seguro
+Total: R$ 0.000,00
+Parcelamento 00x de R$ 000,00
+sem seguro
+Total: R$ 0.000,00
+Acesse mais opções de parcelamento no final da fatura.
+Limite total de crédito R$ 00.000,00
+Limite de saque R$ 0.000,00
+Resumo
+da fatura
+Despesas no Brasil
+Saldo fatura anterior R$ 0.000,00
+Pagamento/créditos (-) R$ 0.000,00
+Saldo financiado (+) R$ 0,00
+Encargos de rotativo (+) R$ 0,00
+Encargos de compras parceladas (+) R$ 0,00
+Encargos de parcelamento da fatura (+) R$ 0,00
+Encargos de saque (+) R$ 0,00
+Despesas/débitos (+) R$ 0.000,00
+Saldo R$ 0.000,00
+Despesas no Exterior
+Saldo em dólar US$ 0,00
+Saldo convertido em reais R$ 0,00
+Encargos Financeiros
+CET No Período Anual
+CET financiamento 00,00 % A.M. 000,00 % A.A.
+CET compras parceladas 00,00 % A.M. 000,00 % A.A.
+CET parcelamento de fatura 0,00 % A.M. 00,00 % A.A.
+CET saque 00,00 % A.M. 000,00 % A.A.
+0
+Encargos No Período Próx. Período
+(00/00 a 00/00) (00/00 a 00/00)
+Rotativo 00,00 % A.M. 00,00 % A.M.
+Compras parceladas 0,00 % A.M. 00,00 % A.M.
+Saque 00,00 % A.M. 00,00 % A.M.
+Parcelamento de fatura 0,00 % A.M. 00,00 % A.M.
+IOF 0,0000 % ao dia + 0,00%
+0. Cobrança de encargos em casos de saque, compra parcelada com juros, financiamento parcial ou total da fatura.
+Total de despesas parceladas: próximas faturas
+Dezembro R$ 0,00
+Janeiro R$ 0,00
+Demais faturas R$ 0,00
+Total de despesas parceladas a vencer R$ 0,00
+Previsão de fechamento da próxima fatura 00/00/0000
+Data sujeita a alteração
+Detalhamento
+da fatura
+Lançamentos: compras e saques
+XXXXXXX XXXXXXX (final *000)
+Data Estabelecimento Valor em R$
+00/00 ANUIDADE DIFERENCIADA 00/00 00,00
+00/00 PORTO SEGURO CONSORCIO 000,00
+00/00 PORTO SEGURO CONSORCIO 000,00
+00/00 PORTO SEGURO CONSORCIO 000,00
+00/00 PORTO SEGURO CONSORCIO 000,00
+00/00 PORTO SEGURO CONSORCIO 0.000,00
+00/00 PORTO SEGURO CONSORCIO 000,00
+00/00 PORTO SEGURO CONSORCIO 000,00
+00/00 PAGAMENTO -0.000,00
+Lançamentos no cartão (final *000) 0.000,00
+Contestações poderão ser feitas em até 00 dias para compras nacionais e 00 para internacionais, a partir da data do vencimento.
+Detalhamento geral conforme resolução Banco Central nº 000/0000
+Pagamento mínimo R$ 0.000,00 Encargos cobrados nesta fatura:
+I - Rotativo R$ 0,00 Rotativo R$ 0,00
+II - Parcelamento de rotativo R$ 0,00 Saque R$ 0,00
+III - Novos lançamentos R$ 0.000,00 Compras parceladas R$ 0,00
+Parcelamento de Fatura R$ 0,00
+Parcelamento Rotativo R$ 0,00
+Pagamento de Contas R$ 0,00
+Renegociação de Dívida R$ 0,00
+Limites de crédito Crediário R$ 0,00
+Limite total R$ 00.000,00
+Utilizado R$ 0.000,00
+Disponível R$ 00.000,00 Juros e encargos – Parc Fatura e
+Renegociação: R$ 0,00
+Limite de saque R$ 0.000,00
+Utilizado R$ 0,00 Taxas anuais
+Disponível R$ 0.000,00 Rotativo 000,00%
+Saque 000,00%
+Compras parceladas 000,00%
+Parcelamento de Fatura 00,00%
+Parcelamento Rotativo 0,00%
+Pagamento de Contas 0,00%
+Renegociação de Dívida 000,00%
+Crediário 000,00%
+Confira nossos
+Canais de Comunicação
+WhatsApp
+00 0000 0000 (atendimento 00h)
+Chat online
+Clique aqui ou acesse
+www.portoseguro.com.br > Links Rápidos > Chat Online
+Central de Relacionamento
+0000 0000 0000 000 0000
+(Capitais e Regiões Metropolitanas) (SAC: informações, reclamações
+0000 000 0000 e cancelamentos)
+(Demais localidades) 0000 000 0000
+0000 000 0000 (Ouvidoria: atendimento das 0h00
+(Atendimento exclusivo para às 00h00, de segunda a sexta-feira,
+pessoas com deficiência auditiva) exceto feriados)
+Opções
+de parcelamento
+Para mais facilidade, parcele a fatura e continue usando seu cartão,
+conforme limite disponível. A contratação com seguro é opcional e
+0
+garante a quitação do saldo em caso de imprevistos .
+Sem seguro Com seguro
+00x de R$ 000,00 00x de R$ 000,00
+Total: 0.000,00 Total: 0.000,00
+00x de R$ 000,00 00x de R$ 000,00
+Total: 0.000,00 Total: 0.000,00
+00x de R$ 000,00 00x de R$ 000,00
+Total: 0.000,00 Total: 0.000,00
+00x de R$ 000,00 00x de R$ 000,00
+Total: 0.000,00 Total: 0.000,00
+Consulte condições e mais opções de parcelamento no App
+Porto ou WhatsApp.
+Para contratar, pague o valor exato da opção escolhida até o
+vencimento. As demais parcelas serão cobradas
+automaticamente nas faturas seguintes. Caso a fatura esteja em
+débito automático, cancele esse serviço antes da contratação
+com pelo menos 0 dias de antecedência da data do vencimento
+desta fatura.
+Importante: se seu cartão estiver bloqueado, o desbloqueio
+ocorrerá em até 00 horas após o pagamento.
+0. O Parcelamento da Fatura tem incidência de juros e IOF, e inclui o valor total da fatura no momento da contratação. Novas compras e
+parcelas a vencer, serão cobradas normalmente nas faturas seguintes. O valor total do parcelamento compromete o limite de crédito, sendo
+recomposto conforme parcelas pagas. A simulação de qualquer opção em outros canais não tem validade. Em caso de atraso no pagamento
+de parcelamento de fatura contratado, XX XXXXX XXXXXXXXX XXXXX XXXXXXXX. X XXXXXX XXXXXXXXXXX X XXXX XX 0,00% XXXXX XXXXX XXXXXXXXXX XXXX
+Porto Seguro Cia de Seguros Gerais – CNPJ 00.000.000/0000-00.
+Seguro Prestamista - Processo Susep 00000.000000/0000-00. O registro do produto é automático, não representa aprovação/recomendação
+pela SUSEP. Consulte situação cadastral do corretor/seguradoXX XX XXXXX.XXX.XX. XXXXXX XXXXXX XXXX XXXXXXX XX XXXXXXXXXXXX. XXXXXXXXXX XX
+Desemprego Involuntário, regime CLT há mais de 0 ano contínuo (carência de 00 dias e franquia de 00). Cobertura de Incapacidade
+Temporária por Acidente para autônomos com recolhimento de contribuição há mais de 0 ano contínuo (franquia de 00 dias). Informações
+reduzidas, consulte condições completas em www.cartaoportoseguro.com.br.

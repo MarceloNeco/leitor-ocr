@@ -372,6 +372,17 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     'Curso / Etapa         Valor da Anuidade    1ª Parcela Antecipada    Valor Restante    Número de Parcela    Valor de Cada Parcela',
     '  Educação Infantil                R$ 36.788,00   R$ 1.472,00   R$ 35.316,00   12    R$ 2.943,00', '  Ens. Fundamental',
     '                                   R$ 38.338,00   R$ 1.534,00   R$ 36.804,00   12    R$ 3.067,00', '  (1º ao 5º ano)', 'CLÁUSULA 8ª: outras coisas']));
+  const portoFatura = await folha('porto-fatura.pdf', pre(['XXXXX XXXXX', 'Cartão 0000 00** **** *123', 'Esta fatura vence em', '15/01/2027', 'O valor total é', 'R$ 5.240,00',
+    'Este demonstrativo é para simples conferência. Pagamento', 'programado para débito automático em sua conta corrente.',
+    'Pagamento mínimo de restante será lançado na próxima fatura, acrescido de', 'R$ 1.000,00 Lembre-se, ao pagar um valor inferior ao mínimo, você',
+    'Limite total de crédito R$ 10.000,00', 'Limite de saque R$ 2.000,00', 'Resumo', 'da fatura', 'Despesas no Brasil', 'Saldo fatura anterior R$ 5.100,00',
+    'Pagamento/créditos (-) R$ 5.100,00', 'Saldo financiado (+) R$ 0,00', 'Despesas/débitos (+) R$ 5.240,00', 'Saldo R$ 5.240,00',
+    'Encargos No Período Próx. Período', '(16/12 a 15/01) (16/01 a 15/02)', 'Previsão de fechamento da próxima fatura 27/01/2027', 'Detalhamento', 'da fatura',
+    'Lançamentos: compras e saques', 'XXXXX XXXXX (final *123)', 'Data Estabelecimento Valor em R$', '30/11 ANUIDADE DIFERENCIADA 04/12 90,00',
+    '10/12 PORTO SEGURO CONSORCIO 400,00', '10/12 PORTO SEGURO CONSORCIO 500,00', '10/12 PORTO SEGURO CONSORCIO 600,00', '10/12 PORTO SEGURO CONSORCIO 700,00',
+    '10/12 PORTO SEGURO CONSORCIO 800,00', '10/12 PORTO SEGURO CONSORCIO 900,00', '10/12 PORTO SEGURO CONSORCIO 1.000,00', '12/12 PORTO SEGURO AUTO 250,00',
+    '15/12 PAGAMENTO -5.100,00', 'Lançamentos no cartão (final *123) 5.240,00', 'Detalhamento geral conforme resolução Banco Central nº 365/2023',
+    'Pagamento mínimo R$ 1.000,00 Encargos cobrados nesta fatura:', 'Confira nossos', 'Canais de Comunicação', 'www.portoseguro.com.br > Links Rápidos > Chat Online']));
   await gen.close();
 
   const txt = file('recibo.txt', 'LOJA EXEMPLO LTDA\nCNPJ 12.345.678/0001-90\nVIA CLIENTE\nCREDITO A VISTA\nMASTERCARD ************4321\nDATA 09/10/2026 14:22\nVALOR TOTAL R$ 42,50\n');
@@ -830,7 +841,7 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   check(consultas.every(u => /^https:\/\/(minhareceita\.org|brasilapi\.com\.br\/api\/cnpj\/v1)\/\d{14}$/.test(u)), `nas consultas de CNPJ só o número da loja sai do aparelho (${consultas.length} consultas)`);
 
   // 16. modelos: documentos lidos por modelo, sem IA
-  const infoModelo = pg => pg.evaluate(() => ({ tipo: papers[0].tipo, rotulo: document.getElementById('docTypeLabel').textContent, modelo: papers[0].result.modelo && { id: papers[0].result.modelo.modelo.id, conferido: papers[0].result.modelo.conferido, falhas: papers[0].result.modelo.falhas }, itens: (papers[0].result.itens || []).length, tabela: papers[0].result.tabela || null, falhas: Leitura.modelos.falhas() }));
+  const infoModelo = pg => pg.evaluate(() => ({ tipo: papers[0].tipo, rotulo: document.getElementById('docTypeLabel').textContent, modelo: papers[0].result.modelo && { id: papers[0].result.modelo.modelo.id, conferido: papers[0].result.modelo.conferido, falhas: papers[0].result.modelo.falhas, divisao: papers[0].result.modelo.divisao }, itens: (papers[0].result.itens || []).length, classes: (papers[0].result.itens || []).map(i => i.classe || null), datas: (papers[0].result.itens || []).map(i => i.data), tabela: papers[0].result.tabela || null, falhas: Leitura.modelos.falhas() }));
   page = await open();
   const m1 = await send(page, [boletoEscola], 'auto');
   const i1 = await infoModelo(page), f16 = m1.fields[0];
@@ -876,6 +887,16 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     `modelo ensinado no aparelho tem preferência sobre o do catálogo (${i5.modelo && i5.modelo.id}) e some ao ser removido`);
   check(esq === 'Aluno XXXX XX XXXXX Matricula 00000000\nCPF: 000.000.000-00 email: XXX@XXX.XXX\nValor a Pagar R$ 0.000,00',
     `esqueleto: dígitos viram 0, nomes e e-mails viram X, os rótulos ficam ("${esq.split('\n')[0]}")`);
+  await page.close();
+  page = await open();
+  const mPorto = await send(page, [portoFatura], 'auto');
+  const iPorto = await infoModelo(page), fPorto = mPorto.fields[0], divPorto = (iPorto.modelo && iPorto.modelo.divisao) || {};
+  check(iPorto.tipo === 'fatura' && iPorto.modelo && iPorto.modelo.id === 'porto-fatura-cartao' && iPorto.modelo.conferido && mPorto.values[0] === 'R$ 5.240,00' && fPorto.Vencimento === '15/01/2027'
+    && fPorto['Saldo anterior'] === 'R$ 5.100,00' && fPorto['Pagamento mínimo'] === 'R$ 1.000,00' && fPorto['Cartão (final)'] === '123' && fPorto['Fechamento da próxima fatura'] === '27/01/2027'
+    && iPorto.itens === 10 && iPorto.datas[0] === '30/11/2026' && iPorto.datas[9] === '15/12/2026' && iPorto.classes.filter(c => c === 'consorcio').length === 7
+    && iPorto.classes[0] === 'anuidade' && iPorto.classes[8] === 'seguro' && iPorto.classes[9] === 'pagamento' && divPorto.consorcio && divPorto.consorcio.total === 4900 && divPorto.consorcio.quantos === 7 && divPorto.pagamento.total === -5100
+    && /modelo "Fatura do cartão Porto" v1/.test(iPorto.rotulo),
+    `fatura do cartão Porto lida pelo modelo: total ${mPorto.values[0]} (saldo anterior − pagamentos + despesas; as compras somam as despesas), vencimento ${fPorto.Vencimento}, ${iPorto.itens} lançamentos com o ano completado (${iPorto.datas[0]}), divisão: ${divPorto.consorcio && divPorto.consorcio.quantos} cartas de consórcio (R$ ${divPorto.consorcio && divPorto.consorcio.total}), anuidade, seguro, pagamento`);
   await page.close();
 
   // 15. cupom: a linha dos impostos nunca vira o valor; ano velho demais; leitura que não cancela
