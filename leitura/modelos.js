@@ -69,7 +69,9 @@
     if (i < 0) return { valor: null, onde: -1 };
     const onde = campo.onde || 'mesma-linha', ate = campo.ate || 3;
     if (onde === 'mesma-linha') {   // inteira: a linha toda (quando a âncora é o próprio começo do valor)
-      const depois = campo.inteira ? linhas[i].o : linhas[i].o.replace(new RegExp('^.*?' + campo.ancora, 'i'), '');
+      const re = new RegExp('^.*?' + campo.ancora, 'i'), mt = linhas[i].t.match(re);
+      // o rótulo é tirado do original; se ele só bate no texto normalizado (acento), o resto vem de lá
+      const depois = campo.inteira ? linhas[i].o : re.test(linhas[i].o) ? linhas[i].o.replace(re, '') : mt ? linhas[i].t.slice(mt[0].length) : linhas[i].o;
       return { valor: pegar(depois, campo.pega, campo.indice), onde: i };
     }
     if (onde === 'coluna' && linhas[i].p) {
@@ -94,7 +96,17 @@
   // Entre inicio e fim, cada linha vira um item pelas colunas declaradas:
   // ['data', 'texto', 'dinheiro', 'dinheiro'] → a data no começo, os valores no
   // fim (da direita para a esquerda) e o texto no meio
-  function tabelaDe(linhas, tab) {
+  // Data sem ano ("30/09", como nas faturas de cartão): o ano vem do campo `anoDe`
+  // (o vencimento); se a data ficar depois dele, é do ano anterior
+  const comAno = (d, ref) => {
+    if (!/^\d{2}\/\d{2}$/.test(d)) return d;
+    const m = String(ref || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!m) return null;
+    const [dd, mm] = d.split('/');
+    const ano = +m[3] - (mm + dd > m[2] + m[1] ? 1 : 0);
+    return `${dd}/${mm}/${ano}`;
+  };
+  function tabelaDe(linhas, tab, campos) {
     const ini = tab.inicio ? linhas.findIndex(l => new RegExp(tab.inicio, 'i').test(l.t)) : -1;
     const fimRe = tab.fim ? new RegExp(tab.fim, 'i') : null;
     const itens = [];
@@ -106,7 +118,7 @@
       let ok = true;
       // da direita: os valores
       for (let k = cols.length - 1; k >= 0 && cols[k] !== 'texto'; k--) {
-        const m = resto.match(cols[k] === 'dinheiro' ? /(?:R\$\s?)?-?\d{1,3}(?:\.\d{3})*,\d{2}\s*$/ : cols[k] === 'data' ? /\d{2}\/\d{2}\/\d{4}\s*$/ : /\S+\s*$/);
+        const m = resto.match(cols[k] === 'dinheiro' ? /(?:R\$\s?)?-?\d{1,3}(?:\.\d{3})*,\d{2}\s*$/ : cols[k] === 'data' ? /\d{2}\/\d{2}(?:\/\d{4})?\s*$/ : /\S+\s*$/);
         if (!m) { ok = false; break; }
         item[nomes[k]] = cols[k] === 'dinheiro' ? centavos(m[0]) : m[0].trim();
         resto = resto.slice(0, m.index).trim();
@@ -115,7 +127,7 @@
       // da esquerda: até o texto
       for (let k = 0; k < cols.length && cols[k] !== 'texto'; k++) {
         if (item[nomes[k]] !== undefined) break;
-        const m = resto.match(cols[k] === 'data' ? /^\d{2}\/\d{2}\/\d{4}/ : cols[k] === 'dinheiro' ? /^(?:R\$\s?)?-?\d{1,3}(?:\.\d{3})*,\d{2}/ : /^\S+/);
+        const m = resto.match(cols[k] === 'data' ? /^\d{2}\/\d{2}(?:\/\d{4})?(?!\d)/ : cols[k] === 'dinheiro' ? /^(?:R\$\s?)?-?\d{1,3}(?:\.\d{3})*,\d{2}/ : /^\S+/);
         if (!m) { ok = false; break; }
         item[nomes[k]] = cols[k] === 'dinheiro' ? centavos(m[0]) : m[0].trim();
         resto = resto.slice(m[0].length).trim();
@@ -123,9 +135,26 @@
       if (!ok) continue;
       const kt = cols.indexOf('texto');
       if (kt >= 0) item[nomes[kt]] = resto;
+      if (tab.anoDe) cols.forEach((c, k) => { if (c === 'data') item[nomes[k]] = comAno(item[nomes[k]], campos && campos[tab.anoDe]); });
       itens.push(item);
     }
     return itens;
+  }
+  // Classes dos itens: { "consorcio": "<regex>", "anuidade": "<regex>", ... } na ordem;
+  // a primeira que bate na descrição dá a classe; sem nenhuma, "outros". A
+  // divisão (total e quantos por classe) é o que o app usa para repartir um débito
+  function classificar(itens, classes) {
+    const divisao = {};
+    itens.forEach(it => {
+      const d = sem(it.descricao || it.texto || '');
+      const [classe] = Object.entries(classes).find(([, re]) => new RegExp(re, 'i').test(d)) || ['outros'];
+      it.classe = classe;
+      const v = typeof it.valor === 'number' ? it.valor : 0;
+      divisao[classe] = divisao[classe] || { total: 0, quantos: 0 };
+      divisao[classe].total = Math.round((divisao[classe].total + v) * 100) / 100;
+      divisao[classe].quantos++;
+    });
+    return divisao;
   }
 
   /* ---------- conferências ---------- */
@@ -144,7 +173,12 @@
       case 'presente': return regra.campos.every(k => campos[k] !== null && campos[k] !== undefined && campos[k] !== '');
       case 'cnpj': return !!(campos[regra.campo] && L.cnpjValido && L.cnpjValido(campos[regra.campo]));
       case 'ultimo-item': { const it = (itens || [])[(itens || []).length - 1], alvo = num(regra.igual); if (!it || alvo === null) return !!regra.opcional; return typeof it[regra.coluna] === 'number' && Math.abs(it[regra.coluna] - alvo) < 0.011; }
-      case 'soma-itens': { const alvo = num(regra.igual); if (alvo === null) return !!regra.opcional; const s = (itens || []).reduce((t, it) => t + (typeof it[regra.coluna] === 'number' ? it[regra.coluna] : 0), 0); return Math.abs(s - alvo) < 0.011; }
+      case 'soma-itens': {   // somente: 'positivos' | 'negativos'; mais: campos somados junto ('-X' subtrai)
+        const alvo = num(regra.igual); if (alvo === null) return !!regra.opcional;
+        const vale = v => typeof v === 'number' && (regra.somente !== 'positivos' || v > 0) && (regra.somente !== 'negativos' || v < 0);
+        let s = (itens || []).reduce((t, it) => t + (vale(it[regra.coluna]) ? it[regra.coluna] : 0), 0);
+        for (const termo of regra.mais || []) { const neg = termo.startsWith('-'); const v = num(neg ? termo.slice(1) : termo); if (v === null) return !!regra.opcional; s += neg ? -v : v; }
+        return Math.abs(s - alvo) < 0.011; }
       default: return true;
     }
   }
@@ -173,12 +207,13 @@
       campos[nome] = valor;
       if (valor !== null) fields.push({ key: nome, val: campo.pega === 'dinheiro' ? L.texto.formatBRL(valor) : String(valor) });
     }
-    const itens = m.tabela ? tabelaDe(linhas, m.tabela) : null;
+    const itens = m.tabela ? tabelaDe(linhas, m.tabela, campos) : null;
+    const divisao = itens && itens.length && m.classes ? classificar(itens, m.classes) : null;
     const falhas = [];
     (m.vitais || []).forEach(k => { if (campos[k] === null || campos[k] === undefined) falhas.push(`o campo "${k}" não foi achado`); });
     (m.conferencias || []).forEach(c => { if (!conferir(c, campos, itens)) falhas.push(c.nome || (c.tipo === 'soma' ? `a soma de ${c.de.join(' ')} não fecha com ${c.igual}` : c.tipo === 'soma-itens' ? `os itens não somam ${c.igual}` : `a conferência "${c.tipo}" falhou`)); });
     if (m.tabela && m.tabela.minimo && (!itens || itens.length < m.tabela.minimo)) falhas.push('a tabela de itens não foi achada');
-    return { modelo: { id: m.id, versao: m.versao || 1, nome: (m.nome && m.nome.pt) || m.id, tipo: m.tipo || null }, fields, campos, itens: itens && itens.length ? itens : null, conferido: !falhas.length, falhas, impressao };
+    return { modelo: { id: m.id, versao: m.versao || 1, nome: (m.nome && m.nome.pt) || m.id, tipo: m.tipo || null }, fields, campos, itens: itens && itens.length ? itens : null, divisao, conferido: !falhas.length, falhas, impressao };
   }
 
   // O que a tela mostra e o que vai para o papel

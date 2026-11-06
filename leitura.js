@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.9.0';
+  L.versao = '1.9.1';
   // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
   L.app = L.app || null;
 
@@ -289,7 +289,7 @@
       if (duvida) r.fields = r.fields.filter(f => f.key !== 'Valor');
     }
     if (md.itens && md.itens.length && md.itens[0].data !== undefined && md.itens[0].valor !== undefined && L.leitores.extrato) {
-      r.itens = md.itens.map(i => L.leitores.extrato.contrato({ data: i.data, descricao: i.descricao || '', valor: i.valor }, { tipo, conferido: md.conferido, papel: '' }));
+      r.itens = md.itens.map(i => Object.assign(L.leitores.extrato.contrato({ data: i.data, descricao: i.descricao || '', valor: i.valor }, { tipo, conferido: md.conferido, papel: '' }), i.classe ? { classe: i.classe } : {}));
     } else if (md.itens) r.tabela = md.itens;
     r.status = md.conferido ? { cls: 'ok', text: `Lido pelo modelo "${md.modelo.nome}": conferido` }
       : { cls: 'warn', text: `Modelo "${md.modelo.nome}": ${md.falhas[0]}` };

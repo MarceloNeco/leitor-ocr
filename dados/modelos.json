@@ -260,6 +260,130 @@
    ],
    "conferencias": [],
    "amostra": "dados/amostras/escola-contrato.txt"
+  },
+  {
+   "id": "porto-fatura-cartao",
+   "versao": 1,
+   "tipo": "fatura",
+   "apps": [
+    "moneytrio"
+   ],
+   "nome": {
+    "pt": "Fatura do cartão Porto",
+    "en": "Porto credit card bill"
+   },
+   "sinais": [
+    "ESTA FATURA VENCE EM",
+    "O VALOR TOTAL E",
+    "PORTO ?SEGURO",
+    "LANCAMENTOS: COMPRAS E SAQUES"
+   ],
+   "impressao": [
+    "ESTA FATURA VENCE EM",
+    "O VALOR TOTAL E",
+    "PAGAMENTO MINIMO",
+    "LIMITE TOTAL DE CREDITO",
+    "SALDO FATURA ANTERIOR",
+    "PAGAMENTO/CREDITOS",
+    "DESPESAS/DEBITOS",
+    "PREVISAO DE FECHAMENTO DA PROXIMA FATURA",
+    "DATA ESTABELECIMENTO VALOR EM R\\$",
+    "LANCAMENTOS NO CARTAO",
+    "DETALHAMENTO GERAL CONFORME RESOLUCAO",
+    "CANAIS DE COMUNICACAO"
+   ],
+   "campos": {
+    "Valor": {
+     "ancora": "^O VALOR TOTAL [EÉ]",
+     "onde": "linha-abaixo",
+     "pega": "dinheiro"
+    },
+    "Vencimento": {
+     "ancora": "^ESTA FATURA VENCE EM",
+     "onde": "linha-abaixo",
+     "pega": "data"
+    },
+    "Pagamento mínimo": {
+     "ancora": "^PAGAMENTO M[IÍ]NIMO R\\$",
+     "pega": "dinheiro",
+     "indice": 0
+    },
+    "Saldo anterior": {
+     "ancora": "^SALDO FATURA ANTERIOR",
+     "pega": "dinheiro"
+    },
+    "Pagamentos e créditos": {
+     "ancora": "^PAGAMENTO/CR[EÉ]DITOS",
+     "pega": "dinheiro"
+    },
+    "Despesas e débitos": {
+     "ancora": "^DESPESAS/D[EÉ]BITOS",
+     "pega": "dinheiro"
+    },
+    "Lançamentos no cartão": {
+     "ancora": "^LAN[CÇ]AMENTOS NO CART[AÃ]O",
+     "pega": "dinheiro"
+    },
+    "Cartão (final)": {
+     "ancora": "^LAN[CÇ]AMENTOS NO CART[AÃ]O",
+     "pega": "regex:FINAL \\*(\\d{3})"
+    },
+    "Fechamento da próxima fatura": {
+     "ancora": "^PREVIS[AÃ]O DE FECHAMENTO DA PR[OÓ]XIMA FATURA",
+     "pega": "data"
+    },
+    "Limite total": {
+     "ancora": "^LIMITE TOTAL DE CR[EÉ]DITO",
+     "pega": "dinheiro"
+    }
+   },
+   "tabela": {
+    "inicio": "^DATA ESTABELECIMENTO VALOR EM R\\$",
+    "fim": "^LAN[CÇ]AMENTOS NO CART[AÃ]O",
+    "colunas": [
+     "data",
+     "texto",
+     "dinheiro"
+    ],
+    "nomes": [
+     "data",
+     "descricao",
+     "valor"
+    ],
+    "anoDe": "Vencimento",
+    "minimo": 1
+   },
+   "classes": {
+    "consorcio": "\\bCONSORCIO\\b",
+    "anuidade": "\\bANUIDADE\\b",
+    "seguro": "\\bSEGURO\\b",
+    "pontos": "\\bPONTOS\\b|RESGATE|CASHBACK",
+    "pagamento": "^PAGAMENTO\\b"
+   },
+   "vitais": [
+    "Valor",
+    "Vencimento"
+   ],
+   "conferencias": [
+    {
+     "tipo": "soma",
+     "de": [
+      "Saldo anterior",
+      "-Pagamentos e créditos",
+      "Despesas e débitos"
+     ],
+     "igual": "Valor",
+     "nome": "saldo anterior menos pagamentos mais despesas não dá o total da fatura"
+    },
+    {
+     "tipo": "soma-itens",
+     "coluna": "valor",
+     "somente": "positivos",
+     "igual": "Despesas e débitos",
+     "nome": "as compras listadas não somam as despesas da fatura"
+    }
+   ],
+   "amostra": "dados/amostras/porto-fatura-cartao.txt"
   }
  ]
 }
