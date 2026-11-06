@@ -1626,6 +1626,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
   <script src="leitura/relacoes.js"></script>
   <script src="leitura/estabelecimentos.js"></script>
   <script src="leitura/ia.js"></script>
+  <script src="leitura/modelos.js"></script>
   <script src="leitores/cartao.js"></script>
   <script src="leitores/nfce.js"></script>
   <script src="leitores/conta.js"></script>
@@ -1637,8 +1638,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.8.1';
-    const APP_UPDATED = '30/10/2026';   // data desta versão
+    const APP_VERSION = '0.9.0';
+    const APP_UPDATED = '06/11/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
     const formatBRL = Leitura.texto.formatBRL;
@@ -2350,7 +2351,9 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         showToast(`${papers.length} papéis lidos${money ? `, ${ok} com valor confirmado` : ''}. Confira cada aba.`, ok === money ? 'ok' : 'warn', 5000);
         pares.forEach(([a, b]) => showToast(`Papéis ${a} e ${b} parecem a mesma compra.`, 'ok', 5000));
         divisoes.forEach(d => showToast(`Conta paga em partes: veja ${papers[d.conta].label || 'o papel ' + (d.conta + 1)}.`, 'ok', 6000));
-      } else if (first.itens && first.itens.length && first.valor === null) showToast(`${first.itens.length} lançamentos lidos.`, 'ok');
+      } else if (first.modelo && !first.modelo.conferido) showToast(`O documento parece ter mudado de formato (modelo "${first.modelo.modelo.nome}"): ${first.modelo.falhas[0]}. Confira os campos.`, 'warn', 8000);
+      else if (first.modelo) showToast(`Lido pelo modelo "${first.modelo.modelo.nome}", tudo conferido.`, 'ok');
+      else if (first.itens && first.itens.length && first.valor === null) showToast(`${first.itens.length} lançamentos lidos.`, 'ok');
       else if (!first.expectsValue) showToast('Texto lido. Confira os campos.', 'ok');
       else if (first.valor !== null) showToast('Comprovante processado com sucesso!', 'ok');
       else if (first.candidates.length) showToast('Não tenho certeza do valor. Toque no valor certo.', 'warn');
@@ -2560,7 +2563,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       // Category and type: "Saúde › Pedido de exame"
       const shownType = Leitura.tipo(result.tipo), family = Leitura.catalogo.familia(shownType.familia);
       const homes = Leitura.appsDoTipo(shownType.id).map(a => a.nome);
-      docTypeLabel.textContent = '📄 ' + (family && shownType.id !== 'livre' ? family.pt + ' › ' : '') + shownType.nome + (homes.length ? ' · ' + homes.join(', ') : '');
+      docTypeLabel.textContent = '📄 ' + (family && shownType.id !== 'livre' ? family.pt + ' › ' : '') + shownType.nome + (homes.length ? ' · ' + homes.join(', ') : '')
+        + (result.modelo ? ` · modelo "${result.modelo.modelo.nome}" v${result.modelo.modelo.versao}` : '');
       textKindLabel.textContent = '✍️ ' + result.textKind.label;
       if (result.hint) {
         docTypeHintText.textContent = 'Parece ser: ' + Leitura.tipo(result.hint).nome + '.';

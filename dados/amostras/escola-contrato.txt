@@ -1,0 +1,19 @@
+# Amostra-esqueleto (MODELOS.md): o texto que o pdf.js tira do documento, com os dígitos trocados por 0 e os nomes de pessoas por X. Só o layout. Documento fictício.
+ASSOCIAÇÃO EDUCACIONAL EXEMPLO
+CONTRATO DE SERVIÇOS DE EDUCAÇÃO ESCOLAR - 0000
+Informações do(a) educando(a)
+RA: 00000
+Nome Completo: XXX XXXXX XXXXXXX
+Curso: ( ) Educação infantil / ( X ) Ensino Fundamental Ano/Série: Turno: ( ) Ensino Médio (X ) Manhã ( ) Tarde
+Informações do Pai
+Nome Completo: XXXXX XXXXX XXXXXXX
+Informações da Mãe
+Nome Completo: XXXXX XXXXX XXXXXXX
+CLÁUSULA 0ª: O valor da anuidade para o ano letivo de janeiro a dezembro de 0000 poderá ser parcelado em até 00 parcelas,
+sendo a primeira parcela devida no ato da contratação, como antecipação da própria anuidade e 00 mensais iguais, de janeiro
+a dezembro, vencíveis no dia 00. Havendo feriado, o primeiro ocorrerá em 00/00/0000.
+Curso / Etapa Valor da Anuidade 0ª Parcela Antecipada Valor Restante Número de Parcela Valor de Cada Parcela
+Educação Infantil R$ 00.000,00 R$ 0.000,00 R$ 00.000,00 00 R$ 0.000,00
+Ens. Fundamental
+R$ 00.000,00 R$ 0.000,00 R$ 00.000,00 00 R$ 0.000,00
+(0º ao 0º ano)

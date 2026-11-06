@@ -40,6 +40,8 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 | `leitura/relacoes.js` | `Leitura.relacionar(papeis)`: mesma compra (a nota e a via do cartão; o canhoto e o aviso do banco), aviso repetido em dois prints, pagamento dividido, quem pagou e "minha parte" (cartões da pessoa pelos 4 últimos dígitos, em `localStorage` `leitor_meus_cartoes`). |
 | `leitura/estabelecimentos.js` | Quem é a loja: `Leitura.estabelecimento({ razao, cnpj, cabecalho })` pela raiz do CNPJ na base, `Leitura.categoriaDe(descricao)` e o nome corrigido pela pessoa (`localStorage` `leitor_nomes_estabelecimentos`). Com internet, `Leitura.consultarCnpj(cnpj)` pergunta à consulta pública de CNPJ quem é a loja fora da base (resposta em `localStorage` `leitor_cnpj_consultados`; `Leitura.consultaCnpjLigada()` / `ligarConsultaCnpj(sim)` é a chave de Ajustes; `Leitura.categoriaDoCnae(cnae)` é a tabela atividade → categoria). Ver "Lojas". |
 | `dados/estabelecimentos.json` | A base de lojas: raiz do CNPJ, razão social, nome fantasia e categoria das redes comuns (dado público). |
+| `leitura/modelos.js` | Leitura por modelo (MODELOS.md): `Leitura.modelos.reconhecer(texto, tipo)`, `aplicarEm(reading, tipo)` → `{ modelo: { id, versao, nome, tipo }, fields, campos, itens ou tabela, conferido, falhas, impressao }`, `lista()`, `adicionar(modelo)` / `remover(id)` (modelos da pessoa, `localStorage` `leitor_modelos_pessoais`), `falhas()` (`leitor_modelos_falhas`), `Leitura.esqueleto(texto)`. |
+| `dados/modelos.json`, `dados/amostras/*.txt` | O catálogo de modelos (só regras) e a amostra-esqueleto de cada um (texto do pdf.js, dígitos → 0, nomes → X). |
 | `leitura/ia.js` | Ler a foto com uma IA online (nível C): `Leitura.ia.provedores()`, `guardarChave(prov, chave)` (testa na lista de modelos e guarda no cofre comum `dgo:global:chaves-ia`), `provedorAtual()`, `lerFoto(img)` (Gemini ou Claude, pedido em JSON), `aplicar(papel, lido, atuais)` (campos só onde estava vazio; valor vira sugestão), `explicar(erro)`, `precisaPerguntar(tipo)`, `sozinha()`. Ver "Ler com IA". |
 | `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce` (também o total do DANFE, conferido pela soma da nota, e os produtos do cupom; ver "Produtos da nota"), `conta`, `transferencia` (Pix, TED), `boleto` (valor e vencimento da linha digitável, conferidos pelos dígitos verificadores; as partes do valor; o valor pago no comprovante), `arrecadacao` (conta de luz, água, gás, telefone, imposto e multa pelo código de 48 números), `extrato` (o **leitor de lançamentos**: um só para extrato, fatura e print de notificação, de qualquer banco; ver "Lançamentos"). |
 | `formatos/*.js` | Um arquivo por tipo de arquivo. |
@@ -193,6 +195,7 @@ Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`
    <script src="leitura/relacoes.js"></script>
    <script src="leitura/estabelecimentos.js"></script>
    <script src="leitura/ia.js"></script>
+   <script src="leitura/modelos.js"></script>
    <script src="leitores/cartao.js"></script>   <!-- um por leitor -->
    ```
 3. No código do app:
@@ -204,6 +207,13 @@ Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`
    ```
 4. No `sw.js` do app: os arquivos do motor na lista do básico; `tesseract/` e `libs/` guardados no primeiro uso (ver o `sw.js` daqui).
 5. Atualizar: copiar de novo as pastas a partir daqui. `Leitura.versao` diz qual versão do motor o app tem.
+
+## Modelos de documento (0.9.0, pedido 31; especificação em MODELOS.md)
+
+- `Leitura.ler` carrega `dados/modelos.json` e, para cada arquivo com texto (as páginas de um PDF juntas: um PDF = um documento), pergunta a `Leitura.modelos.reconhecer`. Com modelo, o arquivo vira um papel só, lido por `Leitura.lerArquivo` e com `papel.modelo = Leitura.modelos.aplicarEm(...)`; em "Não sei, descobrir", o tipo do modelo vence.
+- `Leitura.resultado` → `comModelo`: os campos do modelo primeiro (da leitura comum só fica o resumo dos lançamentos), o Valor é o do modelo (vazio, com o valor lido como opção, quando a conta não fechou), a tabela vira `itens` (formato combinado, quando tem data/descrição/valor) ou `result.tabela`, e `result.modelo` leva tudo; a situação diz o modelo e a primeira falha.
+- A tela mostra o modelo no rótulo do tipo e avisa "parece ter mudado de formato" quando o modelo falhou.
+- Fotos não passam por modelo (texto com erros de OCR): a leitura de foto é a de sempre.
 
 ## Leitura que não cancela (0.8.1, pedido 29)
 

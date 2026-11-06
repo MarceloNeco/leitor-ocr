@@ -1,0 +1,265 @@
+{
+ "sobre": "Modelos de leitura por documento (MODELOS.md): só regras, nada de dado pessoal. Cada modelo diz os sinais que reconhecem o documento, a impressão do layout (rótulos fixos), os campos por âncora, a tabela de itens e as conferências. Amostras em dados/amostras/ como esqueleto (dígitos → 0, nomes → X), no texto que o próprio motor tira do PDF (pdf.js).",
+ "versao": 1,
+ "modelos": [
+  {
+   "id": "escola-boleto-matricula",
+   "versao": 1,
+   "tipo": "boleto",
+   "apps": [
+    "moneytrio"
+   ],
+   "nome": {
+    "pt": "Boleto da matrícula (escola)",
+    "en": "School enrollment bank slip"
+   },
+   "sinais": [
+    "PARCELA DA ANUIDADE",
+    "VALOR A PAGAR",
+    "VENCIMENTO"
+   ],
+   "impressao": [
+    "\\bALUNO\\b",
+    "MATR[IÍ]CULA",
+    "VALOR BRUTO",
+    "DESCONTOS",
+    "BENEFICI[AÁ]RIO",
+    "VENCIMENTO",
+    "VALOR DO DOCUMENTO",
+    "AG[EÊ]NCIA"
+   ],
+   "campos": {
+    "Valor bruto": {
+     "ancora": "PARCELA DA ANUIDADE|VALOR BRUTO DESCONTOS VALOR A PAGAR",
+     "n": -1,
+     "onde": "linha-abaixo",
+     "pega": "dinheiro",
+     "indice": 0
+    },
+    "Desconto": {
+     "ancora": "PARCELA DA ANUIDADE|VALOR BRUTO DESCONTOS VALOR A PAGAR",
+     "n": -1,
+     "onde": "linha-abaixo",
+     "pega": "dinheiro",
+     "indice": 1
+    },
+    "Valor": {
+     "ancora": "PARCELA DA ANUIDADE|VALOR BRUTO DESCONTOS VALOR A PAGAR",
+     "n": -1,
+     "onde": "linha-abaixo",
+     "pega": "dinheiro",
+     "indice": 2
+    },
+    "Vencimento": {
+     "ancora": "^VENCIMENTO",
+     "onde": "coluna",
+     "pega": "data"
+    },
+    "Beneficiário": {
+     "ancora": "BENEFICI[AÁ]RIO CNPJ",
+     "onde": "linha-abaixo",
+     "pega": "regex:^(.*?)\\s*\\d{2}\\.?\\d{3}\\.?\\d{3}\\/?\\d{4}"
+    },
+    "CNPJ": {
+     "ancora": "BENEFICI[AÁ]RIO CNPJ",
+     "onde": "linha-abaixo",
+     "pega": "cnpj"
+    },
+    "Aluno": {
+     "ancora": "^ALUNO\\b",
+     "onde": "mesma-linha",
+     "pega": "regex:^\\s*(.*?)\\s+MATR[IÍ]CULA"
+    },
+    "Matrícula": {
+     "ancora": "MATR[IÍ]CULA",
+     "onde": "mesma-linha",
+     "pega": "numero"
+    }
+   },
+   "vitais": [
+    "Valor",
+    "Vencimento"
+   ],
+   "conferencias": [
+    {
+     "tipo": "soma",
+     "de": [
+      "Valor bruto",
+      "-Desconto"
+     ],
+     "igual": "Valor",
+     "nome": "bruto menos desconto não dá o valor a pagar"
+    }
+   ],
+   "amostra": "dados/amostras/escola-boleto-matricula.txt"
+  },
+  {
+   "id": "fgts-extrato",
+   "versao": 1,
+   "tipo": "extrato",
+   "apps": [
+    "moneytrio"
+   ],
+   "nome": {
+    "pt": "Extrato do FGTS (app oficial, PDF)",
+    "en": "FGTS statement (official app, PDF)"
+   },
+   "sinais": [
+    "EXTRATO DO FGTS",
+    "EMPREGADOR",
+    "SALDO DISPON"
+   ],
+   "impressao": [
+    "DATA DE ADMISS",
+    "LANCAMENTOS|LAN[CÇ]AMENTOS",
+    "SALDO DISPON",
+    "ATUALIZADO EM"
+   ],
+   "campos": {
+    "Empregador": {
+     "ancora": "^EMPREGADOR",
+     "onde": "mesma-linha",
+     "pega": "regex:^\\s*:?\\s*(.*?)\\s*(?:CNPJ.*)?$"
+    },
+    "CNPJ": {
+     "ancora": "^EMPREGADOR",
+     "onde": "mesma-linha",
+     "pega": "cnpj"
+    },
+    "Admissão": {
+     "ancora": "DATA DE ADMISS",
+     "onde": "mesma-linha",
+     "pega": "data"
+    },
+    "Afastamento": {
+     "ancora": "AFASTAMENTO",
+     "onde": "mesma-linha",
+     "pega": "data"
+    },
+    "Valor": {
+     "ancora": "SALDO DISPON",
+     "onde": "mesma-linha",
+     "pega": "dinheiro"
+    },
+    "Atualizado em": {
+     "ancora": "ATUALIZADO EM",
+     "onde": "mesma-linha",
+     "pega": "data"
+    }
+   },
+   "tabela": {
+    "inicio": "^DATA LAN[CÇ]AMENTOS VALOR TOTAL",
+    "fim": "SALDO DISPON",
+    "colunas": [
+     "data",
+     "texto",
+     "dinheiro",
+     "dinheiro"
+    ],
+    "nomes": [
+     "data",
+     "descricao",
+     "valor",
+     "total"
+    ]
+   },
+   "vitais": [
+    "Empregador",
+    "Valor"
+   ],
+   "conferencias": [
+    {
+     "tipo": "ultimo-item",
+     "coluna": "total",
+     "igual": "Valor",
+     "opcional": true,
+     "nome": "o total do último lançamento não bate com o saldo"
+    }
+   ],
+   "amostra": "dados/amostras/fgts-extrato.txt"
+  },
+  {
+   "id": "escola-contrato",
+   "versao": 1,
+   "tipo": "contrato",
+   "apps": [
+    "moneytrio"
+   ],
+   "nome": {
+    "pt": "Contrato de serviços de educação escolar",
+    "en": "School services contract"
+   },
+   "sinais": [
+    "CONTRATO DE SERVI[CÇ]OS DE EDUCA",
+    "ANUIDADE",
+    "PARCELA"
+   ],
+   "impressao": [
+    "EDUCANDO",
+    "NOME COMPLETO",
+    "ANO LETIVO",
+    "VALOR DA ANUIDADE",
+    "N[UÚ]MERO DE PARCELA",
+    "VALOR DE CADA PARCELA"
+   ],
+   "campos": {
+    "Escola": {
+     "ancora": "^(ASSOCIA|COL[EÉ]GIO|ESCOLA|INSTITUTO|CENTRO EDUCACIONAL)",
+     "onde": "mesma-linha",
+     "pega": "regex:^(.+)$",
+     "inteira": true
+    },
+    "Ano letivo": {
+     "ancora": "CONTRATO DE SERVI|ANO LETIVO",
+     "onde": "mesma-linha",
+     "pega": "regex:(20\\d\\d)"
+    },
+    "Aluno": {
+     "ancora": "NOME COMPLETO",
+     "n": 1,
+     "onde": "mesma-linha",
+     "pega": "texto"
+    },
+    "Dia do vencimento": {
+     "ancora": "VENC[IÍ]VEIS NO DIA",
+     "onde": "mesma-linha",
+     "inteira": true,
+     "pega": "regex:VENC[IÍ]VEIS NO DIA\\s*(\\d{1,2})"
+    },
+    "Parcelas": {
+     "ancora": "MENSAIS IGUAIS",
+     "onde": "mesma-linha",
+     "inteira": true,
+     "pega": "regex:(\\d{1,2})\\s+MENSAIS"
+    }
+   },
+   "tabela": {
+    "inicio": "CURSO\\s*/\\s*ETAPA",
+    "fim": "CL[AÁ]USULA\\s+8|^\\s*$",
+    "colunas": [
+     "texto",
+     "dinheiro",
+     "dinheiro",
+     "dinheiro",
+     "numero",
+     "dinheiro"
+    ],
+    "nomes": [
+     "etapa",
+     "anuidade",
+     "primeira",
+     "restante",
+     "parcelas",
+     "parcela"
+    ],
+    "minimo": 1
+   },
+   "vitais": [
+    "Escola",
+    "Ano letivo"
+   ],
+   "conferencias": [],
+   "amostra": "dados/amostras/escola-contrato.txt"
+  }
+ ]
+}
