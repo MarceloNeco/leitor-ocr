@@ -253,7 +253,7 @@
     const giros = medidos.concat(pelaFoto.filter(g => !medidos.some(m => perto(m, g))));
     const votosNum = new Map(), votosFinal = new Map(), validades = [], nomes = [];
     let textoTodo = '', melhor = { conf: -1, rot: giros[0], inverter: false }, extras = false;
-    const passos = giros.map(rot => ({ rot, inverter: false })).concat(giros.map(rot => ({ rot, inverter: false, local: true })), giros.map(rot => ({ rot, inverter: true })), giros.map(rot => ({ rot, inverter: true, local: true })), giros.map(rot => ({ rot, inverter: true, branco: true })));
+    const passos = giros.map(rot => ({ rot, inverter: false })).concat(giros.map(rot => ({ rot, inverter: false, local: true })), giros.map(rot => ({ rot, inverter: true })), giros.map(rot => ({ rot, inverter: true, local: true })), giros.map(rot => ({ rot, inverter: true, branco: true })), giros.map(rot => ({ rot, inverter: false, branco: true })));
     try {
       for (let k = 0; k < passos.length; k++) {
         const { rot, inverter, local, branco } = passos[k];
