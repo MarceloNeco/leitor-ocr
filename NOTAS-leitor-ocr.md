@@ -474,6 +474,27 @@ Só a leitura por modelo mudou (`leitura/modelos.js`, catálogo); foto, texto e 
 
 `testes/offline.js`: **84 de 84** (era 83): a fatura de mentira com 7 cartas, anuidade, seguro e pagamento, vencendo em janeiro com compras de dezembro (ano completado), divisão por classe.
 
+## Resultado da 0.9.2 (cartão de crédito pela câmera, pedido 32, 11/11/2026)
+
+`leitores/cartao-plastico.js`, `Leitura.lerCartao(foto)` (ver ARQUITETURA.md). Antes não havia leitor de cartão: 0 de tudo. Medido em fotos de cartões de mentira geradas na hora (números de teste públicos das bandeiras, nomes fictícios; fora do repositório), cada cartão fotografado de 6 jeitos (reto, torto 6°, de cabeça para baixo, de lado, borrado, em perspectiva), e nos comprovantes reais de 02/11 (que não têm cartão: nenhum número pode sair).
+
+| Conjunto | final certo (conferido pelo Luhn) | final errado | nome | validade | banco |
+|---|---|---|---|---|---|
+| A: 8 cartões × 6 jeitos (letra mono, mesa de madeira listrada) | 47 de 48 | 0 | 46 | 48 | 48 |
+| B: os mesmos 8 em outro desenho (letra Courier, cartão menor, mesa clara, reflexo de luz) | 45 de 48 | 0 | 31 | 47 | 48 |
+| Comprovantes de 02/11 (8 fotos, sem cartão) | nenhum número inventado | 0 | — | — | — |
+
+Como se chegou lá (cada passo medido nos conjuntos A e B):
+
+- Sem o número inteiro conferido, a primeira versão devolvia os 4 últimos dígitos de uma linha de grupos de 4: 5 finais errados em 48 (o OCR perdia o último grupo e o penúltimo virava "final"). Tirado: sem Luhn, o final fica vazio.
+- O número partido em 2 ou 3 linhas pelo OCR ("6362 9700 0045" e "7013") é juntado; o cartão torto é endireitado pela inclinação das letras e, quando nada confere, a posição que leu melhor é tentada girada 5° e 10° para cada lado; a medida da inclinação engana com mesa listrada, então as posições deitada e de cabeça para baixo são sempre tentadas também.
+- Juntar grupos soltos montou números falsos que passavam no Luhn: um final errado no conjunto B (cartão borrado) e um "cartão" num canhoto da PagBank. Agora o número só vale em blocos inteiros do jeito do cartão (4 4 4 4, 4 6 5, 4 6 4, 4 4 4 4 3), sem outro número colado na mesma linha e com no máximo 2 letras trocadas: 0 errados nos três conjuntos.
+- Cartão amarelo em mesa branca não era lido (o OCR corta claro e escuro uma vez só para a foto toda): passada em preto e branco pelo claro de cada pedaço da foto. Conjunto B de 31 para 45.
+
+Tempo: 2,6 s (A) e 3,5 s (B) por foto no computador; numa foto sem cartão (comprovante grande) o leitor tenta todas as posições e leva até um minuto. O caminho comum (`Leitura.ler`) esconde o número de um cartão que confere no texto lido: nos 7 comprovantes recortados de 02/11 a leitura ficou igual à da 0.9.1 (valor 3 / 1 / 1 / 1 / 1; datas 4). `testes/offline.js`: 88 de 88 (4 novos: o Visa de teste com só os 6 campos; o Mastercard escuro de cabeça para baixo pela tela, sem nada guardado no aparelho nem no console; a máscara num texto e o comprovante intacto; o cartão pelo caminho comum com o número escondido no que fica guardado).
+
+Não medido: cartão de verdade (relevo, holograma, reflexo do plástico, letra prateada ou dourada em relevo, número só no verso). O Marcelo testa no celular: "💳 Ler cartão (frente)" em Capturar.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **PDF sem camada de texto com muitas páginas** (letras desenhadas, como a apólice da Porto): o app passa até 10 páginas pelo OCR em resolução alta, e isso demora minutos no celular sem avisar quanto falta. Avisar antes ("este PDF não tem texto, vou ler N páginas por OCR") e deixar escolher as páginas; e um modelo tolerante a erros de OCR para esse caso.

@@ -333,6 +333,17 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const grandeInclinado = await shot(girado(slipGrande('36,00'), 8), 'grande-inclinado.png');
   const cabecaParaBaixo = await shot(girado(slipGrande('16,00'), 180), 'cabeca-para-baixo.png');
   const deLado = await shot(girado(slipGrande('23.00'), 90), 'de-lado.png');
+  // cartões de crédito de mentira (números de teste públicos das bandeiras), para o teste 16
+  const cartaoHtml = (num, nome, val, banco, marca, fundo, cor) => `<div style="width:856px;height:540px;border-radius:36px;background:${fundo};position:relative;font-family:'DejaVu Sans Mono',monospace">
+    <div style="position:absolute;left:50px;top:40px;font:bold 40px sans-serif;color:${cor}">${banco}</div>
+    <div style="position:absolute;left:70px;top:170px;width:110px;height:85px;border-radius:12px;background:#d4af37"></div>
+    <div style="position:absolute;left:60px;top:300px;font:bold 56px 'DejaVu Sans Mono',monospace;letter-spacing:4px;color:${cor}">${num}</div>
+    <div style="position:absolute;left:330px;top:390px;font:bold 18px sans-serif;color:${cor}">VALIDO ATÉ</div>
+    <div style="position:absolute;left:470px;top:382px;font:bold 36px 'DejaVu Sans Mono',monospace;color:${cor}">${val}</div>
+    <div style="position:absolute;left:60px;top:450px;font:bold 36px 'DejaVu Sans Mono',monospace;color:${cor}">${nome}</div>
+    <div style="position:absolute;right:50px;bottom:40px;font:bold italic 44px sans-serif;color:${cor}">${marca}</div></div>`;
+  const cartaoVisa = await shot(cartaoHtml('4111 1111 1111 1111', 'FULANO DE TAL', '08/29', 'Banco Exemplo', 'VISA', '#2a5298', '#fff'), 'cartao-visa.png');
+  const cartaoMaster = await shot(girado(cartaoHtml('5555 5555 5555 4444', 'MARIA EXEMPLO SILVA', '11/30', 'Itaú', 'mastercard', '#111', '#ddd'), 180, 1000), 'cartao-master.png');
   const doisGirados = await shot(`<div style="display:flex;gap:120px">${girado(slipGrande('40,00', 'BAR EXEMPLO LTDA', '12:30'), 180, 700)}${girado(slipGrande('25,50', 'PADARIA EXEMPLO', '12:41'), -90, 700)}</div>`, 'dois-girados.png');
   const printNota = await shot(telaAvisos(compra('60,25', 'MERCADO EXEMPLO', '14h07')), 'print-nota.png');
   const printUm = await shot(`<div style="width:520px;padding:24px;border-radius:18px;background:#fff;font:22px Arial;color:#111;line-height:1.4"><b>Banco Exemplo</b> · agora<br>`
@@ -1036,16 +1047,6 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   // 16. Cartão de crédito pela câmera (leitores/cartao-plastico.js), com números de teste públicos das
   // bandeiras: só o final, a bandeira, o nome e a validade saem; o número inteiro não aparece na tela, no
   // aparelho (localStorage, trabalho guardado) nem no console; o caminho comum também esconde o número
-  const cartaoHtml = (num, nome, val, banco, marca, fundo, cor) => `<div style="width:856px;height:540px;border-radius:36px;background:${fundo};position:relative;font-family:'DejaVu Sans Mono',monospace">
-    <div style="position:absolute;left:50px;top:40px;font:bold 40px sans-serif;color:${cor}">${banco}</div>
-    <div style="position:absolute;left:70px;top:170px;width:110px;height:85px;border-radius:12px;background:#d4af37"></div>
-    <div style="position:absolute;left:60px;top:300px;font:bold 56px 'DejaVu Sans Mono',monospace;letter-spacing:4px;color:${cor}">${num}</div>
-    <div style="position:absolute;left:330px;top:390px;font:bold 18px sans-serif;color:${cor}">VALIDO ATÉ</div>
-    <div style="position:absolute;left:470px;top:382px;font:bold 36px 'DejaVu Sans Mono',monospace;color:${cor}">${val}</div>
-    <div style="position:absolute;left:60px;top:450px;font:bold 36px 'DejaVu Sans Mono',monospace;color:${cor}">${nome}</div>
-    <div style="position:absolute;right:50px;bottom:40px;font:bold italic 44px sans-serif;color:${cor}">${marca}</div></div>`;
-  const cartaoVisa = await shot(cartaoHtml('4111 1111 1111 1111', 'FULANO DE TAL', '08/29', 'Banco Exemplo', 'VISA', '#2a5298', '#fff'), 'cartao-visa.png');
-  const cartaoMaster = await shot(girado(cartaoHtml('5555 5555 5555 4444', 'MARIA EXEMPLO SILVA', '11/30', 'Itaú', 'mastercard', '#111', '#ddd'), 180, 1000), 'cartao-master.png');
   const numerosCartao = ['4111111111111111', '5555555555554444'];
   const temNumero = txt => numerosCartao.some(n => String(txt || '').replace(/[^0-9]/g, '').includes(n));
   page = await open();
