@@ -235,25 +235,27 @@ Para o MoneyTRIO cadastrar um cartão com uma foto da frente. Arquivo `leitores/
 
 ```js
 const c = await Leitura.lerCartao(foto, { aviso: t => status.textContent = t, progresso: p => barra.value = p });
-// foto: File, Blob, <img>, <canvas> ou ImageBitmap (a foto da câmera do celular ou do computador)
-// c = { final: '4444', bandeira: 'Mastercard', nome: 'MARIA EXEMPLO SILVA', validade: '11/30', emissor: 'Itaú', conferido: true }
+// foto: File, Blob, <img>, <canvas> ou ImageBitmap: a foto da câmera (celular ou computador), uma imagem da galeria
+// ou o print da tela do app do banco com o cartão virtual (0.9.4)
+// c = { final: '4444', bandeira: 'Mastercard', nome: 'MARIA EXEMPLO SILVA', validade: '11/30', emissor: 'Itaú', conferido: true, virtual: null }
 // ou null: não achei um cartão na foto
 ```
 
 | Campo | O que é |
 |---|---|
-| `final` | os 4 últimos dígitos. Só vem quando o número inteiro foi lido e conferido pelo dígito verificador (Luhn) e pela bandeira; senão `null` (antes vazio do que errado) |
+| `final` | os 4 últimos dígitos. Só vem do número inteiro conferido pelo dígito verificador (Luhn) e pela bandeira; senão `null` (antes vazio do que errado). No print de cartão virtual com o número escondido pelo app ("•••• 4444"), o final à mostra não é lido: sem o número não há conferência, e nos prints de teste o OCR leu "1177" no lugar de "1111" igual em duas leituras. A pessoa digita o final |
 | `bandeira` | pelos primeiros dígitos do número (Visa, Mastercard, Elo, American Express, Hipercard, Diners Club, Discover, JCB); sem número conferido, pela palavra escrita no cartão |
 | `nome` | como está impresso, ou `null` |
 | `validade` | "mm/aa" (a de "válido até"; a de "membro desde" não conta), ou `null` |
 | `emissor` | o banco, quando o nome dele aparece no cartão (lista em `EMISSORES`), ou `null` |
-| `conferido` | `true` quando o número passou no Luhn e tem bandeira |
+| `conferido` | `true` quando o número passou no Luhn e tem bandeira (e então `final` vem junto) |
+| `virtual` | `'temporario'` (cartão virtual temporário, descartável, de uso único), `'virtual'` (cartão virtual de sempre) ou `null` (cartão físico ou não dá para saber), pelas palavras da tela |
 
-Como lê: endireita a foto pela inclinação das letras (`Leitura.foto.anguloLinhas`) e tenta as posições deitada e de cabeça para baixo; cada posição em tons de cinza, em preto e branco por pedaço da foto (cartão amarelo em mesa branca) e com as cores invertidas (letra clara em cartão escuro); para quando achou o número duas vezes, a validade e o nome. O número só vale com o formato de um cartão: blocos inteiros (4 4 4 4, 4 6 5, 4 6 4, 4 4 4 4 3), sem outro número colado na mesma linha, no máximo 2 letras trocadas por dígitos (O→0, S→5...), até três linhas seguidas (o OCR parte o número), Luhn e bandeira.
+Como lê: endireita a foto pela inclinação das letras (`Leitura.foto.anguloLinhas`) e tenta as posições deitada e de cabeça para baixo; cada posição em tons de cinza, em preto e branco por pedaço da foto (cartão amarelo em mesa branca), com as cores invertidas (letra clara em cartão escuro) e pelo "quão branco" é cada ponto, sem esticar o contraste (letra branca em cartão colorido no print do modo escuro); a foto em pé tenta primeiro o texto em pé (print da tela); para quando achou o número duas vezes, a validade e o nome. O número só vale com o formato de um cartão: blocos inteiros (4 4 4 4, 4 6 5, 4 6 4, 4 4 4 4 3), sem outro número colado na mesma linha, no máximo 2 letras trocadas por dígitos (O→0, S→5...), até três linhas seguidas (o OCR parte o número), Luhn e bandeira.
 
-Segurança (PCI/LGPD): o número inteiro só existe na memória durante a leitura; nunca é devolvido, guardado, mandado para fora nem posto no console. O código de segurança não é procurado e o verso não é lido. A foto e o texto lido não são guardados: este caminho não passa pelo histórico nem pelo trabalho guardado. Sem IA e sem internet. No `Leitura.ler` (caminho comum), `Leitura.mascararLeitura` esconde um número de cartão que confere no texto, nas linhas e nas palavras de cada leitura de foto, antes de qualquer coisa ser guardada (`Leitura.mascararCartoes(texto)` faz o mesmo num texto qualquer).
+Segurança (PCI/LGPD): o número inteiro só existe na memória durante a leitura; nunca é devolvido, guardado, mandado para fora nem posto no console. O código de segurança não é procurado e o verso não é lido; no print do cartão virtual, onde o CVV aparece, ele não entra no resultado. A foto e o texto lido não são guardados: este caminho não passa pelo histórico nem pelo trabalho guardado. Sem IA e sem internet. No `Leitura.ler` (caminho comum), `Leitura.mascararLeitura` esconde um número de cartão que confere no texto, nas linhas e nas palavras de cada leitura de foto, antes de qualquer coisa ser guardada (`Leitura.mascararCartoes(texto)` faz o mesmo num texto qualquer).
 
-No app de referência: botão "💳 Ler cartão (frente)" em Capturar (câmera do computador ou do celular), resultado na janela `cartaoDialog`, nada salvo.
+No app de referência: botões "💳 Fotografar cartão" (câmera do computador ou do celular) e "🖼️ Imagem ou print do cartão" (galeria, print do cartão virtual) em Capturar; resultado na janela `cartaoDialog`, nada salvo. Não se tenta corrigir um dígito pelo Luhn: simulado, com um dígito errado a correção única acerta sempre, mas com dois errados ela dá um final errado em 18,5% das vezes, e não dá para saber quantos o OCR errou.
 
 ## Privacidade
 

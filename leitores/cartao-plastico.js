@@ -145,7 +145,7 @@
   }
   const EMISSORES = [
     ['Nubank', /NU\s?BANK|Nu\s?bank|\bnu\b/], ['Itaú', /ITA[UÚ]|PERSONNALIT/i], ['Bradesco', /BRADESCO/i], ['Santander', /SANTANDER/i],
-    ['Banco do Brasil', /BANCO DO BRASIL|\bOUROCARD\b/i], ['Caixa', /\bCAIXA\b/i], ['Inter', /\bBANCO INTER\b|\binter\b/], ['C6 Bank', /\bC6\b/i],
+    ['Banco do Brasil', /BANCO DO BRASIL|\bOUROCARD\b/i], ['Caixa', /\bCAIXA\b/i], ['Inter', /\bBANCO INTER\b/i], ['C6 Bank', /\bC6\b/i],
     ['BTG Pactual', /\bBTG\b/i], ['XP', /\bXP\b/], ['Porto Bank', /\bPORTO\b/i], ['Sicredi', /SICREDI/i], ['Sicoob', /SICOOB/i],
     ['PicPay', /PICPAY/i], ['Mercado Pago', /MERCADO\s?PAGO/i], ['PagBank', /PAG\s?BANK|PAGSEGURO/i], ['Neon', /\bNEON\b/i], ['Next', /\bNEXT\b/i],
     ['Banco Original', /\bORIGINAL\b/i], ['Safra', /\bSAFRA\b/i], ['Banrisul', /BANRISUL/i], ['BS2', /\bBS2\b/i], ['Will Bank', /\bWILL\b/i],
@@ -167,7 +167,7 @@
     return c;
   }
   // A foto girada, em tons de cinza, com o contraste esticado; "inverter" para letra clara em cartão escuro
-  function preparar(src, rot, largura, inverter, local) {
+  function preparar(src, rot, largura, inverter, local, branco) {
     const r = rot * Math.PI / 180, cos = Math.abs(Math.cos(r)), sin = Math.abs(Math.sin(r));
     const sw = src.width * cos + src.height * sin, sh = src.width * sin + src.height * cos;
     const s = largura / sw;
@@ -181,9 +181,14 @@
     x.drawImage(src, -src.width * s / 2, -src.height * s / 2, src.width * s, src.height * s);
     const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
     const hist = new Uint32Array(256);
-    for (let i = 0; i < p.length; i += 4) { const g = (p[i] * 299 + p[i + 1] * 587 + p[i + 2] * 114) / 1000 | 0; p[i] = g; hist[g]++; }
+    // "branco": o menor dos três canais, o quanto o ponto é branco; letra branca em cartão laranja ou roxo
+    // (cartão virtual na tela do celular) some nos tons de cinza e aparece assim
+    for (let i = 0; i < p.length; i += 4) { const g = branco ? Math.min(p[i], p[i + 1], p[i + 2]) : (p[i] * 299 + p[i + 1] * 587 + p[i + 2] * 114) / 1000 | 0; p[i] = g; hist[g]++; }
     let acc = 0, lo = 0, hi = 255; const n = p.length / 4;
     for (let g = 0; g < 256; g++) { acc += hist[g]; if (acc < n * 0.02) lo = g; if (acc < n * 0.98) hi = g; }
+    // no "branco" o contraste fica como está: num print escuro o fundo preto domina e esticar juntaria
+    // o roxo do cartão com a letra branca
+    if (branco) { lo = 0; hi = 255; }
     const k = 255 / Math.max(1, hi - lo);
     for (let i = 0; i < p.length; i += 4) {
       let g = Math.max(0, Math.min(255, (p[i] - lo) * k));
@@ -222,24 +227,25 @@
     o.aviso('Preparando a foto do cartão...');
     let src = await paraCanvas(fonte);
     const worker = await motor();
-    // endireitar pelas linhas de letras (leitura/foto.js); de cabeça para baixo, o giro de 180 resolve.
-    // Sem linhas claras (cartão escuro), o cartão é deitado: a foto em pé foi tirada de lado
+    // endireitar pelas linhas de letras (leitura/foto.js); de cabeça para baixo, o giro de 180 resolve
     const inc = L.foto.anguloLinhas(src);
-    const pelaFoto = src.width >= src.height ? [0, 180] : [90, 270];
+    // foto deitada: o cartão em pé ou de cabeça para baixo; foto em pé: cartão de lado, ou o print da tela
+    // do celular (texto em pé) e o cartão deitado fotografado com o celular em pé
+    const pelaFoto = src.width >= src.height ? [0, 180, 90, 270] : [0, 90, 270, 180];
     // a medida engana com fundo listrado (mesa de madeira): as posições pela foto vêm logo depois
     const medidos = inc.razao > 1.5 ? [-inc.a, 180 - inc.a] : [];
     const perto = (a, b) => Math.abs((((a - b) % 360) + 540) % 360 - 180) < 3;
     const giros = medidos.concat(pelaFoto.filter(g => !medidos.some(m => perto(m, g))));
     const votosNum = new Map(), validades = [], nomes = [];
     let textoTodo = '', melhor = { conf: -1, rot: giros[0], inverter: false }, extras = false;
-    const passos = giros.map(rot => ({ rot, inverter: false })).concat(giros.map(rot => ({ rot, inverter: false, local: true })), giros.map(rot => ({ rot, inverter: true })), giros.map(rot => ({ rot, inverter: true, local: true })));
+    const passos = giros.map(rot => ({ rot, inverter: false })).concat(giros.map(rot => ({ rot, inverter: false, local: true })), giros.map(rot => ({ rot, inverter: true })), giros.map(rot => ({ rot, inverter: true, local: true })), giros.map(rot => ({ rot, inverter: true, branco: true })));
     try {
       for (let k = 0; k < passos.length; k++) {
-        const { rot, inverter, local } = passos[k];
+        const { rot, inverter, local, branco } = passos[k];
         o.aviso('Lendo o cartão...');
         o.progresso(Math.round(k * 100 / passos.length));
         await worker.setParameters({ tessedit_pageseg_mode: '11' });   // texto solto pelo cartão
-        const res = (await worker.recognize(preparar(src, rot, 1600, inverter, local))).data;
+        const res = (await worker.recognize(preparar(src, rot, 1600, inverter, local, branco))).data;
         let texto = res.text || '';
         // o número numa linha, ou partido em até três seguidas ("6362 9700 0045" e "7013")
         const linhas = texto.split('\n').filter(l => l.trim());
@@ -253,7 +259,7 @@
         nomes.push(...nomesDe(res));
         textoTodo += L.mascararCartoes(texto) + '\n';
         texto = null;
-        if (res.confidence > melhor.conf) melhor = { conf: res.confidence, rot, inverter, local };
+        if (!branco && res.confidence > melhor.conf) melhor = { conf: res.confidence, rot, inverter, local };
         // achou o número duas vezes, a validade e o nome: não precisa das outras leituras
         if ([...votosNum.values()].some(v => v >= 2) && validades.length && nomes.length) break;
         // nenhum número que confere: o cartão pode estar torto e a medida ter errado (fundo listrado);
@@ -273,6 +279,9 @@
     // dois números diferentes que conferem, lidos as mesmas vezes: não dá para saber qual
     let numero = ordem.length && !(ordem[1] && ordem[1][1] === ordem[0][1]) ? ordem[0][0] : null;
     const conferido = numero !== null;
+    // só do número inteiro conferido. O final à mostra num cartão virtual com o número escondido pelo app
+    // ("•••• 4444") não é lido: sem o número não há conferência, e nos prints de teste o OCR leu "1177"
+    // no lugar de "1111" igual em duas leituras (antes vazio do que errado: a pessoa digita o final)
     const final = conferido ? numero.slice(-4) : null;
     let bandeira = conferido ? bandeiraDe(numero) : null;
     numero = null;
@@ -283,9 +292,11 @@
     nomes.forEach(n => { const e = contaNomes.get(n.t) || { t: n.t, vezes: 0, c: 0 }; e.vezes++; e.c = Math.max(e.c, n.c); contaNomes.set(n.t, e); });
     const nome = [...contaNomes.values()].sort((a, b) => b.vezes - a.vezes || b.c - a.c)[0];
     const em = EMISSORES.find(([, re]) => re.test(textoTodo));
+    // cartão virtual (print da tela do app do banco): o temporário, de uma compra só, ou o virtual de sempre
+    const virtual = /TEMPOR[AÁ]RIO|DESCART[AÁ]VEL|USO [UÚ]NICO/i.test(textoTodo) ? 'temporario' : /VIRTUAL/i.test(textoTodo) ? 'virtual' : null;
     textoTodo = null;
     if (!final && !val && !nome) return null;
-    return Object.freeze({ final, bandeira, nome: nome ? nome.t : null, validade: val ? val.v : null, emissor: em ? em[0] : null, conferido });
+    return Object.freeze({ final, bandeira, nome: nome ? nome.t : null, validade: val ? val.v : null, emissor: em ? em[0] : null, conferido, virtual });
   };
 
   // para os testes: a conta do Luhn e a bandeira, sem foto
