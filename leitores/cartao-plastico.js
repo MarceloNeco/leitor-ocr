@@ -296,8 +296,10 @@
     let numero = ordem.length && !(ordem[1] && ordem[1][1] === ordem[0][1]) ? ordem[0][0] : null;
     const conferido = numero !== null;
     let final = conferido ? numero.slice(-4) : null;
-    // sem número inteiro: o final que o app deixou à mostra, lido igual em duas leituras (sem a conferência)
-    if (!final) {
+    // sem número inteiro: o final que o app deixou à mostra, lido igual em duas leituras (sem a conferência),
+    // só no print de cartão virtual: num cartão físico borrado e num comprovante, grupos de números mal
+    // lidos parecem bolinhas e davam um final errado
+    if (!final && /VIRTUAL|TEMPOR[AÁ]RIO/i.test(textoTodo)) {
       const [f, g] = [...votosFinal.entries()].sort((a, b) => b[1] - a[1]);
       if (f && f[1] >= 2 && !(g && g[1] === f[1])) final = f[0];
     }
