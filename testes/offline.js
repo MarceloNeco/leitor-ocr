@@ -333,6 +333,26 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const grandeInclinado = await shot(girado(slipGrande('36,00'), 8), 'grande-inclinado.png');
   const cabecaParaBaixo = await shot(girado(slipGrande('16,00'), 180), 'cabeca-para-baixo.png');
   const deLado = await shot(girado(slipGrande('23.00'), 90), 'de-lado.png');
+  // cartões de crédito de mentira (números de teste públicos das bandeiras), para o teste 16
+  const cartaoHtml = (num, nome, val, banco, marca, fundo, cor) => `<div style="width:856px;height:540px;border-radius:36px;background:${fundo};position:relative;font-family:'DejaVu Sans Mono',monospace">
+    <div style="position:absolute;left:50px;top:40px;font:bold 40px sans-serif;color:${cor}">${banco}</div>
+    <div style="position:absolute;left:70px;top:170px;width:110px;height:85px;border-radius:12px;background:#d4af37"></div>
+    <div style="position:absolute;left:60px;top:300px;font:bold 56px 'DejaVu Sans Mono',monospace;letter-spacing:4px;color:${cor}">${num}</div>
+    <div style="position:absolute;left:330px;top:390px;font:bold 18px sans-serif;color:${cor}">VALIDO ATÉ</div>
+    <div style="position:absolute;left:470px;top:382px;font:bold 36px 'DejaVu Sans Mono',monospace;color:${cor}">${val}</div>
+    <div style="position:absolute;left:60px;top:450px;font:bold 36px 'DejaVu Sans Mono',monospace;color:${cor}">${nome}</div>
+    <div style="position:absolute;right:50px;bottom:40px;font:bold italic 44px sans-serif;color:${cor}">${marca}</div></div>`;
+  const cartaoVisa = await shot(cartaoHtml('4111 1111 1111 1111', 'FULANO DE TAL', '08/29', 'Banco Exemplo', 'VISA', '#2a5298', '#fff'), 'cartao-visa.png');
+  const cartaoMaster = await shot(girado(cartaoHtml('5555 5555 5555 4444', 'MARIA EXEMPLO SILVA', '11/30', 'Itaú', 'mastercard', '#111', '#ddd'), 180, 1000), 'cartao-master.png');
+  // print da tela do app do banco com o cartão virtual: o número escondido pelo app (só o final) e a lista com o número inteiro e o CVV
+  const telaApp = (fundo, cor, corpo) => `<div style="width:400px;height:860px;background:${fundo};color:${cor};font-family:Inter,sans-serif;zoom:2"><div style="padding:10px 20px;font-size:13px">14:32</div><div style="padding:14px 20px;font-size:17px;font-weight:600">‹ Cartões</div>${corpo}</div>`;
+  const printEscondido = await shot(telaApp('#f4f4f6', '#111', `<div style="margin:24px 20px;border-radius:18px;background:linear-gradient(135deg,#ff7a00,#ff9f43);height:205px;position:relative;color:#fff">
+    <div style="position:absolute;left:20px;top:16px;font-weight:700;font-size:18px">Banco Exemplo</div><div style="position:absolute;right:20px;top:18px;font-size:12px">Cartão virtual temporário</div>
+    <div style="position:absolute;left:20px;top:92px;font-size:23px;letter-spacing:2px;font-weight:600">•••• •••• •••• 4444</div>
+    <div style="position:absolute;left:20px;top:140px;font-size:11px">Validade</div><div style="position:absolute;left:20px;top:156px;font-size:16px;font-weight:600">11/30</div>
+    <div style="position:absolute;left:20px;bottom:10px;font-size:13px;font-weight:600">MARIA EXEMPLO SILVA</div></div>`), 'print-escondido.png');
+  const printLista = await shot(telaApp('#121212', '#eee', `<div style="margin:24px 20px"><div style="font-size:20px;font-weight:700;margin-bottom:18px">Cartão virtual</div>
+    ${[['Nome no cartão', 'JOSE MODELO'], ['Número do cartão', '6362 9700 0045 7013'], ['Validade', '03/28'], ['Código de segurança (CVV)', '456']].map(([k, v]) => `<div style="padding:12px 0"><div style="font-size:13px;color:#999">${k}</div><div style="font-size:18px;font-weight:600">${v}</div></div>`).join('')}</div>`), 'print-lista.png');
   const doisGirados = await shot(`<div style="display:flex;gap:120px">${girado(slipGrande('40,00', 'BAR EXEMPLO LTDA', '12:30'), 180, 700)}${girado(slipGrande('25,50', 'PADARIA EXEMPLO', '12:41'), -90, 700)}</div>`, 'dois-girados.png');
   const printNota = await shot(telaAvisos(compra('60,25', 'MERCADO EXEMPLO', '14h07')), 'print-nota.png');
   const printUm = await shot(`<div style="width:520px;padding:24px;border-radius:18px;background:#fff;font:22px Arial;color:#111;line-height:1.4"><b>Banco Exemplo</b> · agora<br>`
@@ -425,6 +445,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     '001 7890000000017 ARROZ BRANCO EXEMPLO 5KG 1 UN X 21,90 2I,90', '002 7890000000024 FEIJAO PRETO EXEMPLO 2 UN X 8,50 I7,00', 'QTD. TOTAL DE ITENS 2',
     'VALOR TOTAL R$ 3B,9O', 'VALOR A PAGAR R$ 3B,9O', 'FORMA DE PAGAMENTO', 'CARTAO DE CREDITO 3B,9O', "'b Totais Incid (Lei Fed 12.741/2012): R$ 9,06", 'EMISSAO: 10/10/2026 14:05', ''].join('\n'));
   const canhotoVelho = file('canhoto-velho.txt', ['VIA CLIENTE', 'BAR EXEMPLO ME', 'CNPJ: ' + cnpjFicticio, '10/10/2006 14:07', 'CREDITO A VISTA', 'MASTERCARD ****1234', 'VALOR R$ 36,00', 'AUT 654321 NSU 000123', ''].join('\n'));
+  // canhoto com o valor ilegível e a linha dos tributos com "Trib" lido como "Trip" (foto de 02/11): o 6,53 não pode virar valor nem opção
+  const canhotoImpostos = file('canhoto-impostos.txt', ['VIA CLIENTE', 'LOJA EXEMPLO ME', 'CREDITO A VISTA', 'MASTERCARD ****1234', 'VALOR R$ 4B,OO', 'Conf. Lei 12.741/2012 Triputacao aprox. R$6.53 (13.45%) Federal', 'AUT 654321 NSU 000123', ''].join('\n'));
   const receita = file('receita.txt', 'CONSULTORIO EXEMPLO\nRECEITUARIO\nUSO ORAL\nREMEDIO EXEMPLO 500 MG\nTOMAR 1 COMPRIMIDO DE 8 EM 8 HORAS POR 5 DIAS\nDRA. EXEMPLO - CRM 000000\n');
 
   // ---------- ajudantes ----------
@@ -910,6 +932,12 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const velho = await send(page, [canhotoVelho], 'auto');
   check(velho.values[0] === 'R$ 36,00' && !velho.fields[0].Data && velho.fields[0].Hora === '14:07', `comprovante com ano 2006 (lido errado): a data fica vazia, o resto segue (Valor=${velho.values[0]}, Data="${velho.fields[0].Data || ''}")`);
   await page.close();
+  page = await open();
+  const impC = await send(page, [canhotoImpostos], 'auto');
+  const chipsImpC = await page.$$eval('.valor-chip', e => e.map(x => x.textContent));
+  check(impC.values[0] === '' && !chipsImpC.some(c => /6,53/.test(c)),
+    `canhoto com o total ilegível: a linha dos tributos ("Triputacao aprox. R$6.53", Lei 12.741) não vira valor nem opção (Valor="${impC.values[0]}", opções=${chipsImpC.join('|') || 'nenhuma'})`);
+  await page.close();
   const trabalhoGuardado = pg => pg.evaluate(() => new Promise(ok => { const r = indexedDB.open('leitor-ocr', 1); r.onupgradeneeded = () => r.result.createObjectStore('trabalho'); r.onsuccess = () => { const q = r.result.transaction('trabalho').objectStore('trabalho').get('atual'); q.onsuccess = () => ok(q.result ? { estado: q.result.estado, papeis: (q.result.papeis || []).length } : null); q.onerror = () => ok(null); }; r.onerror = () => ok(null); }));
   page = await open();
   await page.evaluate(() => { localStorage.removeItem('wl:pedido'); localStorage.removeItem('wl:solto'); });
@@ -918,6 +946,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   await page.click('#docTypeDialog button[data-tipo="cartao"]');
   await page.waitForFunction(() => document.getElementById('ocrProgressWrap').style.display === 'flex' && document.getElementById('ocrPercentText').textContent !== '10%', null, { timeout: 120000 });
   await page.click('.nav-tab-btn[data-tab="tab-history"]');
+  // a pílula aparece logo depois do toque na aba (setTimeout 0 no app): esperar por ela, não olhar no mesmo instante
+  await page.waitForSelector('#pilulaLeitura:not([hidden])', { timeout: 500 }).catch(() => {});
   const pilula = await page.$eval('#pilulaLeitura', e => ({ visivel: !e.hidden, texto: e.textContent }));
   const guardadoNoMeio = await trabalhoGuardado(page);
   await page.evaluate(() => sessionStorage.setItem('teste:manterTrabalho', '1'));
@@ -1031,6 +1061,53 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   await page.click('.ia-prov[data-prov="gemini"] button[data-acao="apagar"]');
   const cofreFimIA14 = await page.evaluate(() => [localStorage.getItem('dgo:global:chaves-ia'), localStorage.getItem('dgo:global:ia-modelos')]);
   check(cofreFimIA14[0] === '{}' && cofreFimIA14[1] === '{}' && await page.$$eval('#iaProvedores .ia-prov-status', e => e.every(x => x.textContent === 'sem chave')), 'apagar as chaves limpa o cofre e os modelos');
+  await page.close();
+
+  // 16. Cartão de crédito pela câmera (leitores/cartao-plastico.js), com números de teste públicos das
+  // bandeiras: só o final, a bandeira, o nome e a validade saem; o número inteiro não aparece na tela, no
+  // aparelho (localStorage, trabalho guardado) nem no console; o caminho comum também esconde o número
+  const numerosCartao = ['4111111111111111', '5555555555554444', '6362970000457013'];
+  const temNumero = txt => numerosCartao.some(n => String(txt || '').replace(/[^0-9]/g, '').includes(n));
+  page = await open();
+  const logsCartao = [];
+  page.on('console', m => logsCartao.push(m.text()));
+  const lidoVisa = await page.evaluate(async b64 => { const r = await fetch('data:image/png;base64,' + b64); return Leitura.lerCartao(await r.blob()); }, fs.readFileSync(cartaoVisa).toString('base64'));
+  check(lidoVisa && lidoVisa.final === '1111' && lidoVisa.bandeira === 'Visa' && lidoVisa.nome === 'FULANO DE TAL' && lidoVisa.validade === '08/29' && lidoVisa.conferido === true
+    && Object.keys(lidoVisa).sort().join(',') === 'bandeira,conferido,emissor,final,nome,validade,virtual' && lidoVisa.virtual === null && !temNumero(JSON.stringify(lidoVisa)),
+    `cartão Visa de teste: só final, bandeira, nome, validade, emissor, conferido e virtual (${JSON.stringify(lidoVisa)})`);
+  // pela tela: botão "Ler cartão", cartão escuro de cabeça para baixo
+  await page.setInputFiles('#fileInputCartao', [cartaoMaster]);
+  await page.waitForFunction(() => /Número/.test(document.getElementById('cartaoResultado').textContent), null, { timeout: 120000 });
+  const telaCartao = await page.$eval('#cartaoResultado', e => e.textContent);
+  const guardadoCartao = await page.evaluate(() => new Promise(ok => {
+    const tudo = Object.keys(localStorage).map(k => k + '=' + localStorage.getItem(k)).join('\n');
+    const r = indexedDB.open('leitor-ocr', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('trabalho');
+    r.onsuccess = () => { const q = r.result.transaction('trabalho').objectStore('trabalho').get('atual'); q.onsuccess = () => ok({ tudo, trabalho: q.result || null }); q.onerror = () => ok({ tudo, trabalho: null }); };
+    r.onerror = () => ok({ tudo, trabalho: null });
+  }));
+  check(/•••• 4444 ✓/.test(telaCartao) && /Mastercard/.test(telaCartao) && /MARIA EXEMPLO SILVA/.test(telaCartao) && /11\/30/.test(telaCartao) && !temNumero(telaCartao)
+    && !temNumero(guardadoCartao.tudo) && guardadoCartao.trabalho === null && !logsCartao.some(temNumero),
+    `cartão escuro de cabeça para baixo pela tela: "${telaCartao}"; nada guardado no aparelho (trabalho: ${guardadoCartao.trabalho ? 'sim' : 'não'}) e nada no console`);
+  const lerArquivoCartao = f => page.evaluate(async b64 => { const r = await fetch('data:image/png;base64,' + b64); return Leitura.lerCartao(await r.blob()); }, fs.readFileSync(f).toString('base64'));
+  const lidoEsc = await lerArquivoCartao(printEscondido), lidoLista = await lerArquivoCartao(printLista);
+  check(lidoEsc && lidoEsc.final === null && lidoEsc.conferido === false && lidoEsc.virtual === 'temporario' && lidoEsc.validade === '11/30' && lidoEsc.nome === 'MARIA EXEMPLO SILVA'
+    && lidoLista && lidoLista.final === '7013' && lidoLista.conferido === true && lidoLista.bandeira === 'Elo' && lidoLista.virtual === 'virtual' && lidoLista.validade === '03/28'
+    && !temNumero(JSON.stringify(lidoLista)) && !/456/.test(JSON.stringify(lidoLista)),
+    `print do cartão virtual: com o número escondido pelo app, validade, nome e tipo sem o final (não há como conferir); com o número inteiro, o final conferido, sem o número nem o CVV no resultado (${JSON.stringify([lidoEsc, lidoLista])})`);
+  const masc = await page.evaluate(() => [Leitura.mascararCartoes('NUMERO 4111 1111 1111 1111 FIM'), Leitura.mascararCartoes('NSU 000123 AUT 654321 CNPJ 12.345.678/0001-95 TOTAL 1.234,56'),
+    Leitura.cartaoPlastico.bandeiraDe('6362970000457013'), Leitura.cartaoPlastico.bandeiraDe('378282246310005'), Leitura.cartaoPlastico.luhn('4111111111111112')]);
+  check(masc[0] === 'NUMERO •••• •••• •••• 1111 FIM' && masc[1] === 'NSU 000123 AUT 654321 CNPJ 12.345.678/0001-95 TOTAL 1.234,56' && masc[2] === 'Elo' && masc[3] === 'American Express' && masc[4] === false,
+    `número de cartão escondido em texto, comprovante intacto, Elo e Amex pelos primeiros dígitos, Luhn recusa um dígito trocado (${JSON.stringify(masc)})`);
+  await page.close();
+  // o mesmo cartão pelo caminho comum ("Fotos ou arquivos"): o texto lido e guardado não tem o número
+  page = await open();
+  await send(page, [cartaoVisa], 'auto');
+  const comum = await page.evaluate(() => JSON.stringify((window.ocrDebug && window.ocrDebug.readings) || []) + JSON.stringify([...document.querySelectorAll('#fieldsEditorCard input, #fieldsEditorCard textarea')].map(e => e.value)));
+  const trabalhoComum = await trabalhoGuardado(page);
+  const textoGuardado = await page.evaluate(() => new Promise(ok => { const r = indexedDB.open('leitor-ocr', 1); r.onsuccess = () => { const q = r.result.transaction('trabalho').objectStore('trabalho').get('atual'); q.onsuccess = () => ok(JSON.stringify((q.result && q.result.papeis) || [])); q.onerror = () => ok(''); }; r.onerror = () => ok(''); }));
+  check(/••••/.test(comum) && !temNumero(comum) && !temNumero(textoGuardado),
+    `cartão pelo caminho comum: o número sai escondido no texto lido (trabalho ${trabalhoComum ? trabalhoComum.estado : 'nenhum'}; ${textoGuardado.length} caracteres guardados, sem o número)`);
   await page.close();
 
   check(external.size === 0, 'nenhum pedido para fora do app' + (external.size ? ': ' + [...external].join(', ') : ''));

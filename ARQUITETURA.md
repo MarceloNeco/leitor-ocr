@@ -43,7 +43,7 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 | `leitura/modelos.js` | Leitura por modelo (MODELOS.md): `Leitura.modelos.reconhecer(texto, tipo)`, `aplicarEm(reading, tipo)` → `{ modelo: { id, versao, nome, tipo }, fields, campos, itens ou tabela, conferido, falhas, impressao }`, `lista()`, `adicionar(modelo)` / `remover(id)` (modelos da pessoa, `localStorage` `leitor_modelos_pessoais`), `falhas()` (`leitor_modelos_falhas`), `Leitura.esqueleto(texto)`. |
 | `dados/modelos.json`, `dados/amostras/*.txt` | O catálogo de modelos (só regras) e a amostra-esqueleto de cada um (texto do pdf.js, dígitos → 0, nomes → X). |
 | `leitura/ia.js` | Ler a foto com uma IA online (nível C): `Leitura.ia.provedores()`, `guardarChave(prov, chave)` (testa na lista de modelos e guarda no cofre comum `dgo:global:chaves-ia`), `provedorAtual()`, `lerFoto(img)` (Gemini ou Claude, pedido em JSON), `aplicar(papel, lido, atuais)` (campos só onde estava vazio; valor vira sugestão), `explicar(erro)`, `precisaPerguntar(tipo)`, `sozinha()`. Ver "Ler com IA". |
-| `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao`, `nfce` (também o total do DANFE, conferido pela soma da nota, e os produtos do cupom; ver "Produtos da nota"), `conta`, `transferencia` (Pix, TED), `boleto` (valor e vencimento da linha digitável, conferidos pelos dígitos verificadores; as partes do valor; o valor pago no comprovante), `arrecadacao` (conta de luz, água, gás, telefone, imposto e multa pelo código de 48 números), `extrato` (o **leitor de lançamentos**: um só para extrato, fatura e print de notificação, de qualquer banco; ver "Lançamentos"). |
+| `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao-plastico` (a frente do cartão de crédito ou débito, `Leitura.lerCartao`; ver "Cartão de crédito ou débito pela câmera"), `cartao`, `nfce` (também o total do DANFE, conferido pela soma da nota, e os produtos do cupom; ver "Produtos da nota"), `conta`, `transferencia` (Pix, TED), `boleto` (valor e vencimento da linha digitável, conferidos pelos dígitos verificadores; as partes do valor; o valor pago no comprovante), `arrecadacao` (conta de luz, água, gás, telefone, imposto e multa pelo código de 48 números), `extrato` (o **leitor de lançamentos**: um só para extrato, fatura e print de notificação, de qualquer banco; ver "Lançamentos"). |
 | `formatos/*.js` | Um arquivo por tipo de arquivo. |
 | `index.html` | Telas: capturar, abas dos papéis, campos para conferir, histórico, exportar, ajustes. Janelas: `detailDialog`, `confirmDialog`, `docTypeDialog`, `cameraDialog`, `papersDialog`, `passwordDialog` (todas `<dialog>` nativo). |
 | `sw.js` | Uso sem internet. `VERSAO` acompanha `APP_VERSION` do `index.html`. Arquivo novo do app entra em `ARQUIVOS`. A versão nova assume na hora (skipWaiting + clients.claim); a tela mostra a faixa "Nova versão pronta" (Atualizar / Depois) quando ela assume (`controllerchange`), nunca na primeira visita, e espera a leitura em andamento terminar. |
@@ -197,6 +197,7 @@ Criar `formatos/<id>.js` com `Leitura.formatos.<id> = async arquivo => [partes]`
    <script src="leitura/ia.js"></script>
    <script src="leitura/modelos.js"></script>
    <script src="leitores/cartao.js"></script>   <!-- um por leitor -->
+   <script src="leitores/cartao-plastico.js"></script>   <!-- cartão de crédito pela câmera (Leitura.lerCartao) -->
    ```
 3. No código do app:
    ```js
@@ -228,11 +229,39 @@ A leitura de fotos leva minutos no celular, e o Android apaga a tela, congela ou
 
 É a parte da leitura do módulo `Fundo` da diretriz SolverONE, sem a lista de trabalhos nem a notificação do sistema (regra zero: entram quando o dono pedir).
 
+## Cartão de crédito ou débito pela câmera (0.9.2, pedido 32)
+
+Para o MoneyTRIO cadastrar um cartão com uma foto da frente. Arquivo `leitores/cartao-plastico.js` (pequeno; usa o OCR da capacidade `foto`).
+
+```js
+const c = await Leitura.lerCartao(foto, { aviso: t => status.textContent = t, progresso: p => barra.value = p });
+// foto: File, Blob, <img>, <canvas> ou ImageBitmap: a foto da câmera (celular ou computador), uma imagem da galeria
+// ou o print da tela do app do banco com o cartão virtual (0.9.4)
+// c = { final: '4444', bandeira: 'Mastercard', nome: 'MARIA EXEMPLO SILVA', validade: '11/30', emissor: 'Itaú', conferido: true, virtual: null }
+// ou null: não achei um cartão na foto
+```
+
+| Campo | O que é |
+|---|---|
+| `final` | os 4 últimos dígitos. Só vem do número inteiro conferido pelo dígito verificador (Luhn) e pela bandeira; senão `null` (antes vazio do que errado). No print de cartão virtual com o número escondido pelo app ("•••• 4444"), o final à mostra não é lido: sem o número não há conferência, e nos prints de teste o OCR leu "1177" no lugar de "1111" igual em duas leituras. A pessoa digita o final |
+| `bandeira` | pelos primeiros dígitos do número (Visa, Mastercard, Elo, American Express, Hipercard, Diners Club, Discover, JCB); sem número conferido, pela palavra escrita no cartão |
+| `nome` | como está impresso, ou `null` |
+| `validade` | "mm/aa" (a de "válido até"; a de "membro desde" não conta), ou `null` |
+| `emissor` | o banco, quando o nome dele aparece no cartão (lista em `EMISSORES`), ou `null` |
+| `conferido` | `true` quando o número passou no Luhn e tem bandeira (e então `final` vem junto) |
+| `virtual` | `'temporario'` (cartão virtual temporário, descartável, de uso único), `'virtual'` (cartão virtual de sempre) ou `null` (cartão físico ou não dá para saber), pelas palavras da tela |
+
+Como lê: endireita a foto pela inclinação das letras (`Leitura.foto.anguloLinhas`) e tenta as posições deitada e de cabeça para baixo; cada posição em tons de cinza, em preto e branco por pedaço da foto (cartão amarelo em mesa branca), com as cores invertidas (letra clara em cartão escuro) e pelo "quão branco" é cada ponto, sem esticar o contraste (letra branca em cartão colorido no print do modo escuro); a foto em pé tenta primeiro o texto em pé (print da tela); para quando achou o número duas vezes, a validade e o nome. O número só vale com o formato de um cartão: blocos inteiros (4 4 4 4, 4 6 5, 4 6 4, 4 4 4 4 3), sem outro número colado na mesma linha, no máximo 2 letras trocadas por dígitos (O→0, S→5...), até três linhas seguidas (o OCR parte o número), Luhn e bandeira.
+
+Segurança (PCI/LGPD): o número inteiro só existe na memória durante a leitura; nunca é devolvido, guardado, mandado para fora nem posto no console. O código de segurança não é procurado e o verso não é lido; no print do cartão virtual, onde o CVV aparece, ele não entra no resultado. A foto e o texto lido não são guardados: este caminho não passa pelo histórico nem pelo trabalho guardado. Sem IA e sem internet. No `Leitura.ler` (caminho comum), `Leitura.mascararLeitura` esconde um número de cartão que confere no texto, nas linhas e nas palavras de cada leitura de foto, antes de qualquer coisa ser guardada (`Leitura.mascararCartoes(texto)` faz o mesmo num texto qualquer).
+
+No app de referência: botões "💳 Fotografar cartão" (câmera do computador ou do celular) e "🖼️ Imagem ou print do cartão" (galeria, print do cartão virtual) em Capturar; resultado na janela `cartaoDialog`, nada salvo. Não se tenta corrigir um dígito pelo Luhn: simulado, com um dígito errado a correção única acerta sempre, mas com dois errados ela dá um final errado em 18,5% das vezes, e não dá para saber quantos o OCR errou.
+
 ## Privacidade
 
 - Tudo é lido no aparelho. Nada sai para a internet, com duas exceções que a pessoa controla em Ajustes: com internet, o **número do CNPJ** de uma loja fora da base vai para a consulta pública de CNPJ (dados abertos da Receita), para o app mostrar o nome e a categoria da loja (nunca a foto, o valor ou o cartão); e, só quando a pessoa manda (botão "Ler com IA" ou a opção "usar a IA sozinho"), **a foto do papel** vai para a IA da chave dela (Google ou Anthropic), com aviso antes.
 - O catálogo marca a classe de cada tipo: `financeiro`, `saude`, `pessoal`, `biometrico`. Na leitura por IA online (capacidade `ia`), saúde, documento pessoal e rosto perguntam sempre antes de a foto sair, a cada vez; comprovantes e notas perguntam até a pessoa pedir para não perguntar mais.
-- Cartão: só os 4 últimos dígitos são lidos e guardados.
+- Cartão: só os 4 últimos dígitos são guardados. O leitor de cartão (`Leitura.lerCartao`) lê o número inteiro só na memória, para conferir a leitura e achar a bandeira, e devolve só o final; no caminho comum, o número de um cartão fotografado sai escondido do texto lido.
 - O repositório é público: nunca colocar foto real, número de cartão, CPF ou qualquer dado pessoal, nem em teste. Os testes geram material fictício.
 
 ## O que ainda não está aqui (diretriz SolverONE, regra zero: confirmar com o dono antes)

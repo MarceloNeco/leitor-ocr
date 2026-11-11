@@ -474,6 +474,73 @@ Só a leitura por modelo mudou (`leitura/modelos.js`, catálogo); foto, texto e 
 
 `testes/offline.js`: **84 de 84** (era 83): a fatura de mentira com 7 cartas, anuidade, seguro e pagamento, vencendo em janeiro com compras de dezembro (ano completado), divisão por classe.
 
+## Resultado da 0.9.2 (cartão de crédito pela câmera, pedido 32, 11/11/2026)
+
+`leitores/cartao-plastico.js`, `Leitura.lerCartao(foto)` (ver ARQUITETURA.md). Antes não havia leitor de cartão: 0 de tudo. Medido em fotos de cartões de mentira geradas na hora (números de teste públicos das bandeiras, nomes fictícios; fora do repositório), cada cartão fotografado de 6 jeitos (reto, torto 6°, de cabeça para baixo, de lado, borrado, em perspectiva), e nos comprovantes reais de 02/11 (que não têm cartão: nenhum número pode sair).
+
+| Conjunto | final certo (conferido pelo Luhn) | final errado | nome | validade | banco |
+|---|---|---|---|---|---|
+| A: 8 cartões × 6 jeitos (letra mono, mesa de madeira listrada) | 47 de 48 | 0 | 46 | 48 | 48 |
+| B: os mesmos 8 em outro desenho (letra Courier, cartão menor, mesa clara, reflexo de luz) | 45 de 48 | 0 | 31 | 47 | 48 |
+| Comprovantes de 02/11 (8 fotos, sem cartão) | nenhum número inventado | 0 | — | — | — |
+
+Como se chegou lá (cada passo medido nos conjuntos A e B):
+
+- Sem o número inteiro conferido, a primeira versão devolvia os 4 últimos dígitos de uma linha de grupos de 4: 5 finais errados em 48 (o OCR perdia o último grupo e o penúltimo virava "final"). Tirado: sem Luhn, o final fica vazio.
+- O número partido em 2 ou 3 linhas pelo OCR ("6362 9700 0045" e "7013") é juntado; o cartão torto é endireitado pela inclinação das letras e, quando nada confere, a posição que leu melhor é tentada girada 5° e 10° para cada lado; a medida da inclinação engana com mesa listrada, então as posições deitada e de cabeça para baixo são sempre tentadas também.
+- Juntar grupos soltos montou números falsos que passavam no Luhn: um final errado no conjunto B (cartão borrado) e um "cartão" num canhoto da PagBank. Agora o número só vale em blocos inteiros do jeito do cartão (4 4 4 4, 4 6 5, 4 6 4, 4 4 4 4 3), sem outro número colado na mesma linha e com no máximo 2 letras trocadas: 0 errados nos três conjuntos.
+- Cartão amarelo em mesa branca não era lido (o OCR corta claro e escuro uma vez só para a foto toda): passada em preto e branco pelo claro de cada pedaço da foto. Conjunto B de 31 para 45.
+
+Tempo: 2,6 s (A) e 3,5 s (B) por foto no computador; numa foto sem cartão (comprovante grande) o leitor tenta todas as posições e leva até um minuto. O caminho comum (`Leitura.ler`) esconde o número de um cartão que confere no texto lido: nos 7 comprovantes recortados de 02/11 a leitura ficou igual à da 0.9.1 (valor 3 / 1 / 1 / 1 / 1; datas 4). `testes/offline.js`: 88 de 88 (4 novos: o Visa de teste com só os 6 campos; o Mastercard escuro de cabeça para baixo pela tela, sem nada guardado no aparelho nem no console; a máscara num texto e o comprovante intacto; o cartão pelo caminho comum com o número escondido no que fica guardado).
+
+Não medido: cartão de verdade (relevo, holograma, reflexo do plástico, letra prateada ou dourada em relevo, número só no verso). O Marcelo testa no celular: "💳 Ler cartão (frente)" em Capturar.
+## Resultado da 0.9.3 (a linha dos impostos no canhoto e o dígito trocado, pedido 33, medido em 02/11/2026, publicado em 11/11/2026)
+
+Foto nova de 02/11 (fora do repositório): 7 papéis na mesma mesa clara, vários de lado ou de cabeça para baixo (3 cupons NFC-e e 4 canhotos). Medida inteira e também com cada papel recortado da mesma foto, como se fosse fotografado sozinho.
+
+Duas correções, as duas para não mostrar valor errado:
+
+1. **A linha dos impostos no canhoto.** Um cupom amassado, achado só pela metade de baixo, foi lido como canhoto; a regra que tira a linha dos tributos (0.8.1) estava só no leitor de cupom, e o do canhoto só olhava "TRIB", que no papel saiu "Triputacao". Agora o leitor de canhoto (`leitores/cartao.js`) ignora também a linha com "12.741", "Lei Fed", "Incid" e "aprox".
+2. **O dígito trocado.** Num cupom recortado, duas leituras leram "VALOR A PAGAR 106,27" (o papel diz 106,22) e o app preenchia 106,27; a terceira leitura trazia 106,22 na linha do cartão. Quando outra leitura do mesmo papel traz, numa linha de total ou de pagamento, um valor que só difere num dígito do combinado, o app fica em dúvida e oferece os dois (`leitura/texto.js`, `decidirValor`; e no cupom, `leitores/nfce.js`, `aPagarDe`). Os valores conferidos por soma (da nota, dos produtos, do cupom) e os de arquivo continuam valendo sozinhos.
+
+Valor: certo / em dúvida com o certo entre as opções / em dúvida / vazio / errado. Medido de novo por cima da 0.9.2 em 11/11, com os mesmos números (a 0.9.2 lê como a 0.8.1 nestas fotos).
+
+| Conjunto | 0.8.1 | 0.9.3 |
+|---|---|---|
+| Foto de 7 papéis inteira: papéis achados | 4 de 7 | 4 de 7 |
+| Foto de 7 papéis inteira: valor nos 4 achados | 1 / 1 / 1 / 1 / 0, com **a linha dos tributos oferecida como opção** | 1 / 1 / 0 / 2 / 0 |
+| Os 7 papéis recortados: valor | 3 / 1 / 0 / 2 / **1 errado** (106,27) | 3 / 2 / 0 / 2 / **0** |
+| `testes/offline.js` | 76 de 76 na 0.8.1, 88 de 88 na 0.9.2 (o canhoto inventado do teste novo saía com o valor dos tributos **preenchido**) | 89 de 89 |
+
+**Não medido:** as 37, as 14 e as outras coleções ficaram no ambiente de trabalho anterior e não existem mais aqui. A regra do dígito pode passar algum papel de "certo" para "em dúvida com o certo entre as opções" (um toque a mais), nunca para errado. O dígito trocado só pode ser testado com foto (com texto de arquivo há uma leitura só), então não ganhou teste no `testes/offline.js`. O teste "página recarregada no meio da leitura" falhava às vezes nesta máquina, também na 0.8.1: olhava a pílula no mesmo instante do toque na aba, antes de o app mostrá-la; agora espera por ela (até meio segundo).
+
+Ainda não resolvido nesta foto: na foto inteira, 3 dos 7 papéis não são achados (um cupom comprido de cabeça para baixo, um canhoto pequeno e um canhoto de lado) e um canhoto pequeno é juntado ao cupom vizinho; recortados, a via da PagBank girada (valor em letra grande) e o cupom amassado do delivery saem vazios. Recortar melhora muito: de 1 certo e 1 em dúvida-certo em 7 papéis para 3 e 2.
+
+## Resultado da 0.9.4 (imagem da galeria e print do cartão virtual, pedido 34, 11/11/2026)
+
+Botão "🖼️ Imagem ou print do cartão" (galeria, sem câmera) ao lado de "💳 Fotografar cartão". Medido em 24 prints de tela de celular de mentira (4 cartões de teste × modo claro e escuro × 3 jeitos de app mostrar: desenho do cartão com o número, lista de dados com número e CVV, número escondido "•••• 1234"), mais os conjuntos A e B de cartões físicos e os comprovantes de 02/11, antes (0.9.3) e depois.
+
+| Conjunto | 0.9.3: final certo / errado | 0.9.4: final certo / errado |
+|---|---|---|
+| Prints com o número à mostra (16) | 12 / 0 | 13 / 0 |
+| Prints com o número escondido (8) | 0 / 0 | 0 / 0 (de propósito, ver abaixo) |
+| Prints: nome / validade / banco (24) | — | 24 / 24 / 24 (antes: 22 / 22 / 11) |
+| Cartões A (48) | 47 / 0 | 47 / 0 |
+| Cartões B (48) | 45 / 0 | 45 / 0 |
+| Comprovantes de 02/11, sem cartão (8) | nenhum número | nenhum número |
+
+O que mudou no leitor: a foto em pé tenta primeiro o texto em pé (o print é em pé, e só as posições de lado eram tentadas: dois prints escuros não liam nada); todas as quatro posições são tentadas quando a medida da inclinação não resolve; uma passada pelo "quão branco" é cada ponto, sem esticar o contraste (letra branca em cartão roxo ou laranja; esticar juntava o roxo com a letra num print escuro); `virtual` pelas palavras da tela ("temporário" → `'temporario'`, "virtual" → `'virtual'`); "Banco Inter" reconhecido.
+
+Tentado e tirado (medido):
+
+- **O final do número escondido** ("•••• •••• •••• 4444"): uma regra pegava o último bloco de 4 dígitos depois das bolinhas (que o OCR lê como "ece00", "coco", "0000"). Primeira versão: um "0000" (as bolinhas lidas de cabeça para baixo); depois, 2 finais errados em cartões físicos borrados e 1 num comprovante; restrita a telas que dizem "virtual" ou "temporário", ainda deu "1177" no lugar de "1111" num print, lido igual em duas leituras. Sem o número inteiro não há conferência: o final fica vazio e a tela pede "mostrar número" no app do banco antes do print, ou que a pessoa digite.
+- **Corrigir um dígito pelo Luhn** (o "1" da letra do print lido como "7"): simulado em 200 mil números, a correção única acerta sempre quando o OCR errou um dígito, mas com dois errados dá um final errado em 18,5% das vezes, e não dá para saber quantos o OCR errou. Não entrou.
+- Ler o print num tamanho menor (1000 e 700 de largura): quase igual (13 e 12 de 24).
+
+Os 3 prints com o número à mostra que não saem: dois do cartão de teste "4111 1111 1111 1111" (na letra do print o "1" vira "7"; número que não existe em cartão de verdade) e um cartão roxo no modo escuro. Tempo: 9 s por print no computador (mais no celular); o print com o número escondido tenta todas as leituras antes de desistir. `testes/offline.js`: 90 de 90 (novo: um print com o número escondido dá validade, nome e "temporário" sem final; uma lista com o número inteiro dá o final conferido, sem o número nem o CVV no resultado).
+
+Não medido: prints de apps de banco de verdade. O Marcelo testa: no app do banco, "mostrar número" no cartão virtual, print, e "🖼️ Imagem ou print do cartão" no leitor.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **PDF sem camada de texto com muitas páginas** (letras desenhadas, como a apólice da Porto): o app passa até 10 páginas pelo OCR em resolução alta, e isso demora minutos no celular sem avisar quanto falta. Avisar antes ("este PDF não tem texto, vou ler N páginas por OCR") e deixar escolher as páginas; e um modelo tolerante a erros de OCR para esse caso.
