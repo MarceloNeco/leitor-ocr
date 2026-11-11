@@ -344,6 +344,15 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     <div style="position:absolute;right:50px;bottom:40px;font:bold italic 44px sans-serif;color:${cor}">${marca}</div></div>`;
   const cartaoVisa = await shot(cartaoHtml('4111 1111 1111 1111', 'FULANO DE TAL', '08/29', 'Banco Exemplo', 'VISA', '#2a5298', '#fff'), 'cartao-visa.png');
   const cartaoMaster = await shot(girado(cartaoHtml('5555 5555 5555 4444', 'MARIA EXEMPLO SILVA', '11/30', 'Itaú', 'mastercard', '#111', '#ddd'), 180, 1000), 'cartao-master.png');
+  // print da tela do app do banco com o cartão virtual: o número escondido pelo app (só o final) e a lista com o número inteiro e o CVV
+  const telaApp = (fundo, cor, corpo) => `<div style="width:400px;height:860px;background:${fundo};color:${cor};font-family:Inter,sans-serif;zoom:2"><div style="padding:10px 20px;font-size:13px">14:32</div><div style="padding:14px 20px;font-size:17px;font-weight:600">‹ Cartões</div>${corpo}</div>`;
+  const printEscondido = await shot(telaApp('#f4f4f6', '#111', `<div style="margin:24px 20px;border-radius:18px;background:linear-gradient(135deg,#ff7a00,#ff9f43);height:205px;position:relative;color:#fff">
+    <div style="position:absolute;left:20px;top:16px;font-weight:700;font-size:18px">Banco Exemplo</div><div style="position:absolute;right:20px;top:18px;font-size:12px">Cartão virtual temporário</div>
+    <div style="position:absolute;left:20px;top:92px;font-size:23px;letter-spacing:2px;font-weight:600">•••• •••• •••• 4444</div>
+    <div style="position:absolute;left:20px;top:140px;font-size:11px">Validade</div><div style="position:absolute;left:20px;top:156px;font-size:16px;font-weight:600">11/30</div>
+    <div style="position:absolute;left:20px;bottom:10px;font-size:13px;font-weight:600">MARIA EXEMPLO SILVA</div></div>`), 'print-escondido.png');
+  const printLista = await shot(telaApp('#121212', '#eee', `<div style="margin:24px 20px"><div style="font-size:20px;font-weight:700;margin-bottom:18px">Cartão virtual</div>
+    ${[['Nome no cartão', 'JOSE MODELO'], ['Número do cartão', '6362 9700 0045 7013'], ['Validade', '03/28'], ['Código de segurança (CVV)', '456']].map(([k, v]) => `<div style="padding:12px 0"><div style="font-size:13px;color:#999">${k}</div><div style="font-size:18px;font-weight:600">${v}</div></div>`).join('')}</div>`), 'print-lista.png');
   const doisGirados = await shot(`<div style="display:flex;gap:120px">${girado(slipGrande('40,00', 'BAR EXEMPLO LTDA', '12:30'), 180, 700)}${girado(slipGrande('25,50', 'PADARIA EXEMPLO', '12:41'), -90, 700)}</div>`, 'dois-girados.png');
   const printNota = await shot(telaAvisos(compra('60,25', 'MERCADO EXEMPLO', '14h07')), 'print-nota.png');
   const printUm = await shot(`<div style="width:520px;padding:24px;border-radius:18px;background:#fff;font:22px Arial;color:#111;line-height:1.4"><b>Banco Exemplo</b> · agora<br>`
@@ -1057,15 +1066,6 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   // 16. Cartão de crédito pela câmera (leitores/cartao-plastico.js), com números de teste públicos das
   // bandeiras: só o final, a bandeira, o nome e a validade saem; o número inteiro não aparece na tela, no
   // aparelho (localStorage, trabalho guardado) nem no console; o caminho comum também esconde o número
-  // print da tela do app do banco com o cartão virtual: o número escondido pelo app (só o final) e a lista com o número inteiro e o CVV
-  const telaApp = (fundo, cor, corpo) => `<div style="width:400px;height:860px;background:${fundo};color:${cor};font-family:Inter,sans-serif;zoom:2"><div style="padding:10px 20px;font-size:13px">14:32</div><div style="padding:14px 20px;font-size:17px;font-weight:600">‹ Cartões</div>${corpo}</div>`;
-  const printEscondido = await shot(telaApp('#f4f4f6', '#111', `<div style="margin:24px 20px;border-radius:18px;background:linear-gradient(135deg,#ff7a00,#ff9f43);height:205px;position:relative;color:#fff">
-    <div style="position:absolute;left:20px;top:16px;font-weight:700;font-size:18px">Banco Exemplo</div><div style="position:absolute;right:20px;top:18px;font-size:12px">Cartão virtual temporário</div>
-    <div style="position:absolute;left:20px;top:92px;font-size:23px;letter-spacing:2px;font-weight:600">•••• •••• •••• 4444</div>
-    <div style="position:absolute;left:20px;top:140px;font-size:11px">Validade</div><div style="position:absolute;left:20px;top:156px;font-size:16px;font-weight:600">11/30</div>
-    <div style="position:absolute;left:20px;bottom:10px;font-size:13px;font-weight:600">MARIA EXEMPLO SILVA</div></div>`), 'print-escondido.png');
-  const printLista = await shot(telaApp('#121212', '#eee', `<div style="margin:24px 20px"><div style="font-size:20px;font-weight:700;margin-bottom:18px">Cartão virtual</div>
-    ${[['Nome no cartão', 'JOSE MODELO'], ['Número do cartão', '6362 9700 0045 7013'], ['Validade', '03/28'], ['Código de segurança (CVV)', '456']].map(([k, v]) => `<div style="padding:12px 0"><div style="font-size:13px;color:#999">${k}</div><div style="font-size:18px;font-weight:600">${v}</div></div>`).join('')}</div>`), 'print-lista.png');
   const numerosCartao = ['4111111111111111', '5555555555554444', '6362970000457013'];
   const temNumero = txt => numerosCartao.some(n => String(txt || '').replace(/[^0-9]/g, '').includes(n));
   page = await open();

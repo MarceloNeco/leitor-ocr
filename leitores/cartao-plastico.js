@@ -275,14 +275,14 @@
         nomes.push(...nomesDe(res));
         textoTodo += L.mascararCartoes(texto) + '\n';
         texto = null;
-        if (res.confidence > melhor.conf) melhor = { conf: res.confidence, rot, inverter, local, branco };
+        if (!branco && res.confidence > melhor.conf) melhor = { conf: res.confidence, rot, inverter, local };
         // achou o número duas vezes, a validade e o nome: não precisa das outras leituras
         if ([...votosNum.values()].some(v => v >= 2) && validades.length && nomes.length) break;
         // nenhum número que confere: o cartão pode estar torto e a medida ter errado (fundo listrado);
         // tenta a posição que leu melhor, girada uns graus para cada lado
         if (k === passos.length - 1 && !votosNum.size && !extras) {
           extras = true;
-          [-5, 5, -10, 10].forEach(d => passos.push({ rot: melhor.rot + d, inverter: melhor.inverter, local: melhor.local, branco: melhor.branco }));
+          [-5, 5, -10, 10].forEach(d => passos.push({ rot: melhor.rot + d, inverter: melhor.inverter, local: melhor.local }));
         }
       }
     } finally {
