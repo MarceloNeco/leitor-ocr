@@ -1242,8 +1242,12 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
           </div>
           <!-- Cartão de crédito ou débito (leitores/cartao-plastico.js): só o final, a bandeira, o nome
                e a validade; a foto e o número não são guardados -->
-          <button id="btnCartao" class="btn btn-ghost" style="width:100%; margin-bottom:10px;">💳 Ler cartão (frente)</button>
+          <div class="capture-actions-grid" style="margin-bottom:10px;">
+            <button id="btnCartao" class="btn btn-ghost">💳 Fotografar cartão</button>
+            <button id="btnCartaoImagem" class="btn btn-ghost">🖼️ Imagem ou print do cartão</button>
+          </div>
           <input type="file" id="fileInputCartao" class="file-input-hidden" accept="image/*" capture="environment">
+          <input type="file" id="fileInputCartaoImagem" class="file-input-hidden" accept="image/*">
 
           <!-- Sample receipt presets for immediate live testing -->
           <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">Testar com comprovante pronto:</div>
@@ -1532,7 +1536,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       </div>
       <div class="dialog-body">
         <div id="cartaoResultado" style="font-size:14px; line-height:1.7;"></div>
-        <p style="font-size:12px; color:var(--muted); line-height:1.5; margin-top:10px;">Só o final do número fica. A foto e o número inteiro não são guardados nem saem do aparelho. O código de segurança (verso) não é lido.</p>
+        <p style="font-size:12px; color:var(--muted); line-height:1.5; margin-top:10px;">Só o final do número fica. A foto e o número inteiro não são guardados nem saem do aparelho. O código de segurança (CVV) não é lido nem guardado, nem quando aparece no print do cartão virtual.</p>
       </div>
       <div class="dialog-footer">
         <button id="btnCartaoOutra" class="btn btn-ghost" style="flex:1;">Outra foto</button>
@@ -1657,7 +1661,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.9.3';
+    const APP_VERSION = '0.9.4';
     const APP_UPDATED = '11/11/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
@@ -2798,6 +2802,10 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     document.getElementById('btnCartaoOutra').addEventListener('click', () => { cartaoDialog.close(); abrirCameraCartao(); });
     document.getElementById('btnCartaoFechar').addEventListener('click', () => cartaoDialog.close());
     fileInputCartao.addEventListener('change', e => { const f = e.target.files[0]; fileInputCartao.value = ''; if (f) lerCartao(f); });
+    // print da tela do app do banco (cartão virtual) ou uma foto da galeria
+    const fileInputCartaoImagem = document.getElementById('fileInputCartaoImagem');
+    document.getElementById('btnCartaoImagem').addEventListener('click', () => fileInputCartaoImagem.click());
+    fileInputCartaoImagem.addEventListener('change', e => { const f = e.target.files[0]; fileInputCartaoImagem.value = ''; if (f) lerCartao(f); });
     async function lerCartao(foto) {
       cartaoResultado.textContent = 'Lendo o cartão...';
       if (!cartaoDialog.open) cartaoDialog.showModal();
@@ -2807,11 +2815,12 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       cartaoResultado.textContent = '';
       if (!c) { cartaoResultado.textContent = 'Não achei um cartão nesta foto. Tire de perto, com o cartão deitado e sem reflexo.'; return; }
       const linha = (rotulo, valor) => { const d = document.createElement('div'); const b = document.createElement('strong'); b.textContent = rotulo + ': '; d.append(b, valor || '—'); cartaoResultado.append(d); };
-      linha('Número', c.final ? '•••• ' + c.final + (c.conferido ? ' ✓' : '') : 'não lido (tire outra foto, mais de perto)');
+      linha('Número', c.final ? '•••• ' + c.final + (c.conferido ? ' ✓' : ' (confira)') : 'não lido (tire outra foto, mais de perto)');
       linha('Bandeira', c.bandeira);
       linha('Nome', c.nome);
       linha('Validade', c.validade);
       linha('Banco', c.emissor);
+      if (c.virtual) linha('Tipo', c.virtual === 'temporario' ? 'Cartão virtual temporário' : 'Cartão virtual');
     }
     btnUpload.addEventListener('click', () => fileInputGallery.click());
 

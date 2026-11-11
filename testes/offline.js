@@ -1057,15 +1057,24 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   // 16. Cartão de crédito pela câmera (leitores/cartao-plastico.js), com números de teste públicos das
   // bandeiras: só o final, a bandeira, o nome e a validade saem; o número inteiro não aparece na tela, no
   // aparelho (localStorage, trabalho guardado) nem no console; o caminho comum também esconde o número
-  const numerosCartao = ['4111111111111111', '5555555555554444'];
+  // print da tela do app do banco com o cartão virtual: o número escondido pelo app (só o final) e a lista com o número inteiro e o CVV
+  const telaApp = (fundo, cor, corpo) => `<div style="width:400px;height:860px;background:${fundo};color:${cor};font-family:Inter,sans-serif;zoom:2"><div style="padding:10px 20px;font-size:13px">14:32</div><div style="padding:14px 20px;font-size:17px;font-weight:600">‹ Cartões</div>${corpo}</div>`;
+  const printEscondido = await shot(telaApp('#f4f4f6', '#111', `<div style="margin:24px 20px;border-radius:18px;background:linear-gradient(135deg,#ff7a00,#ff9f43);height:205px;position:relative;color:#fff">
+    <div style="position:absolute;left:20px;top:16px;font-weight:700;font-size:18px">Banco Exemplo</div><div style="position:absolute;right:20px;top:18px;font-size:12px">Cartão virtual temporário</div>
+    <div style="position:absolute;left:20px;top:92px;font-size:23px;letter-spacing:2px;font-weight:600">•••• •••• •••• 4444</div>
+    <div style="position:absolute;left:20px;top:140px;font-size:11px">Validade</div><div style="position:absolute;left:20px;top:156px;font-size:16px;font-weight:600">11/30</div>
+    <div style="position:absolute;left:20px;bottom:10px;font-size:13px;font-weight:600">MARIA EXEMPLO SILVA</div></div>`), 'print-escondido.png');
+  const printLista = await shot(telaApp('#121212', '#eee', `<div style="margin:24px 20px"><div style="font-size:20px;font-weight:700;margin-bottom:18px">Cartão virtual</div>
+    ${[['Nome no cartão', 'JOSE MODELO'], ['Número do cartão', '6362 9700 0045 7013'], ['Validade', '03/28'], ['Código de segurança (CVV)', '456']].map(([k, v]) => `<div style="padding:12px 0"><div style="font-size:13px;color:#999">${k}</div><div style="font-size:18px;font-weight:600">${v}</div></div>`).join('')}</div>`), 'print-lista.png');
+  const numerosCartao = ['4111111111111111', '5555555555554444', '6362970000457013'];
   const temNumero = txt => numerosCartao.some(n => String(txt || '').replace(/[^0-9]/g, '').includes(n));
   page = await open();
   const logsCartao = [];
   page.on('console', m => logsCartao.push(m.text()));
   const lidoVisa = await page.evaluate(async b64 => { const r = await fetch('data:image/png;base64,' + b64); return Leitura.lerCartao(await r.blob()); }, fs.readFileSync(cartaoVisa).toString('base64'));
   check(lidoVisa && lidoVisa.final === '1111' && lidoVisa.bandeira === 'Visa' && lidoVisa.nome === 'FULANO DE TAL' && lidoVisa.validade === '08/29' && lidoVisa.conferido === true
-    && Object.keys(lidoVisa).sort().join(',') === 'bandeira,conferido,emissor,final,nome,validade' && !temNumero(JSON.stringify(lidoVisa)),
-    `cartão Visa de teste: só final, bandeira, nome, validade, emissor e conferido (${JSON.stringify(lidoVisa)})`);
+    && Object.keys(lidoVisa).sort().join(',') === 'bandeira,conferido,emissor,final,nome,validade,virtual' && lidoVisa.virtual === null && !temNumero(JSON.stringify(lidoVisa)),
+    `cartão Visa de teste: só final, bandeira, nome, validade, emissor, conferido e virtual (${JSON.stringify(lidoVisa)})`);
   // pela tela: botão "Ler cartão", cartão escuro de cabeça para baixo
   await page.setInputFiles('#fileInputCartao', [cartaoMaster]);
   await page.waitForFunction(() => /Número/.test(document.getElementById('cartaoResultado').textContent), null, { timeout: 120000 });
@@ -1080,6 +1089,12 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   check(/•••• 4444 ✓/.test(telaCartao) && /Mastercard/.test(telaCartao) && /MARIA EXEMPLO SILVA/.test(telaCartao) && /11\/30/.test(telaCartao) && !temNumero(telaCartao)
     && !temNumero(guardadoCartao.tudo) && guardadoCartao.trabalho === null && !logsCartao.some(temNumero),
     `cartão escuro de cabeça para baixo pela tela: "${telaCartao}"; nada guardado no aparelho (trabalho: ${guardadoCartao.trabalho ? 'sim' : 'não'}) e nada no console`);
+  const lerArquivoCartao = f => page.evaluate(async b64 => { const r = await fetch('data:image/png;base64,' + b64); return Leitura.lerCartao(await r.blob()); }, fs.readFileSync(f).toString('base64'));
+  const lidoEsc = await lerArquivoCartao(printEscondido), lidoLista = await lerArquivoCartao(printLista);
+  check(lidoEsc && lidoEsc.final === '4444' && lidoEsc.conferido === false && lidoEsc.virtual === 'temporario' && lidoEsc.validade === '11/30'
+    && lidoLista && lidoLista.final === '7013' && lidoLista.conferido === true && lidoLista.bandeira === 'Elo' && lidoLista.virtual === 'virtual' && lidoLista.validade === '03/28'
+    && !temNumero(JSON.stringify(lidoLista)) && !/456/.test(JSON.stringify(lidoLista)),
+    `print do cartão virtual: o final que o app mostra (sem a conferência) e a lista com o número inteiro, sem o número nem o CVV no resultado (${JSON.stringify([lidoEsc, lidoLista])})`);
   const masc = await page.evaluate(() => [Leitura.mascararCartoes('NUMERO 4111 1111 1111 1111 FIM'), Leitura.mascararCartoes('NSU 000123 AUT 654321 CNPJ 12.345.678/0001-95 TOTAL 1.234,56'),
     Leitura.cartaoPlastico.bandeiraDe('6362970000457013'), Leitura.cartaoPlastico.bandeiraDe('378282246310005'), Leitura.cartaoPlastico.luhn('4111111111111112')]);
   check(masc[0] === 'NUMERO •••• •••• •••• 1111 FIM' && masc[1] === 'NSU 000123 AUT 654321 CNPJ 12.345.678/0001-95 TOTAL 1.234,56' && masc[2] === 'Elo' && masc[3] === 'American Express' && masc[4] === false,
