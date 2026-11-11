@@ -1033,6 +1033,57 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   check(cofreFimIA14[0] === '{}' && cofreFimIA14[1] === '{}' && await page.$$eval('#iaProvedores .ia-prov-status', e => e.every(x => x.textContent === 'sem chave')), 'apagar as chaves limpa o cofre e os modelos');
   await page.close();
 
+  // 16. Cartão de crédito pela câmera (leitores/cartao-plastico.js), com números de teste públicos das
+  // bandeiras: só o final, a bandeira, o nome e a validade saem; o número inteiro não aparece na tela, no
+  // aparelho (localStorage, trabalho guardado) nem no console; o caminho comum também esconde o número
+  const cartaoHtml = (num, nome, val, banco, marca, fundo, cor) => `<div style="width:856px;height:540px;border-radius:36px;background:${fundo};position:relative;font-family:'DejaVu Sans Mono',monospace">
+    <div style="position:absolute;left:50px;top:40px;font:bold 40px sans-serif;color:${cor}">${banco}</div>
+    <div style="position:absolute;left:70px;top:170px;width:110px;height:85px;border-radius:12px;background:#d4af37"></div>
+    <div style="position:absolute;left:60px;top:300px;font:bold 56px 'DejaVu Sans Mono',monospace;letter-spacing:4px;color:${cor}">${num}</div>
+    <div style="position:absolute;left:330px;top:390px;font:bold 18px sans-serif;color:${cor}">VALIDO ATÉ</div>
+    <div style="position:absolute;left:470px;top:382px;font:bold 36px 'DejaVu Sans Mono',monospace;color:${cor}">${val}</div>
+    <div style="position:absolute;left:60px;top:450px;font:bold 36px 'DejaVu Sans Mono',monospace;color:${cor}">${nome}</div>
+    <div style="position:absolute;right:50px;bottom:40px;font:bold italic 44px sans-serif;color:${cor}">${marca}</div></div>`;
+  const cartaoVisa = await shot(cartaoHtml('4111 1111 1111 1111', 'FULANO DE TAL', '08/29', 'Banco Exemplo', 'VISA', '#2a5298', '#fff'), 'cartao-visa.png');
+  const cartaoMaster = await shot(girado(cartaoHtml('5555 5555 5555 4444', 'MARIA EXEMPLO SILVA', '11/30', 'Itaú', 'mastercard', '#111', '#ddd'), 180, 1000), 'cartao-master.png');
+  const numerosCartao = ['4111111111111111', '5555555555554444'];
+  const temNumero = txt => numerosCartao.some(n => String(txt || '').replace(/[^0-9]/g, '').includes(n));
+  page = await open();
+  const logsCartao = [];
+  page.on('console', m => logsCartao.push(m.text()));
+  const lidoVisa = await page.evaluate(async b64 => { const r = await fetch('data:image/png;base64,' + b64); return Leitura.lerCartao(await r.blob()); }, fs.readFileSync(cartaoVisa).toString('base64'));
+  check(lidoVisa && lidoVisa.final === '1111' && lidoVisa.bandeira === 'Visa' && lidoVisa.nome === 'FULANO DE TAL' && lidoVisa.validade === '08/29' && lidoVisa.conferido === true
+    && Object.keys(lidoVisa).sort().join(',') === 'bandeira,conferido,emissor,final,nome,validade' && !temNumero(JSON.stringify(lidoVisa)),
+    `cartão Visa de teste: só final, bandeira, nome, validade, emissor e conferido (${JSON.stringify(lidoVisa)})`);
+  // pela tela: botão "Ler cartão", cartão escuro de cabeça para baixo
+  await page.setInputFiles('#fileInputCartao', [cartaoMaster]);
+  await page.waitForFunction(() => /Número/.test(document.getElementById('cartaoResultado').textContent), null, { timeout: 120000 });
+  const telaCartao = await page.$eval('#cartaoResultado', e => e.textContent);
+  const guardadoCartao = await page.evaluate(() => new Promise(ok => {
+    const tudo = Object.keys(localStorage).map(k => k + '=' + localStorage.getItem(k)).join('\n');
+    const r = indexedDB.open('leitor-ocr', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('trabalho');
+    r.onsuccess = () => { const q = r.result.transaction('trabalho').objectStore('trabalho').get('atual'); q.onsuccess = () => ok({ tudo, trabalho: q.result || null }); q.onerror = () => ok({ tudo, trabalho: null }); };
+    r.onerror = () => ok({ tudo, trabalho: null });
+  }));
+  check(/•••• 4444 ✓/.test(telaCartao) && /Mastercard/.test(telaCartao) && /MARIA EXEMPLO SILVA/.test(telaCartao) && /11\/30/.test(telaCartao) && !temNumero(telaCartao)
+    && !temNumero(guardadoCartao.tudo) && guardadoCartao.trabalho === null && !logsCartao.some(temNumero),
+    `cartão escuro de cabeça para baixo pela tela: "${telaCartao}"; nada guardado no aparelho (trabalho: ${guardadoCartao.trabalho ? 'sim' : 'não'}) e nada no console`);
+  const masc = await page.evaluate(() => [Leitura.mascararCartoes('NUMERO 4111 1111 1111 1111 FIM'), Leitura.mascararCartoes('NSU 000123 AUT 654321 CNPJ 12.345.678/0001-95 TOTAL 1.234,56'),
+    Leitura.cartaoPlastico.bandeiraDe('6362970000457013'), Leitura.cartaoPlastico.bandeiraDe('378282246310005'), Leitura.cartaoPlastico.luhn('4111111111111112')]);
+  check(masc[0] === 'NUMERO •••• •••• •••• 1111 FIM' && masc[1] === 'NSU 000123 AUT 654321 CNPJ 12.345.678/0001-95 TOTAL 1.234,56' && masc[2] === 'Elo' && masc[3] === 'American Express' && masc[4] === false,
+    `número de cartão escondido em texto, comprovante intacto, Elo e Amex pelos primeiros dígitos, Luhn recusa um dígito trocado (${JSON.stringify(masc)})`);
+  await page.close();
+  // o mesmo cartão pelo caminho comum ("Fotos ou arquivos"): o texto lido e guardado não tem o número
+  page = await open();
+  await send(page, [cartaoVisa], 'auto');
+  const comum = await page.evaluate(() => JSON.stringify((window.ocrDebug && window.ocrDebug.readings) || []) + JSON.stringify([...document.querySelectorAll('#fieldsEditorCard input, #fieldsEditorCard textarea')].map(e => e.value)));
+  const trabalhoComum = await trabalhoGuardado(page);
+  const textoGuardado = await page.evaluate(() => new Promise(ok => { const r = indexedDB.open('leitor-ocr', 1); r.onsuccess = () => { const q = r.result.transaction('trabalho').objectStore('trabalho').get('atual'); q.onsuccess = () => ok(JSON.stringify((q.result && q.result.papeis) || [])); q.onerror = () => ok(''); }; r.onerror = () => ok(''); }));
+  check(/••••/.test(comum) && !temNumero(comum) && !temNumero(textoGuardado),
+    `cartão pelo caminho comum: o número sai escondido no texto lido (trabalho ${trabalhoComum ? trabalhoComum.estado : 'nenhum'}; ${textoGuardado.length} caracteres guardados, sem o número)`);
+  await page.close();
+
   check(external.size === 0, 'nenhum pedido para fora do app' + (external.size ? ': ' + [...external].join(', ') : ''));
   check(logs.length === 0, 'nenhum erro de página' + (logs.length ? ': ' + logs.join(' | ') : ''));
   await browser.close();

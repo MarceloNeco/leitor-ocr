@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.9.1';
+  L.versao = '1.10.0';
   // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
   L.app = L.app || null;
 
@@ -149,6 +149,8 @@
     if (fotos.length) {
       await L.precisa('foto');
       lidas = await L.lerFotos(fotos, o);
+      // um cartão fotografado por aqui: o número inteiro não fica no texto lido (leitores/cartao-plastico.js)
+      if (L.mascararLeitura) lidas.forEach(p => (p.readings || []).forEach(L.mascararLeitura));
     }
     const papeis = [];
     // Modelos (leitura/modelos.js): um arquivo com texto (PDF, TXT, DOCX, planilha) é
