@@ -85,9 +85,17 @@
     });
     for (let i = 0; i < readings.length; i++) for (let j = i + 1; j < readings.length; j++) {
       const a = readings[i], b = readings[j];
-      if (lidos[i] && lidos[i] === lidos[j] && (a.size !== b.size || a.bin !== b.bin || a.rot !== b.rot)) return lidos[i];
+      if (lidos[i] && lidos[i] === lidos[j] && (a.size !== b.size || a.bin !== b.bin || a.rot !== b.rot)) return rivalDe(readings, lidos[i]) ? null : lidos[i];
     }
     return null;
+  }
+  // Outra leitura traz, numa linha de total ou de pagamento, um valor que só
+  // difere num dígito ("A PAGAR 106,27" duas vezes e "MASTER CREDITO 106,22"):
+  // é o 2/7 do OCR, não dois valores; o app fica em dúvida (texto.js, decidirValor)
+  function rivalDe(readings, c) {
+    const x = String(c);
+    return readings.some(r => String(r.text || '').split('\n').filter(l => APAGAR.test(l) || PAGO.test(l) || /TOTAL/i.test(l))
+      .some(l => (l.match(DINHEIRO) || []).some(v => { const y = String(cents(v)); return y.length === x.length && [...x].filter((d, k) => d !== y[k]).length === 1; })));
   }
 
   /* ---------- Produtos do cupom ---------- */

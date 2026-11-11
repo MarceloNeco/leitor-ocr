@@ -217,10 +217,21 @@
   // of 190,10). When the two disagree (23,09 in the regular readings, 23,00
   // in the band), nothing is decided and both are offered: empty beats
   // wrong. Returns { valor, fonte ('leituras' | 'grande' | null) }.
+  // Two amounts that differ in a single digit (106,22 and 106,27): the
+  // engine's usual slip (2/7, 0/8, 3/8...), not two different amounts
+  const umDigito = (a, b) => { const x = a.toFixed(2), y = b.toFixed(2); return x.length === y.length && [...x].filter((c, i) => c !== y[i]).length === 1; };
+
   function decidirValor(readings, tipo, grandes = []) {
     const regular = agreedValue(readings, tipo);
     const forte = valorGrande(grandes, 3), fraco = valorGrande(grandes, 2);
-    if (regular !== null) return !fraco || fraco.valor === regular ? { valor: regular, fonte: 'leituras' } : { valor: null, fonte: null };
+    if (regular !== null && fraco && fraco.valor !== regular) return { valor: null, fonte: null };
+    // two readings agree, but another reading of the same paper has an amount
+    // one digit away (a cupom: "A PAGAR 106,27" twice, "MASTER CREDITO 106,22"):
+    // in doubt, offer both instead of filling the wrong one
+    const rivais = regular === null || readings[0].exato ? []
+      : [...new Set(readings.flatMap(r => parseDocument(r.text, tipo).candidatos.map(c => c.num)))].filter(n => umDigito(n, regular));
+    if (rivais.length) return { valor: null, fonte: null, opcoes: [regular].concat(rivais) };
+    if (regular !== null) return { valor: regular, fonte: 'leituras' };
     return forte ? { valor: forte.valor, fonte: 'grande' } : { valor: null, fonte: null };
   }
 
@@ -264,7 +275,7 @@
     const valor = codigo && codigo.valor ? codigo.valor : decidido.valor;
     // the amounts to offer as buttons: the first of each reading, and the big digits read with confidence
     const candidates = expectsValue && valor === null
-      ? [...new Set(parsed.map(p => p.candidatos[0] ? p.candidatos[0].num : null).concat(grandes.filter(g => g.conf >= 60).map(g => g.valor)).filter(n => n !== null))]
+      ? [...new Set((decidido.opcoes || []).concat(parsed.map(p => p.candidatos[0] ? p.candidatos[0].num : null)).concat(grandes.filter(g => g.conf >= 60).map(g => g.valor)).filter(n => n !== null))]
       : [];
 
     // The other fields come from the reading that found the agreed amount,
