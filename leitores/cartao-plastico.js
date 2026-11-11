@@ -86,21 +86,6 @@
     }
     return achados;
   }
-  // Cartão virtual com o número escondido pelo app ("•••• •••• •••• 4444" ou "Final 4444"): só o final.
-  // As bolinhas saem do OCR como "ece00", "coco", "0000", "APSIIO"...; o final tem que vir depois de 2 a 6
-  // desses blocos, numa linha sem data, hora ou dinheiro
-  const BOLINHAS = /^[•·*.oO0-9eEcCaAvVrRhHmMxXpPsSiIlL|]{1,8}$/;
-  function finalEscondido(linha) {
-    const f = linha.match(/\bfinal\s*:?\s*(\d{4})\b/i);
-    if (f) return f[1];
-    if (/[\/:,]|R\$/.test(linha)) return null;
-    const ts = linha.trim().split(/\s+/), ult = ts[ts.length - 1], antes = ts.slice(0, -1);
-    if (!/^\d{4}$/.test(ult) || antes.length < 2 || antes.length > 6 || !antes.every(t => BOLINHAS.test(t))) return null;
-    // as bolinhas também saem como "0000": um final igual a um bloco de bolinhas (ou 0000) é bolinha
-    if (ult === '0000' || antes.some(t => t.replace(/[^0-9]/g, '') === ult)) return null;
-    return ult;
-  }
-
   L.mascararCartoes = texto => String(texto || '').split('\n').map(linha => {
     const nums = numerosDaLinha(linha);
     if (!nums.length) return linha;
@@ -251,9 +236,9 @@
     const medidos = inc.razao > 1.5 ? [-inc.a, 180 - inc.a] : [];
     const perto = (a, b) => Math.abs((((a - b) % 360) + 540) % 360 - 180) < 3;
     const giros = medidos.concat(pelaFoto.filter(g => !medidos.some(m => perto(m, g))));
-    const votosNum = new Map(), votosFinal = new Map(), validades = [], nomes = [];
+    const votosNum = new Map(), validades = [], nomes = [];
     let textoTodo = '', melhor = { conf: -1, rot: giros[0], inverter: false }, extras = false;
-    const passos = giros.map(rot => ({ rot, inverter: false })).concat(giros.map(rot => ({ rot, inverter: false, local: true })), giros.map(rot => ({ rot, inverter: true })), giros.map(rot => ({ rot, inverter: true, local: true })), giros.map(rot => ({ rot, inverter: true, branco: true })), giros.map(rot => ({ rot, inverter: false, branco: true })));
+    const passos = giros.map(rot => ({ rot, inverter: false })).concat(giros.map(rot => ({ rot, inverter: false, local: true })), giros.map(rot => ({ rot, inverter: true })), giros.map(rot => ({ rot, inverter: true, local: true })), giros.map(rot => ({ rot, inverter: true, branco: true })));
     try {
       for (let k = 0; k < passos.length; k++) {
         const { rot, inverter, local, branco } = passos[k];
@@ -270,7 +255,6 @@
         });
         desta.forEach(n => votosNum.set(n, (votosNum.get(n) || 0) + 1));
         desta.clear();
-        new Set(linhas.map(finalEscondido).filter(Boolean)).forEach(f => votosFinal.set(f, (votosFinal.get(f) || 0) + 1));
         validades.push(...validadesDe(texto));
         nomes.push(...nomesDe(res));
         textoTodo += L.mascararCartoes(texto) + '\n';
@@ -295,15 +279,10 @@
     // dois números diferentes que conferem, lidos as mesmas vezes: não dá para saber qual
     let numero = ordem.length && !(ordem[1] && ordem[1][1] === ordem[0][1]) ? ordem[0][0] : null;
     const conferido = numero !== null;
-    let final = conferido ? numero.slice(-4) : null;
-    // sem número inteiro: o final que o app deixou à mostra, lido igual em duas leituras (sem a conferência),
-    // só no print de cartão virtual: num cartão físico borrado e num comprovante, grupos de números mal
-    // lidos parecem bolinhas e davam um final errado
-    if (!final && /VIRTUAL|TEMPOR[AÁ]RIO/i.test(textoTodo)) {
-      const [f, g] = [...votosFinal.entries()].sort((a, b) => b[1] - a[1]);
-      if (f && f[1] >= 2 && !(g && g[1] === f[1])) final = f[0];
-    }
-    votosFinal.clear();
+    // só do número inteiro conferido. O final à mostra num cartão virtual com o número escondido pelo app
+    // ("•••• 4444") não é lido: sem o número não há conferência, e nos prints de teste o OCR leu "1177"
+    // no lugar de "1111" igual em duas leituras (antes vazio do que errado: a pessoa digita o final)
+    const final = conferido ? numero.slice(-4) : null;
     let bandeira = conferido ? bandeiraDe(numero) : null;
     numero = null;
     votosNum.clear();

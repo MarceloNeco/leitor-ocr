@@ -1091,10 +1091,10 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     `cartão escuro de cabeça para baixo pela tela: "${telaCartao}"; nada guardado no aparelho (trabalho: ${guardadoCartao.trabalho ? 'sim' : 'não'}) e nada no console`);
   const lerArquivoCartao = f => page.evaluate(async b64 => { const r = await fetch('data:image/png;base64,' + b64); return Leitura.lerCartao(await r.blob()); }, fs.readFileSync(f).toString('base64'));
   const lidoEsc = await lerArquivoCartao(printEscondido), lidoLista = await lerArquivoCartao(printLista);
-  check(lidoEsc && lidoEsc.final === '4444' && lidoEsc.conferido === false && lidoEsc.virtual === 'temporario' && lidoEsc.validade === '11/30'
+  check(lidoEsc && lidoEsc.final === null && lidoEsc.conferido === false && lidoEsc.virtual === 'temporario' && lidoEsc.validade === '11/30' && lidoEsc.nome === 'MARIA EXEMPLO SILVA'
     && lidoLista && lidoLista.final === '7013' && lidoLista.conferido === true && lidoLista.bandeira === 'Elo' && lidoLista.virtual === 'virtual' && lidoLista.validade === '03/28'
     && !temNumero(JSON.stringify(lidoLista)) && !/456/.test(JSON.stringify(lidoLista)),
-    `print do cartão virtual: o final que o app mostra (sem a conferência) e a lista com o número inteiro, sem o número nem o CVV no resultado (${JSON.stringify([lidoEsc, lidoLista])})`);
+    `print do cartão virtual: com o número escondido pelo app, validade, nome e tipo sem o final (não há como conferir); com o número inteiro, o final conferido, sem o número nem o CVV no resultado (${JSON.stringify([lidoEsc, lidoLista])})`);
   const masc = await page.evaluate(() => [Leitura.mascararCartoes('NUMERO 4111 1111 1111 1111 FIM'), Leitura.mascararCartoes('NSU 000123 AUT 654321 CNPJ 12.345.678/0001-95 TOTAL 1.234,56'),
     Leitura.cartaoPlastico.bandeiraDe('6362970000457013'), Leitura.cartaoPlastico.bandeiraDe('378282246310005'), Leitura.cartaoPlastico.luhn('4111111111111112')]);
   check(masc[0] === 'NUMERO •••• •••• •••• 1111 FIM' && masc[1] === 'NSU 000123 AUT 654321 CNPJ 12.345.678/0001-95 TOTAL 1.234,56' && masc[2] === 'Elo' && masc[3] === 'American Express' && masc[4] === false,
