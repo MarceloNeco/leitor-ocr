@@ -516,6 +516,31 @@ Valor: certo / em dúvida com o certo entre as opções / em dúvida / vazio / e
 
 Ainda não resolvido nesta foto: na foto inteira, 3 dos 7 papéis não são achados (um cupom comprido de cabeça para baixo, um canhoto pequeno e um canhoto de lado) e um canhoto pequeno é juntado ao cupom vizinho; recortados, a via da PagBank girada (valor em letra grande) e o cupom amassado do delivery saem vazios. Recortar melhora muito: de 1 certo e 1 em dúvida-certo em 7 papéis para 3 e 2.
 
+## Resultado da 0.9.4 (imagem da galeria e print do cartão virtual, pedido 34, 11/11/2026)
+
+Botão "🖼️ Imagem ou print do cartão" (galeria, sem câmera) ao lado de "💳 Fotografar cartão". Medido em 24 prints de tela de celular de mentira (4 cartões de teste × modo claro e escuro × 3 jeitos de app mostrar: desenho do cartão com o número, lista de dados com número e CVV, número escondido "•••• 1234"), mais os conjuntos A e B de cartões físicos e os comprovantes de 02/11, antes (0.9.3) e depois.
+
+| Conjunto | 0.9.3: final certo / errado | 0.9.4: final certo / errado |
+|---|---|---|
+| Prints com o número à mostra (16) | 12 / 0 | 13 / 0 |
+| Prints com o número escondido (8) | 0 / 0 | 0 / 0 (de propósito, ver abaixo) |
+| Prints: nome / validade / banco (24) | — | 24 / 24 / 24 (antes: 22 / 22 / 11) |
+| Cartões A (48) | 47 / 0 | 47 / 0 |
+| Cartões B (48) | 45 / 0 | 45 / 0 |
+| Comprovantes de 02/11, sem cartão (8) | nenhum número | nenhum número |
+
+O que mudou no leitor: a foto em pé tenta primeiro o texto em pé (o print é em pé, e só as posições de lado eram tentadas: dois prints escuros não liam nada); todas as quatro posições são tentadas quando a medida da inclinação não resolve; uma passada pelo "quão branco" é cada ponto, sem esticar o contraste (letra branca em cartão roxo ou laranja; esticar juntava o roxo com a letra num print escuro); `virtual` pelas palavras da tela ("temporário" → `'temporario'`, "virtual" → `'virtual'`); "Banco Inter" reconhecido.
+
+Tentado e tirado (medido):
+
+- **O final do número escondido** ("•••• •••• •••• 4444"): uma regra pegava o último bloco de 4 dígitos depois das bolinhas (que o OCR lê como "ece00", "coco", "0000"). Primeira versão: um "0000" (as bolinhas lidas de cabeça para baixo); depois, 2 finais errados em cartões físicos borrados e 1 num comprovante; restrita a telas que dizem "virtual" ou "temporário", ainda deu "1177" no lugar de "1111" num print, lido igual em duas leituras. Sem o número inteiro não há conferência: o final fica vazio e a tela pede "mostrar número" no app do banco antes do print, ou que a pessoa digite.
+- **Corrigir um dígito pelo Luhn** (o "1" da letra do print lido como "7"): simulado em 200 mil números, a correção única acerta sempre quando o OCR errou um dígito, mas com dois errados dá um final errado em 18,5% das vezes, e não dá para saber quantos o OCR errou. Não entrou.
+- Ler o print num tamanho menor (1000 e 700 de largura): quase igual (13 e 12 de 24).
+
+Os 3 prints com o número à mostra que não saem: dois do cartão de teste "4111 1111 1111 1111" (na letra do print o "1" vira "7"; número que não existe em cartão de verdade) e um cartão roxo no modo escuro. Tempo: 9 s por print no computador (mais no celular); o print com o número escondido tenta todas as leituras antes de desistir. `testes/offline.js`: 90 de 90 (novo: um print com o número escondido dá validade, nome e "temporário" sem final; uma lista com o número inteiro dá o final conferido, sem o número nem o CVV no resultado).
+
+Não medido: prints de apps de banco de verdade. O Marcelo testa: no app do banco, "mostrar número" no cartão virtual, print, e "🖼️ Imagem ou print do cartão" no leitor.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **PDF sem camada de texto com muitas páginas** (letras desenhadas, como a apólice da Porto): o app passa até 10 páginas pelo OCR em resolução alta, e isso demora minutos no celular sem avisar quanto falta. Avisar antes ("este PDF não tem texto, vou ler N páginas por OCR") e deixar escolher as páginas; e um modelo tolerante a erros de OCR para esse caso.
