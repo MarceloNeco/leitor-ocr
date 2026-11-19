@@ -344,6 +344,14 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     <div style="position:absolute;right:50px;bottom:40px;font:bold italic 44px sans-serif;color:${cor}">${marca}</div></div>`;
   const cartaoVisa = await shot(cartaoHtml('4111 1111 1111 1111', 'FULANO DE TAL', '08/29', 'Banco Exemplo', 'VISA', '#2a5298', '#fff'), 'cartao-visa.png');
   const cartaoMaster = await shot(girado(cartaoHtml('5555 5555 5555 4444', 'MARIA EXEMPLO SILVA', '11/30', 'Itaú', 'mastercard', '#111', '#ddd'), 180, 1000), 'cartao-master.png');
+  // vários canhotos de mentira numa mesa bege (teste 17, Leitura.lerVarios): um reto, um torto e um de cabeça para baixo
+  const canhotoF = (loja, cnpj, data, hora, modo, final, valor, aut) => `<div style="width:460px;padding:30px 26px;font:bold 24px monospace;color:#111;background:#fff;line-height:1.55">
+    VIA CLIENTE<br>${loja}<br>CNPJ: ${cnpj}<br>${data} ${hora}<br>${modo}<br>MASTERCARD ************${final}<br>VALOR R$ ${valor}<br>AUT: ${aut} NSU: 004213</div>`;
+  const cnpjMesa = [cnpjCom('112223330001'), cnpjCom('445556660001'), cnpjCom('778889990001')];
+  const mesaCanhotos = await shot(`<div style="width:1500px;height:1050px;background:#d9cfbf;position:relative">
+    <div style="position:absolute;left:40px;top:60px">${canhotoF('PADARIA EXEMPLO', cnpjMesa[0], '10/11/2026', '08:15', 'CREDITO A VISTA', '1234', '37,50', 'A1B2C3')}</div>
+    <div style="position:absolute;left:540px;top:120px;transform:rotate(7deg)">${canhotoF('LOJA MODELO LTDA', cnpjMesa[1], '11/11/2026', '19:42', 'CREDITO PARCELADO<br>PARCELAS: 3', '1234', '1.234,56', 'Z9Y8X7')}</div>
+    <div style="position:absolute;left:1040px;top:80px;transform:rotate(180deg)">${canhotoF('FARMACIA FICTICIA', cnpjMesa[2], '12/11/2026', '11:05', 'DEBITO A VISTA', '5678', '89,90', 'Q1W2E3')}</div></div>`, 'mesa-canhotos.png');
   // print da tela do app do banco com o cartão virtual: o número escondido pelo app (só o final) e a lista com o número inteiro e o CVV
   const telaApp = (fundo, cor, corpo) => `<div style="width:400px;height:860px;background:${fundo};color:${cor};font-family:Inter,sans-serif;zoom:2"><div style="padding:10px 20px;font-size:13px">14:32</div><div style="padding:14px 20px;font-size:17px;font-weight:600">‹ Cartões</div>${corpo}</div>`;
   const printEscondido = await shot(telaApp('#f4f4f6', '#111', `<div style="margin:24px 20px;border-radius:18px;background:linear-gradient(135deg,#ff7a00,#ff9f43);height:205px;position:relative;color:#fff">
@@ -1108,6 +1116,25 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const textoGuardado = await page.evaluate(() => new Promise(ok => { const r = indexedDB.open('leitor-ocr', 1); r.onsuccess = () => { const q = r.result.transaction('trabalho').objectStore('trabalho').get('atual'); q.onsuccess = () => ok(JSON.stringify((q.result && q.result.papeis) || [])); q.onerror = () => ok(''); }; r.onerror = () => ok(''); }));
   check(/••••/.test(comum) && !temNumero(comum) && !temNumero(textoGuardado),
     `cartão pelo caminho comum: o número sai escondido no texto lido (trabalho ${trabalhoComum ? trabalhoComum.estado : 'nenhum'}; ${textoGuardado.length} caracteres guardados, sem o número)`);
+  await page.close();
+
+  // 17. Vários canhotos numa foto (leitura/varios.js): um item por canhoto, no contrato do ARQUITETURA.md
+  page = await open();
+  const varios = await page.evaluate(async b64 => {
+    const blob = await (await fetch('data:image/png;base64,' + b64)).blob();
+    return Leitura.lerVarios(new File([blob], 'mesa.png', { type: 'image/png' }));
+  }, fs.readFileSync(mesaCanhotos).toString('base64'));
+  const chavesContrato = 'arquivo,aut,bandeira,cnpj,confianca,data,doc,documento,final,hora,loja,mesmaCompra,nsu,opcoes,papel,parcelas,tipo,valor';
+  const valoresVarios = varios.map(v => v.valor);
+  const certosVarios = [37.5, 1234.56, 89.9].filter(n => valoresVarios.includes(n)).length;
+  const erradosVarios = valoresVarios.filter(n => n !== null && ![37.5, 1234.56, 89.9].includes(n)).length;
+  const parcelado = varios.find(v => v.valor === 1234.56), debito = varios.find(v => v.valor === 89.9);
+  check(varios.length === 3 && varios.every(v => Object.keys(v).sort().join(',') === chavesContrato) && certosVarios >= 2 && erradosVarios === 0
+    && varios.every(v => v.valor === null || v.confianca.valor === 'alta')
+    && (!parcelado || (parcelado.parcelas === 3 && parcelado.tipo === 'credito' && parcelado.final === '1234'))
+    && (!debito || (debito.tipo === 'debito' && debito.final === '5678'))
+    && varios.some(v => v.aut && /^[A-Z0-9]{6}$/.test(v.aut)),
+    `três canhotos numa foto (um torto, um de cabeça para baixo): ${varios.length} itens, ${certosVarios} valores certos, ${erradosVarios} errados (${JSON.stringify(varios.map(v => [v.valor, v.data, v.tipo, v.parcelas, v.final, v.aut, v.confianca.valor]))})`);
   await page.close();
 
   check(external.size === 0, 'nenhum pedido para fora do app' + (external.size ? ': ' + [...external].join(', ') : ''));
