@@ -541,6 +541,29 @@ Os 3 prints com o número à mostra que não saem: dois do cartão de teste "411
 
 Não medido: prints de apps de banco de verdade. O Marcelo testa: no app do banco, "mostrar número" no cartão virtual, print, e "🖼️ Imagem ou print do cartão" no leitor.
 
+## Resultado da 0.9.5 (vários canhotos numa foto, `Leitura.lerVarios`, pedido 35, 19/11/2026)
+
+Fotos novas das pastas de exemplos de 18 e 19/11 do Drive (fora do repositório; dados pessoais): uma mesa bege com 14 papéis (11 canhotos de 5 maquininhas, um recibo, um canhoto da mesma compra do recibo e um cupom NFC-e comprido), um cupom NFC-e segurado na mão e uma mesa rosa com 4 papéis (ticket de estacionamento com a via PagBank, cupom NFC-e, Cielo e Laranjinha). Mais a foto de 7 papéis e os 7 recortes de 02/11. Um canhoto da mesa bege tem o valor apagado demais até para ler a olho: conta como papel, sem nota de valor. Valor: certo / em dúvida com o certo entre as opções / em dúvida / vazio / errado.
+
+| Conjunto | 0.9.4 | 0.9.5 |
+|---|---|---|
+| Mesa bege, 14 papéis: papéis achados | 4 | 12 |
+| Mesa rosa, 4 papéis: papéis achados | 1 | 3 |
+| Cupom na mão: papéis achados | 1 | 1 |
+| As 3 fotos novas: valor | 2 / 1 / 0 / 2 / **1** ("R$ 2,00" num recibo de 200,00) | 6 / 2 / 0 / 8 / **0** |
+| Foto de 7 papéis (02/11): papéis achados | 4 | 7 |
+| Foto de 7 papéis: valor | 1 / 1 / 0 / 2 / 0 | 3 / 1 / 0 / 3 / 0 |
+| 7 recortes de 02/11: valor | 3 / 2 / 0 / 2 / 0 | 2 / 3 / 0 / 2 / 0 |
+| `testes/offline.js` | 90 | 91 de 91 |
+
+O que mudou na busca dos papéis (`findPapers`, `leitura/foto.js`): a foto reduzida a 700 pontos (com 400, canhotos pequenos viravam manchas de poucos pontos); o papel pelo "quão branco" é cada ponto (o menor dos três canais) e não pelo claro e escuro: na mesa bege clara a mesa inteira virava um "papel" e os canhotos dentro dela sumiam; um papel só é descartado como mancha dentro de outro quando a moldura em volta dele é desse outro (o Cielo e o Laranjinha da mesa rosa caíam dentro do retângulo do ticket com o cupom e eram jogados fora); um bloco que não é retângulo (dois papéis tortos encostados) é afinado aos poucos até se partir em pedaços que não se sobrepõem (pedaços sobrepostos são o mesmo papel cortado por uma mão: o cupom na mão continua um papel só); caixa quase toda dentro de outra de tamanho parecido é o mesmo papel (a Rede saía duas vezes: o MoneyTRIO contaria a compra em dobro); pedaços do mesmo bloco, alinhados um embaixo do outro, colam de mais longe; "tem texto" conta as linhas também na vertical (um canhoto de lado sumia com a foto maior).
+
+O que mudou na leitura: "Valor a Pagar R$ 338 69" (vírgula lida como espaço) dava 3,38 em três leituras e saía como valor, errado: agora vira 338,69 (`findMoney`, `leitura/texto.js`). Duas leituras da mesma imagem em tamanhos diferentes erram juntas (o canhoto de 34,00 lido 34,08 nas duas, com a foto de 7 papéis agora achando esse canhoto): o valor só fecha depois de uma leitura em preto e branco, que, lendo outro dígito, deixa o valor em dúvida (é o que fez o cupom do Dufry passar de certo a "em dúvida com o certo entre as opções": um toque a mais, nunca errado); custa uma leitura a mais por papel. A autorização aceita letras e números ("AUTO:CF2RPQ", `leitores/cartao.js`).
+
+Na `lerVarios` (`leitura/varios.js`): a data no futuro ou de mais de 5 anos atrás fica vazia (o "04/11/2020" e o "29/11/2026" da tela, em papéis não reconhecidos como canhoto); parcelas só no canhoto e só pela palavra "parcela" ou "à vista" (o "1,000 UN X" de um cupom dava 8 parcelas).
+
+Tempo: 64 s para a foto de 14 papéis, 34 s para a de 4, 59 s para a de 7 (computador). Não resolvido: 2 dos 14 papéis da mesa bege não são achados (um Cielo com o papel acinzentado e um Getnet de impressão fraca) e dois canhotos encostados (InfinitePay e Stone) saem como um papel; na mesa rosa, o ticket de estacionamento e o cupom do chocolate, tortos e encostados, saem juntos; o final do cartão quase não sai nas fotos de longe (a linha "****9458" fica pequena demais); a loja de vários canhotos vem com o nome mal lido (confiança `media` ou `baixa`).
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **PDF sem camada de texto com muitas páginas** (letras desenhadas, como a apólice da Porto): o app passa até 10 páginas pelo OCR em resolução alta, e isso demora minutos no celular sem avisar quanto falta. Avisar antes ("este PDF não tem texto, vou ler N páginas por OCR") e deixar escolher as páginas; e um modelo tolerante a erros de OCR para esse caso.

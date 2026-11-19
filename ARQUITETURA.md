@@ -42,6 +42,7 @@ A lista oficial está em `leitura/catalogo.js` (`capacidades`). O `sw.js` guarda
 | `dados/estabelecimentos.json` | A base de lojas: raiz do CNPJ, razão social, nome fantasia e categoria das redes comuns (dado público). |
 | `leitura/modelos.js` | Leitura por modelo (MODELOS.md): `Leitura.modelos.reconhecer(texto, tipo)`, `aplicarEm(reading, tipo)` → `{ modelo: { id, versao, nome, tipo }, fields, campos, itens ou tabela, conferido, falhas, impressao }`, `lista()`, `adicionar(modelo)` / `remover(id)` (modelos da pessoa, `localStorage` `leitor_modelos_pessoais`), `falhas()` (`leitor_modelos_falhas`), `Leitura.esqueleto(texto)`. |
 | `dados/modelos.json`, `dados/amostras/*.txt` | O catálogo de modelos (só regras) e a amostra-esqueleto de cada um (texto do pdf.js, dígitos → 0, nomes → X). |
+| `leitura/varios.js` | Vários canhotos numa foto, um item por canhoto, no contrato estável para outros apps: `Leitura.lerVarios(arquivos)` (ver "Vários canhotos numa foto"). |
 | `leitura/ia.js` | Ler a foto com uma IA online (nível C): `Leitura.ia.provedores()`, `guardarChave(prov, chave)` (testa na lista de modelos e guarda no cofre comum `dgo:global:chaves-ia`), `provedorAtual()`, `lerFoto(img)` (Gemini ou Claude, pedido em JSON), `aplicar(papel, lido, atuais)` (campos só onde estava vazio; valor vira sugestão), `explicar(erro)`, `precisaPerguntar(tipo)`, `sozinha()`. Ver "Ler com IA". |
 | `leitores/*.js` | Um arquivo por tipo de documento que já tem leitor próprio: `cartao-plastico` (a frente do cartão de crédito ou débito, `Leitura.lerCartao`; ver "Cartão de crédito ou débito pela câmera"), `cartao`, `nfce` (também o total do DANFE, conferido pela soma da nota, e os produtos do cupom; ver "Produtos da nota"), `conta`, `transferencia` (Pix, TED), `boleto` (valor e vencimento da linha digitável, conferidos pelos dígitos verificadores; as partes do valor; o valor pago no comprovante), `arrecadacao` (conta de luz, água, gás, telefone, imposto e multa pelo código de 48 números), `extrato` (o **leitor de lançamentos**: um só para extrato, fatura e print de notificação, de qualquer banco; ver "Lançamentos"). |
 | `formatos/*.js` | Um arquivo por tipo de arquivo. |
@@ -256,6 +257,48 @@ Como lê: endireita a foto pela inclinação das letras (`Leitura.foto.anguloLin
 Segurança (PCI/LGPD): o número inteiro só existe na memória durante a leitura; nunca é devolvido, guardado, mandado para fora nem posto no console. O código de segurança não é procurado e o verso não é lido; no print do cartão virtual, onde o CVV aparece, ele não entra no resultado. A foto e o texto lido não são guardados: este caminho não passa pelo histórico nem pelo trabalho guardado. Sem IA e sem internet. No `Leitura.ler` (caminho comum), `Leitura.mascararLeitura` esconde um número de cartão que confere no texto, nas linhas e nas palavras de cada leitura de foto, antes de qualquer coisa ser guardada (`Leitura.mascararCartoes(texto)` faz o mesmo num texto qualquer).
 
 No app de referência: botões "💳 Fotografar cartão" (câmera do computador ou do celular) e "🖼️ Imagem ou print do cartão" (galeria, print do cartão virtual) em Capturar; resultado na janela `cartaoDialog`, nada salvo. Não se tenta corrigir um dígito pelo Luhn: simulado, com um dígito errado a correção única acerta sempre, mas com dois errados ela dá um final errado em 18,5% das vezes, e não dá para saber quantos o OCR errou.
+
+## Vários canhotos numa foto: `Leitura.lerVarios` (contrato 1, 0.9.5, pedido 35)
+
+Para o MoneyTRIO (e qualquer app) conferir canhotos com o banco. Arquivo `leitura/varios.js`. Uma foto com vários canhotos de maquininha (tortos, de cabeça para baixo, de tamanhos diferentes, encostados), ou vários arquivos de uma vez: cada papel achado vira um item. Tudo no aparelho, sem internet e sem IA (a IA continua só como opção da tela, pela chave da pessoa).
+
+```js
+const itens = await Leitura.lerVarios(arquivoOuArquivos, { aviso: t => status.textContent = t, progresso: p => barra.value = p });
+Leitura.lerVarios.contrato   // 1: a versão deste formato
+```
+
+Cada item:
+
+```json
+{ "arquivo": "IMG_0001.jpg", "papel": 3, "documento": "cartao",
+  "valor": 120.51, "opcoes": [],
+  "data": "14/11/2026", "hora": "14:41",
+  "loja": "AUTO POSTO EXEMPLO", "cnpj": "11.222.333/0001-81",
+  "bandeira": "MASTERCARD", "tipo": "credito", "parcelas": 1, "final": "1234",
+  "nsu": null, "aut": "A1B2C3", "doc": null, "mesmaCompra": null,
+  "confianca": { "valor": "alta", "data": "alta", "hora": "alta", "loja": "media", "cnpj": "alta",
+                 "bandeira": "alta", "tipo": "alta", "parcelas": "media", "final": "alta", "nsu": "media" } }
+```
+
+| Campo | O que é |
+|---|---|
+| `arquivo`, `papel` | de qual arquivo veio e qual papel é na foto (1, 2, 3..., de cima para baixo e da esquerda para a direita) |
+| `documento` | o tipo do catálogo (`cartao` = canhoto de maquininha, `nfce` = cupom fiscal, `livre` = não reconhecido...). Cupom e recibo entram também: são compras |
+| `valor` | número (`120.51`) ou `null`. **Na dúvida fica `null`, nunca errado**: só vem quando duas leituras diferentes concordam, ou quando o valor foi conferido por código ou soma |
+| `opcoes` | quando `valor` é `null`: os valores lidos, para a pessoa escolher (pode vir vazio) |
+| `data`, `hora` | "dd/mm/aaaa" e "hh:mm", ou `null` |
+| `loja`, `cnpj` | nome fantasia (pela base de lojas ou pela consulta de CNPJ) ou o nome lido; CNPJ só quando os dígitos verificadores conferem |
+| `bandeira` | "MASTERCARD", "VISA", "ELO", "AMEX", "HIPERCARD", "DINERS" ou `null` |
+| `tipo` | `'credito'`, `'debito'`, `'pix'` ou `null` |
+| `parcelas` | `1` (à vista), `2` a `24`, ou `null` |
+| `final` | os 4 últimos do cartão, nunca o número inteiro |
+| `nsu`, `aut`, `doc` | os códigos da transação, cada um ou `null` (`aut` aceita letras e números, ex. "A1B2C3") |
+| `mesmaCompra` | o `papel` de outro item que é a mesma compra (o recibo e o canhoto, a nota e a via do cartão), ou `null` |
+| `confianca` | para cada campo: `'alta'` (valor confirmado; os outros lidos igual em duas leituras ou conferidos pelos dígitos), `'media'` (lido numa leitura só), `'baixa'` (valor em dúvida, com `opcoes`) ou `null` (campo vazio) |
+
+Regras do contrato: campos só são acrescentados; nunca renomeados nem removidos sem subir `Leitura.lerVarios.contrato` e avisar aqui. Quem chama confere `Leitura.lerVarios.contrato === 1`.
+
+Como acha os papéis (0.9.5, `findPapers` em `leitura/foto.js`): a foto reduzida a 700 pontos (antes 400); o papel pelo "quão branco" é cada ponto (o menor dos três canais), não pelo claro e escuro (papel branco em mesa bege clara virava uma mancha só com a mesa); um papel só é descartado como "mancha dentro de outro" quando está cercado por ele, não só dentro do retângulo dele; um bloco que não é retângulo (dois papéis tortos encostados) é afinado aos poucos até se partir; caixa quase toda dentro de outra é o mesmo papel; pedaços do mesmo bloco, alinhados um embaixo do outro, voltam a ser um papel.
 
 ## Privacidade
 

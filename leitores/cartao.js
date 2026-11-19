@@ -53,6 +53,11 @@ Leitura.registrarLeitor({
     // 9. Autorização: the number after AUT, AUTH or AUTORIZACAO (never "AUTO POSTO")
     const authMatch = textUpper.match(/\bAUT(?:H|ORIZA[CÇ][AÃ]O)?\s*[:=.]?\s*(\d{5,})/);
     if (authMatch) fieldsMap['Autorização'] = authMatch[1];
+    // ...ou letras e números com dois-pontos ("AUTO:CF2RPQ", "AUT:N6ZBL4", "AUT P: RJ4Z0S"), com ao menos um dígito
+    else {
+      const alfa = textUpper.match(/\bAUT(?:O|H|ORIZA[CÇ][AÃ]O)?(?:\s?P)?\s*[:=]\s*([A-Z0-9]{6})\b/);
+      if (alfa && /\d/.test(alfa[1])) fieldsMap['Autorização'] = alfa[1];
+    }
 
     // 10. AID: \bA0000[0-9A-F]{10,12}\b
     const aidMatch = textUpper.match(/\b(A0000[0-9A-F]{10,12})\b/);
