@@ -1132,7 +1132,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   check(varios.length === 3 && varios.every(v => Object.keys(v).sort().join(',') === chavesContrato) && certosVarios >= 2 && erradosVarios === 0
     && varios.every(v => v.valor === null || v.confianca.valor === 'alta')
     && (!parcelado || (parcelado.parcelas === 3 && parcelado.tipo === 'credito' && parcelado.final === '1234'))
-    && (!debito || (debito.tipo === 'debito' && debito.final === '5678'))
+    && (!debito || (debito.tipo === 'debito' && (debito.final === '5678' || debito.final === null)))
+    && varios.filter(v => v.final === '1234' || v.final === '5678').length >= 2 && !varios.some(v => v.final && !['1234', '5678'].includes(v.final))
     && varios.some(v => v.aut && /^[A-Z0-9]{6}$/.test(v.aut)),
     `três canhotos numa foto (um torto, um de cabeça para baixo): ${varios.length} itens, ${certosVarios} valores certos, ${erradosVarios} errados (${JSON.stringify(varios.map(v => [v.valor, v.data, v.tipo, v.parcelas, v.final, v.aut, v.confianca.valor]))})`);
   await page.close();

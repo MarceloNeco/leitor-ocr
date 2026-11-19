@@ -21,10 +21,12 @@
   // "Crédito à Vista", "Crédito Parcelado", "Débito", "Pix" → 'credito', 'debito', 'pix'
   const tipoDe = mod => !mod ? null : /D[EÉ]BITO/i.test(mod) ? 'debito' : /PIX/i.test(mod) ? 'pix' : /CR[EÉ]DITO/i.test(mod) ? 'credito' : null;
 
-  // Parcelas: "Parcelas: 10", "PARCELADO 3X", "10X DE"; à vista é 1
-  function parcelasDe(texto, mod) {
+  // Parcelas, só no canhoto de maquininha e só pela palavra: "Parcelas: 10", "PARCELADO EM 3X"; à vista
+  // é 1. ("1,000 UN X 0,15" num cupom não é parcela: o "N X" solto dava 8 parcelas num cupom de feira)
+  function parcelasDe(texto, mod, documento) {
+    if (documento !== 'cartao') return null;
     const t = String(texto || '').toUpperCase();
-    const m = t.match(/PARCELA[S]?\s*[:.]?\s*(\d{1,2})\b/) || t.match(/PARC\w*\s+(?:EM\s+)?(\d{1,2})\s?X\b/) || t.match(/\b(\d{1,2})\s?X\s+(?:DE\s+)?R?\$?\s?\d/);
+    const m = t.match(/PARCELA[S]?\s*[:.]?\s*(\d{1,2})\b/) || t.match(/PARC\w*\s+(?:EM\s+)?(\d{1,2})\s?X\b/);
     if (m && +m[1] >= 2 && +m[1] <= 24) return +m[1];
     if (/[AÀ]\s?VISTA/.test(t) || (mod && /Vista/i.test(mod))) return 1;
     return null;
@@ -54,7 +56,7 @@
     const loja = e.fantasia || e.razao || g('Estabelecimento');
     const cnpj = e.cnpj || g('CNPJ');
     const valor = typeof r.valor === 'number' ? r.valor : null;
-    const parcelas = parcelasDe(todo, mod);
+    const parcelas = parcelasDe(todo, mod, p.tipo);
     const out = {
       arquivo: p.fonte && (p.fonte.arquivo || p.fonte.nome) || null,
       papel: i + 1,
