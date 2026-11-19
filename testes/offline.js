@@ -346,7 +346,7 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const cartaoMaster = await shot(girado(cartaoHtml('5555 5555 5555 4444', 'MARIA EXEMPLO SILVA', '11/30', 'Itaú', 'mastercard', '#111', '#ddd'), 180, 1000), 'cartao-master.png');
   // vários canhotos de mentira numa mesa bege (teste 17, Leitura.lerVarios): um reto, um torto e um de cabeça para baixo
   const canhotoF = (loja, cnpj, data, hora, modo, final, valor, aut) => `<div style="width:460px;padding:30px 26px;font:bold 24px monospace;color:#111;background:#fff;line-height:1.55">
-    VIA CLIENTE<br>${loja}<br>CNPJ: ${cnpj}<br>${data} ${hora}<br>${modo}<br>MASTERCARD ************${final}<br>VALOR R$ ${valor}<br>AUT: ${aut} NSU: 004213</div>`;
+    VIA CLIENTE<br>${loja}<br>CNPJ: ${cnpj}<br>${data} ${hora}<br>${modo}<br>MASTERCARD ****${final}<br>VALOR R$ ${valor}<br>AUT: ${aut} NSU: 004213</div>`;
   const cnpjMesa = [cnpjCom('112223330001'), cnpjCom('445556660001'), cnpjCom('778889990001')];
   const mesaCanhotos = await shot(`<div style="width:1500px;height:1050px;background:#d9cfbf;position:relative">
     <div style="position:absolute;left:40px;top:60px">${canhotoF('PADARIA EXEMPLO', cnpjMesa[0], '10/11/2026', '08:15', 'CREDITO A VISTA', '1234', '37,50', 'A1B2C3')}</div>

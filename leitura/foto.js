@@ -393,7 +393,9 @@
     const toCells = b => ({ x0: Math.floor(b.x0 / CELL), y0: Math.floor(b.y0 / CELL), x1: Math.floor(b.x1 / CELL), y1: Math.floor(b.y1 / CELL) });
     const letters = c => { let n = 0; for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) n += count[y * gw + x] || 0; return n; };
     const rows = c => { let n = 0; for (let y = c.y0; y <= c.y1; y++) { let m = 0; for (let x = c.x0; x <= c.x1; x++) if ((count[y * gw + x] || 0) >= 2) m++; if (m >= 2) n++; } return n; };
-    const hasText = c => letters(c) >= 15 && rows(c) >= 3;   // a few lines of text, not a stripe of light or a loose corner
+    const cols = c => { let n = 0; for (let x = c.x0; x <= c.x1; x++) { let m = 0; for (let y = c.y0; y <= c.y1; y++) if ((count[y * gw + x] || 0) >= 2) m++; if (m >= 2) n++; } return n; };
+    // a few lines of text (across or, on a paper lying on its side, down), not a stripe of light or a loose corner
+    const hasText = c => letters(c) >= 15 && (rows(c) >= 3 || cols(c) >= 3);
     const trim = c => {
       let x0 = gw, y0 = gh, x1 = -1, y1 = -1;
       for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) if ((count[y * gw + x] || 0) >= 2) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
@@ -816,7 +818,11 @@
       tipo = tipoPedido === 'auto' ? detectDocType(readings, grandes) : tipoPedido;
       const def = L.tipo(tipo), wantsValue = def.vitais.includes('Valor');
       if (!wantsValue && (readings.length >= 2 || (tipoPedido !== 'auto' && !def.itens))) break;
-      if (wantsValue && decidirValor(readings, tipo, grandes).valor !== null) break;
+      // valor fechado: só para depois de uma leitura em preto e branco. Duas leituras da mesma imagem
+      // em tamanhos diferentes erram juntas (o "0" de miolo cheio lido "8": 34,08 num canhoto de
+      // 34,00); a em preto e branco, quando lê outro dígito, deixa o valor em dúvida (decidirValor)
+      if (wantsValue && decidirValor(readings, tipo, grandes).valor !== null
+        && (readings.some(r => r.bin) || !passes.slice(next).some(p => p[1]))) break;
       if (next >= passes.length) break;
       if (readings.length >= 2 && Date.now() - started > 20000) break;   // não prender a pessoa
       aviso(label + 'Conferindo com outra leitura...');

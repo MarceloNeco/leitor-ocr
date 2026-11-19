@@ -30,6 +30,16 @@
     return null;
   }
 
+  // Uma compra não é de depois de amanhã nem de mais de 5 anos atrás (papel térmico não dura tanto):
+  // "29/11/2026" num ticket de 18/11 e "04/11/2020" num canhoto de 2026 eram erros de leitura. O
+  // motor só aplica a regra dos 5 anos aos papéis de dinheiro que ele reconheceu; aqui vale para todos
+  function dataPossivel(d) {
+    const m = String(d || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const t = new Date(+m[3], +m[2] - 1, +m[1]).getTime(), agora = Date.now();
+    return t > agora + 2 * 86400000 || t < agora - 5 * 366 * 86400000 ? null : d;
+  }
+
   // Um papel lido (Leitura.ler) no formato do contrato
   function item(p, i) {
     const r = p.result || {}, rs = p.readings || [];
@@ -52,7 +62,7 @@
       valor,
       // na dúvida o valor fica vazio; os valores lidos vão aqui, para a pessoa escolher
       opcoes: valor === null ? (r.candidates || []).filter(n => typeof n === 'number') : [],
-      data: g('Data'), hora: g('Hora'),
+      data: dataPossivel(g('Data')), hora: g('Hora'),
       loja: loja || null, cnpj: cnpj || null,
       bandeira: g('Bandeira'),
       tipo: tipoDe(mod),
