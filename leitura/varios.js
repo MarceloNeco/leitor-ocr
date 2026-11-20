@@ -104,7 +104,11 @@
     }
     const papeis = await L.ler(fontes, { tipo: 'auto', aviso: o.aviso, progresso: o.progresso });
     if (L.relacionar) L.relacionar(papeis);
-    return papeis.map(item);
+    // um "papel" do qual nada foi lido (reflexo de luz na mesa de madeira, um canto de outra coisa) não
+    // entra: sem valor, opções, data, hora, loja, CNPJ nem final, não há o que conferir. Os números de
+    // "papel" continuam os da foto (mesmaCompra aponta para eles)
+    const vazio = v => v.valor === null && !v.opcoes.length && !v.data && !v.hora && !v.loja && !v.cnpj && !v.final;
+    return papeis.map(item).filter(v => !vazio(v));
   };
   L.lerVarios.item = item;   // para os testes e para quem já tem os papéis lidos
   // versão do formato de saída (ARQUITETURA.md): só muda com aviso lá, e quem chama pode conferir

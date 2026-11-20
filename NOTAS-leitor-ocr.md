@@ -564,6 +564,23 @@ Na `lerVarios` (`leitura/varios.js`): a data no futuro ou de mais de 5 anos atr�
 
 Tempo: 64 s para a foto de 14 papéis, 34 s para a de 4, 59 s para a de 7 (computador). Não resolvido: 2 dos 14 papéis da mesa bege não são achados (um Cielo com o papel acinzentado e um Getnet de impressão fraca) e dois canhotos encostados (InfinitePay e Stone) saem como um papel; na mesa rosa, o ticket de estacionamento e o cupom do chocolate, tortos e encostados, saem juntos; o final do cartão quase não sai nas fotos de longe (a linha "****9458" fica pequena demais); a loja de vários canhotos vem com o nome mal lido (confiança `media` ou `baixa`).
 
+## Resultado da 0.9.6 (cupom e canhoto da mesma compra numa mesa de madeira, pedido 36, 20/11/2026)
+
+Foto de 20/11 (fora do repositório): o cupom NFC-e de uma loja de chocolate (21,80, 2 itens) e, encostado na ponta de baixo dele, o canhoto Rede/Getnet da mesma compra (21,80, Visa, crédito à vista, "AUT:SHG4DV"), numa mesa de madeira escura com um reflexo de luz no canto.
+
+| Na `lerVarios` | 0.9.5 | 0.9.6 |
+|---|---|---|
+| Itens | 2 (o cupom e o canhoto juntos num item; o reflexo da mesa num item vazio) | 1 |
+| Valor | 21,80, confiança alta | 21,80, confiança alta |
+| Data, hora, CNPJ, bandeira, tipo | certos | certos |
+| Autorização | o "Protocolo de autorização" da nota (15 dígitos), errada | vazia |
+
+- Na tela (`testes/medir.js`, medido na 0.9.5): 2 papéis achados de 2 (um é o cupom com o canhoto, o outro o reflexo); valor 1 certo, 1 vazio, 0 errados. A 0.9.6 não mexe na leitura do valor nem na busca dos papéis.
+- O cupom e o canhoto encostados saem como um papel só. Tentado: soltar blocos mais retangulares (afinar com o bloco até 85% cheio, em vez de 70%). Não soltou estes dois e partiu um recorte de 02/11 em 3; voltou para 70%. Como são a mesma compra, o valor sai certo e a compra conta uma vez.
+- `leitores/cartao.js`: a autorização com letras e números ("AUT:SHG4DV") vale antes da só de números, e a só de números tem até 12 dígitos e nunca vem depois de "PROTOCOLO DE". Ficou vazia aqui porque o OCR não leu o "SHG4DV" com os dois-pontos.
+- `leitura/varios.js`: item sem nada lido não entra na lista.
+- `testes/offline.js`: 91 de 91.
+
 ## Pendências conhecidas (ninguém pediu ainda)
 
 - **PDF sem camada de texto com muitas páginas** (letras desenhadas, como a apólice da Porto): o app passa até 10 páginas pelo OCR em resolução alta, e isso demora minutos no celular sem avisar quanto falta. Avisar antes ("este PDF não tem texto, vou ler N páginas por OCR") e deixar escolher as páginas; e um modelo tolerante a erros de OCR para esse caso.

@@ -298,6 +298,8 @@ Cada item:
 
 Regras do contrato: campos só são acrescentados; nunca renomeados nem removidos sem subir `Leitura.lerVarios.contrato` e avisar aqui. Quem chama confere `Leitura.lerVarios.contrato === 1`.
 
+Desde a 0.9.6: um "papel" do qual nada foi lido (sem valor, opções, data, hora, loja, CNPJ nem final; ex.: reflexo de luz numa mesa de madeira) não entra na lista. Os números de `papel` continuam os da foto, então pode faltar um número. O formato não mudou (contrato 1).
+
 Como acha os papéis (0.9.5, `findPapers` em `leitura/foto.js`): a foto reduzida a 700 pontos (antes 400); o papel pelo "quão branco" é cada ponto (o menor dos três canais), não pelo claro e escuro (papel branco em mesa bege clara virava uma mancha só com a mesa); um papel só é descartado como "mancha dentro de outro" quando está cercado por ele, não só dentro do retângulo dele; um bloco que não é retângulo (dois papéis tortos encostados) é afinado aos poucos até se partir; caixa quase toda dentro de outra é o mesmo papel; pedaços do mesmo bloco, alinhados um embaixo do outro, voltam a ser um papel.
 
 ## Privacidade
