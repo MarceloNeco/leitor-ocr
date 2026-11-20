@@ -51,13 +51,13 @@ Leitura.registrarLeitor({
     if (nsuMatch) fieldsMap['NSU/DOC'] = nsuMatch[1];
 
     // 9. Autorização: the number after AUT, AUTH or AUTORIZACAO (never "AUTO POSTO")
-    const authMatch = textUpper.match(/\bAUT(?:H|ORIZA[CÇ][AÃ]O)?\s*[:=.]?\s*(\d{5,})/);
-    if (authMatch) fieldsMap['Autorização'] = authMatch[1];
-    // ...ou letras e números com dois-pontos ("AUTO:CF2RPQ", "AUT:N6ZBL4", "AUT P: RJ4Z0S"), com ao menos um dígito
-    else {
-      const alfa = textUpper.match(/\bAUT(?:O|H|ORIZA[CÇ][AÃ]O)?(?:\s?P)?\s*[:=]\s*([A-Z0-9]{6})\b/);
-      if (alfa && /\d/.test(alfa[1])) fieldsMap['Autorização'] = alfa[1];
-    }
+    // ...or letters and digits after a colon ("AUTO:CF2RPQ", "AUT:SHG4DV", "AUT P: RJ4Z0S"), with at least one
+    // digit; this one first: a slip lying on a cupom (same purchase) also has the cupom's 15-digit
+    // "Protocolo de autorização", which is not the slip's authorization
+    const alfa = textUpper.match(/\bAUT(?:O|H|ORIZA[CÇ][AÃ]O)?(?:\s?P)?\s*[:=]\s*([A-Z0-9]{6})\b/);
+    const authMatch = textUpper.match(/(?<!PROTOCOLO DE )\bAUT(?:H|ORIZA[CÇ][AÃ]O)?\s*[:=.]?\s*(\d{5,12})(?!\d)/);
+    if (alfa && /\d/.test(alfa[1])) fieldsMap['Autorização'] = alfa[1];
+    else if (authMatch) fieldsMap['Autorização'] = authMatch[1];
 
     // 10. AID: \bA0000[0-9A-F]{10,12}\b
     const aidMatch = textUpper.match(/\b(A0000[0-9A-F]{10,12})\b/);
