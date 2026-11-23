@@ -829,6 +829,15 @@
       readings.push(await read(...passes[next++]));
     }
 
+    // The reader may ask for one more reading of a band of the paper, closer
+    // up (the highlighted footer of a workshop's OS): leitores/<tipo>.js faixa(readings)
+    for (let k = 0; k < 3 && L.tipo(tipo).faixa; k++) {
+      const faixa = L.tipo(tipo).faixa(readings, k);
+      if (!faixa) break;
+      aviso(label + 'Lendo o rodapé mais de perto...');
+      readings.push(await read(faixa.rot, false, faixa.largura || 4000, faixa.region));
+    }
+
     aviso(label + 'Procurando QR code e código de barras...');
     const codes = img._presetText ? [] : await L.lerCodigos(img);
     return { readings, tipo, codes, tilt: tilt.a, grandes };

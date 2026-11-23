@@ -380,6 +380,30 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
   const semValor = await shot(`<div style="width:520px;padding:40px 30px;font:bold 26px monospace;color:#111;background:#fff;line-height:1.6;">VIA CLIENTE (1)<br>BAR EXEMPLO ME<br>10/10/2026 14:07<br>CREDITO A VISTA<br><br>AUT 654321 NSU 000123</div>`, 'sem-valor.png');
   // a nota fotografada da 13 (o QR code vem de um leitor de códigos trocado no teste)
   const cupomFoto = await shot(`<div style="width:560px;padding:30px;font:bold 22px monospace;color:#111;background:#fff;line-height:1.5;white-space:pre-line">${cupom(cnpjLanche, '61,75').replace(/DESCONTO R\$ 1,50\n/, '')}</div>`, 'cupom-foto.png');
+  // (18) ordem de serviço de oficina de mentira, em foto: cabeçalho com o cliente (que nunca vira campo),
+  // veículo com placa (idem), serviços com R$ 0,00 e o erro de digitação do papel, peças ligadas ao serviço,
+  // totais, prazo, garantia e o rodapé "valor fechado"
+  const cnpjOficina = cnpjCom('556677880001');
+  const osLinha = (esq, dir) => `<div style="display:flex;justify-content:space-between"><span>${esq}</span><span>${dir}</span></div>`;
+  const osHtml = (opts = {}) => `<div style="width:1100px;padding:34px 40px;font:bold 23px monospace;color:#111;background:#fff;line-height:1.5">
+    ${osLinha('OFICINA EXEMPLO LTDA', 'onmotor')}MECANICA - FUNILARIA - PINTURA - MARTELINHO DE OURO<br>RUA EXEMPLO 100 - SAO PAULO &nbsp; CNPJ: ${cnpjOficina}<br>
+    OS: 1234 &nbsp; VIA CLIENTE &nbsp; Emissao: 10/11/2026 as 12:30<br>
+    Nome do cliente: CLIENTE TESTE &nbsp; Telefones: (11)90000-0000 &nbsp; CPF:<br>
+    Placa Fabricante Modelo Ano Motor Portas Combustivel<br>ABC1D23 FIAT ARGO 2021/2022 1.3 4 Flex<br>
+    Tanque KM Direcao Ar Cambio Cor Data de entrada Data de retirada<br>50% 45.210 PRATA 09/11/2026 as 09:14<br>
+    INFORMACOES DE DIAGNOSTICOS<br>Diagnostico<br>INFORMACOES DE SERVICOS<br>${osLinha('Servico(s)', 'Total')}
+    ${osLinha('A1 - RECUPERAR/PINTAR PORTA DIANTEIRA ESQUERDA', 'R$ 900,00')}${osLinha('A2 - TROCAR FRISO DA PORTA DIANTEIRA ESQUERDA', 'R$ 0,00')}
+    ${osLinha('A3 - SERVICO DE MARTELINHO NO CAPO', 'R$ 400,00')}${osLinha('A4 - RECUEPRAR/PINTAR PARALAMA TRASEIRO DIREITO', 'R$ 600,00')}
+    ${osLinha('A5 - PINTAR PARACHOQUE TRASEIRO', 'R$ 300,00')}${osLinha('A6 - ALINHAMENTO E BALANCEAMENTO', 'R$ 150,00')}
+    INFORMACOES DE PECAS<br>${osLinha('Peca(s)', 'Qtd &nbsp; Valor unit. &nbsp; Valor total')}
+    ${osLinha('A2.1 - FRISO DA PORTA DIANTEIRA ESQUERDA', '1,00 UN &nbsp; R$ 120,00 &nbsp; R$ 120,00')}${osLinha('A2.2 - KIT PRESILHA', '2,00 UN &nbsp; R$ 15,00 &nbsp; R$ 30,00')}
+    Total Servico(s): R$ ${opts.totalServicos || '2.350,00'} &nbsp; Total Peca(s): R$ 150,00 &nbsp; Valor total: R$ 2.500,00<br>
+    PRAZO PARA REPAROS:<br>- 05 DIAS UTEIS<br>FORMA DE PAGAMENTO:<br>- ATE 03X NO CARTAO<br>
+    ${opts.semRodape ? '' : 'GARANTIA DE 90 DIAS NOS SERVICOS<br>VALOR FECHADO PARA ESTE ORCAMENTO EM 2.200 EM 4X SEM JUROS'}</div>`;
+  const osFoto = await shot(osHtml(), 'os-oficina.png');
+  const osOrcamentoErrado = await shot(osHtml({ semRodape: true, totalServicos: '2.550,00' }), 'os-orcamento.png');
+  const canhotoOs = await shot(slip('MASTERCARD', '9999', '2.200,00'), 'canhoto-os.png');
+
   // (16) documentos de mentira para os modelos
   const pre = ls => `<div style="font:13px monospace;line-height:1.5;white-space:pre">${ls.join('\n')}</div>`;
   const cnpjEscola = cnpjCom('112233440001');
@@ -1136,6 +1160,48 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FALHA') + ' ' + msg); 
     && varios.filter(v => v.final === '1234' || v.final === '5678').length >= 2 && !varios.some(v => v.final && !['1234', '5678'].includes(v.final))
     && varios.some(v => v.aut && /^[A-Z0-9]{6}$/.test(v.aut)),
     `três canhotos numa foto (um torto, um de cabeça para baixo): ${varios.length} itens, ${certosVarios} valores certos, ${erradosVarios} errados (${JSON.stringify(varios.map(v => [v.valor, v.data, v.tipo, v.parcelas, v.final, v.aut, v.confianca.valor]))})`);
+  await page.close();
+
+  // 18. Ordem de serviço de oficina (leitores/os-oficina.js): tipo descoberto, duas partes (operacional e financeira),
+  // nada do cliente nem a placa nos campos, valor fechado do rodapé, produtos, foto melhor, mesma compra, sem IA
+  page = await open();
+  const os1 = await send(page, [osFoto], 'auto');
+  const fOs = os1.fields[0];
+  const iOs = await page.evaluate(() => { const r = papers[0].result; return { tipo: papers[0].tipo, semIA: Leitura.tipo(papers[0].tipo).semIA, rotulo: document.getElementById('docTypeLabel').textContent, resumo: (document.getElementById('productsBox').querySelector('summary') || {}).textContent,
+    produtos: (r.produtos || []).length, op: r.operacional, fin: r.financeiro, pedirFoto: r.pedirFoto || null, status: r.status.text, botaoIA: !!document.getElementById('btnLerIA') }; });
+  const tudoOs = JSON.stringify(fOs) + JSON.stringify(iOs.op) + JSON.stringify(iOs.fin);
+  const sv = (iOs.op && iOs.op.servicos) || [], pc = (iOs.op && iOs.op.pecas) || [];
+  check(iOs.tipo === 'os_oficina' && /Casa, carro e academia › Ordem de serviço de oficina \(carro\) · OmniLifeONE, MoneyTRIO/.test(iOs.rotulo) && os1.values[0] === 'R$ 2.200,00' && /Valor fechado no rodapé/.test(iOs.status)
+    && fOs.Estabelecimento === 'OFICINA EXEMPLO' && fOs.CNPJ === cnpjOficina && fOs.Categoria === 'Veículo › Funilaria e pintura' && fOs.OS === '1234' && fOs.Data === '10/11/2026' && fOs.Hora === '12:30'
+    && fOs.Entrada === '09/11/2026 09:14' && fOs.Retirada === undefined && fOs.KM === '45210' && fOs.Prazo === '5 dias úteis' && fOs['Veículo'] === 'FIAT ARGO 2021/2022 1.3 Flex prata'
+    && fOs['Serviços'] === '6 (R$ 2.350,00)' && fOs['Peças'] === '2 (R$ 150,00)' && fOs['Total da tabela'] === 'R$ 2.500,00 (conferido)' && fOs.Pagamento === 'cartão, 4x de R$ 550,00' && fOs['Situação'] === 'serviço feito'
+    && fOs.Garantia === '90 dias' && fOs.Sistema === 'onmotor',
+    `OS da oficina lida: Valor=${os1.values[0]} (${iOs.status}); ${Object.keys(fOs).length} campos: oficina, CNPJ, categoria, OS, emissão, entrada, km, prazo, veículo "${fOs['Veículo']}", serviços, peças, total da tabela, pagamento "${fOs.Pagamento}", situação, garantia, sistema`);
+  check(!/CLIENTE TESTE|90000|ABC1D23|ABC-?1D23/.test(tudoOs) && fOs['Nome do cliente'] === undefined && fOs.Telefones === undefined && fOs.Placa === undefined && iOs.semIA === true && iOs.botaoIA === false,
+    'nada do cliente (nome, telefone, CPF) nem a placa vira campo ou parte do resultado; tipo sem IA (botão "Ler com IA" não aparece)');
+  check(sv.length === 6 && pc.length === 2 && iOs.produtos === 8 && sv[0].codigo === 'A1' && sv[0].valor === 900 && sv[0].peca === 'porta' && sv[0].tipo === 'pintura' && sv[0].posicao === 'dianteira esquerda'
+    && sv[1].valor === 0 && sv[1].tipo === 'troca' && sv[1].peca === 'friso' && sv[2].peca === 'capô' && sv[2].tipo === 'martelinho' && sv[3].descricao === 'RECUEPRAR/PINTAR PARALAMA TRASEIRO DIREITO' && sv[3].peca === 'para-lama'
+    && sv[5].tipo === 'alinhamento' && sv[5].peca === null && pc[0].codigo === 'A2.1' && pc[0].servico === 'A2' && pc[0].qtd === 1 && pc[0].unitario === 120 && pc[1].qtd === 2 && pc[1].total === 30
+    && iOs.op.totais.servicos === 2350 && iOs.op.totais.pecas === 150 && iOs.op.totais.tabela === 2500 && iOs.op.totais.conferido === true && iOs.op.situacao === 'feito' && iOs.op.garantia === '90 dias' && iOs.op.categoria === 'Funilaria e pintura'
+    && iOs.op.veiculo.fabricante === 'FIAT' && iOs.op.veiculo.modelo === 'ARGO' && iOs.op.km === 45210 && iOs.op.oficina.cnpj === cnpjOficina && iOs.pedirFoto === null && /6 serviços \(R\$ 2\.350,00\) e 2 peças \(R\$ 150,00\): a tabela soma R\$ 2\.500,00, conferido; valor fechado R\$ 2\.200,00/.test(iOs.resumo),
+    `parte operacional: ${sv.length} serviços (${sv.map(s => s.peca + '/' + s.tipo).join(', ')}), ${pc.length} peças ligadas ao serviço (${pc.map(p => p.codigo + '→' + p.servico).join(', ')}), totais conferidos, situação "${iOs.op.situacao}"`);
+  check(iOs.fin.valor === 2200 && iOs.fin.fonte === 'fechado' && iOs.fin.parcelas === 4 && iOs.fin.parcela === 550 && iOs.fin.forma === 'cartão de crédito' && iOs.fin.data === '10/11/2026' && iOs.fin.categoria === 'Veículo › Funilaria e pintura'
+    && iOs.fin.veiculo === 'FIAT ARGO 2021/2022 1.3 Flex prata' && iOs.fin.situacao === 'pago' && iOs.fin.lancamento && iOs.fin.lancamento.valor === -2200 && iOs.fin.lancamento.parcela && iOs.fin.lancamento.parcela.de === 4 && iOs.fin.lancamento.data === '10/11/2026' && /OFICINA EXEMPLO \(OS 1234\)/.test(iOs.fin.lancamento.descricao),
+    `parte financeira: R$ ${iOs.fin.valor} em ${iOs.fin.parcelas}x de R$ ${iOs.fin.parcela} (${iOs.fin.forma}), categoria "${iOs.fin.categoria}", lançamento no formato dos apps`);
+  await page.close();
+  page = await open();
+  const os2 = await send(page, [osOrcamentoErrado], 'auto');
+  const iOs2 = await page.evaluate(() => ({ tipo: papers[0].tipo, status: papers[0].result.status.text, pedirFoto: papers[0].result.pedirFoto || null, situacao: papers[0].result.operacional && papers[0].result.operacional.situacao, chips: [...document.querySelectorAll('.valor-chip')].map(x => x.textContent), toasts: [...document.querySelectorAll('#toastContainer > *')].map(x => x.textContent) }));
+  const toastFoto = iOs2.toasts.find(t => /Não li tudo/.test(t)) || '';
+  check(iOs2.tipo === 'os_oficina' && os2.values[0] === '' && iOs2.chips.includes('R$ 2.500,00') && /Orçamento de R\$ 2\.500,00 na tabela; sem valor fechado nem pagamento/.test(iOs2.status) && iOs2.situacao === 'orcamento'
+    && iOs2.pedirFoto && /os serviços somam R\$ 2\.350,00 e o papel diz R\$ 2\.550,00/.test(iOs2.pedirFoto.motivo)
+    && /chegue mais perto, mais luz, estique o papel, sem sombra/.test(toastFoto) && os2.fields[0]['Situação'] === 'orçamento',
+    `OS sem valor fechado e com a conta errada: valor vazio com a tabela como opção, situação "${iOs2.situacao}", e o aviso "${toastFoto.slice(0, 70)}..."`);
+  await page.close();
+  page = await open();
+  const os3 = await send(page, [osFoto, canhotoOs], 'auto');
+  check(os3.tabs.length === 2 && os3.values[0] === 'R$ 2.200,00' && os3.values[1] === 'R$ 2.200,00' && os3.fields[0]['Mesma compra'] === 'papel 2' && os3.fields[1]['Mesma compra'] === 'papel 1',
+    `OS e o canhoto do cartão em fotos separadas, com datas diferentes (a OS é paga depois): ligados como a mesma compra (${os3.fields[0]['Mesma compra']}, ${os3.fields[1]['Mesma compra']})`);
   await page.close();
 
   check(external.size === 0, 'nenhum pedido para fora do app' + (external.size ? ': ' + [...external].join(', ') : ''));

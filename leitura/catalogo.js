@@ -133,6 +133,8 @@
       t('etiqueta', 'Etiqueta de equipamento (fabricante, modelo, série)', 'Equipment tag', { precisa: ['foto', 'codigos'] }),
       t('manual', 'Manual', 'Manual', { precisa: ['foto', 'pdf'] }),
       t('odometro', 'Quilometragem do carro', 'Car odometer', { precisa: ['foto', 'visor'] }),
+      // a OS tem dados do cliente, a placa e o cartão: a foto nunca vai para a IA (semIA); o resultado tem a parte do carro e a do dinheiro
+      t('os_oficina', 'Ordem de serviço de oficina (carro)', 'Car repair shop work order', { leitor: 'os-oficina', apps: ['omnilife', 'moneytrio'], precisa: ['foto', 'pdf'], privacidade: 'pessoal', semIA: true }),
       t('esteira', 'Esteira ou bicicleta (distância, tempo)', 'Treadmill or bike display', { apps: ['riseone'], precisa: ['foto', 'visor'] }),
       t('placa', 'Placa de rua ou de estabelecimento', 'Street or shop sign', { precisa: ['foto'] }),
       t('garagem', 'Mapa de garagem', 'Parking map', { precisa: ['foto'] }),

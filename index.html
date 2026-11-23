@@ -1657,13 +1657,14 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
   <script src="leitores/arrecadacao.js"></script>
   <script src="leitores/extrato.js"></script>
   <script src="leitores/cartao-plastico.js"></script>
+  <script src="leitores/os-oficina.js"></script>
   <script src="leitura/varios.js"></script>
   <script>
     /* =========================================================
        APP CORE LOGIC & STATE
        ========================================================= */
-    const APP_VERSION = '0.9.6';
-    const APP_UPDATED = '20/11/2026';   // data desta versão
+    const APP_VERSION = '0.9.7';
+    const APP_UPDATED = '23/11/2026';   // data desta versão
     // From the reading engine (leitura/texto.js)
     const ORDERED_FIELD_KEYS = Leitura.texto.CAMPOS;
     const formatBRL = Leitura.texto.formatBRL;
@@ -2383,12 +2384,14 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       else if (first.candidates.length) showToast('Não tenho certeza do valor. Toque no valor certo.', 'warn');
       else showToast('Não consegui ler o valor. Digite no campo em vermelho.', 'warn');
       if (first.far) showToast('O texto está pequeno na foto. Tire mais de perto.', 'warn', 5000);
+      // o leitor não leu tudo (OS da oficina: item que faltou, conta que não fecha): outra foto, e como tirar
+      if (first.pedirFoto) showToast(`Não li tudo: ${first.pedirFoto.motivo}. Tire outra foto: ${first.pedirFoto.dicas.join(', ')}.`, 'warn', 9000);
 
       // Ajustes → "usar a IA sozinho": os papéis de dinheiro que ficaram sem valor vão para a IA
       if (Leitura.ia.sozinha() && Leitura.ia.temChave()) {
         for (let i = 0; i < papers.length; i++) {
           const p = papers[i], classe = Leitura.tipo(p.tipo).privacidade;
-          if (p.img && p.result.expectsValue && p.result.valor === null && (classe === 'financeiro' || classe === 'comum')) await lerComIA(i, true);
+          if (p.img && p.result.expectsValue && p.result.valor === null && (classe === 'financeiro' || classe === 'comum') && !Leitura.tipo(p.tipo).semIA) await lerComIA(i, true);
         }
       }
     }
@@ -2401,6 +2404,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     async function lerComIA(i, semPerguntar = false) {
       const p = papers[i];
       if (!p || !p.img) return;
+      if (Leitura.tipo(p.tipo).semIA) { showToast('Este documento tem dados de outra pessoa (cliente, placa, cartão): a foto não vai para a IA.', 'warn', 6000); return; }
       const prov = Leitura.ia.provedorAtual();
       if (!prov) { showToast('Falta a chave da IA: Ajustes → Ler com IA.', 'warn', 6000); return; }
       const classe = Leitura.tipo(p.tipo).privacidade;
@@ -2546,7 +2550,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       // Read with AI (level C): photos only, only with a key; once read, the
       // amount it found is a one-tap suggestion, never filled in by itself
       const paper = papers[currentPaper];
-      if (paper && paper.img && Leitura.ia.temChave() && !result.ia) {
+      if (paper && paper.img && Leitura.ia.temChave() && !result.ia && !Leitura.tipo(result.tipo).semIA) {
         const b = document.createElement('button');
         b.type = 'button';
         b.id = 'btnLerIA';
@@ -2578,8 +2582,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       productsBox.style.display = prods.length ? '' : 'none';
       productsBox.open = false;
       const qtd = p => p.unidade === 'kg' ? `${String(p.qtd).replace('.', ',')} kg` : `${p.qtd} ${p.unidade} × ${formatBRL(p.precoUnit)}`;
-      productsBox.innerHTML = prods.length ? `<summary>${prods.length} produtos · ${result.produtosConferido ? 'a soma confere com o valor a pagar'
-        : 'confira: a soma não fecha com o valor a pagar' + (result.produtosDiferenca ? ` (diferença de ${formatBRL(Math.abs(result.produtosDiferenca))})` : '')}</summary>
+      productsBox.innerHTML = prods.length ? `<summary>${result.produtosResumo ? escapeHtml(result.produtosResumo) : prods.length + ' produtos · ' + (result.produtosConferido ? 'a soma confere com o valor a pagar'
+        : 'confira: a soma não fecha com o valor a pagar' + (result.produtosDiferenca ? ` (diferença de ${formatBRL(Math.abs(result.produtosDiferenca))})` : ''))}</summary>
         <table class="items-table"><thead><tr><th>Produto</th><th>Quantidade</th><th>Valor</th></tr></thead><tbody>${
         prods.map(p => `<tr><td>${escapeHtml(p.descricao)}${p.desconto ? `<small class="tag">desconto ${escapeHtml(formatBRL(p.desconto))}</small>` : ''}</td><td>${escapeHtml(qtd(p))}</td><td>${escapeHtml(formatBRL(p.valor))}</td></tr>`).join('')
       }</tbody></table>` : '';
@@ -2645,7 +2649,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       // One record per paper; empty fields (an amount not typed in) are left out
       const records = papers.length
         ? papers.map(p => ({ tipo: p.tipo, fields: (p.edited || p.result.fields).filter(f => f.val).map(f => ({ key: f.key, val: f.val })), itens: p.result.itens, moeda: p.result.moeda,
-          produtos: p.result.produtos, estabelecimento: p.result.estabelecimento }))
+          produtos: p.result.produtos, estabelecimento: p.result.estabelecimento, operacional: p.result.operacional, financeiro: p.result.financeiro }))
         : [{ tipo: lastTipo, fields: readFieldRows().filter(f => f.val).map(f => ({ key: f.key, val: f.val })) }];
       // The person corrected the store's name: this device remembers it for that CNPJ
       papers.forEach(p => {
@@ -2673,7 +2677,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         const now = Date.now();
         records.filter(r => r.fields.length).forEach((r, i) => {
           list.unshift(Object.assign({ id: 'rec_' + (now + i), savedAt: new Date().toISOString(), tipo: r.tipo, fields: r.fields }, r.itens ? { itens: r.itens } : {}, r.moeda ? { moeda: r.moeda } : {},
-            r.produtos ? { produtos: r.produtos } : {}, r.estabelecimento ? { estabelecimento: r.estabelecimento } : {}));
+            r.produtos ? { produtos: r.produtos } : {}, r.estabelecimento ? { estabelecimento: r.estabelecimento } : {}, r.operacional ? { operacional: r.operacional, financeiro: r.financeiro } : {}));
         });
         showToast(records.length > 1 ? `${records.length} comprovantes salvos!` : 'Comprovante salvo com sucesso!', 'ok');
       }

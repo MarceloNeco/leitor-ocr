@@ -37,7 +37,8 @@
       const a = list[i].result, b = list[j].result;
       if (a.valor === null || a.valor !== b.valor) continue;
       const da = (a.fields.find(f => f.key === 'Data') || {}).val, db = (b.fields.find(f => f.key === 'Data') || {}).val;
-      if (da && db && da !== db) continue;
+      // a workshop's OS is paid later than it was issued: its date and the slip's differ
+      if (da && db && da !== db && list[i].tipo !== 'os_oficina' && list[j].tipo !== 'os_oficina') continue;
       add(list, i, 'Mesma compra', `papel ${j + 1}`);
       add(list, j, 'Mesma compra', `papel ${i + 1}`);
       pairs.push([i + 1, j + 1]);
