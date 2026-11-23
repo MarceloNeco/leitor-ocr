@@ -513,8 +513,12 @@
       // "R$35096" (vírgula perdida na leitura): só vale com palavra-chave
       // na linha, e ainda precisa de outra leitura concordando
       if (!found && keyword) {
-        const glued = clean.match(/R\$\s?(\d{3,7})(?![\d.,])/);
-        if (glued) add(parseInt(glued[1], 10) / 100, 3);
+        // "R$ 338 69": a vírgula lida como espaço; os centavos são os dois dígitos depois do espaço
+        // (antes a regra de baixo pegava só o "338" e dava 3,38, igual em três leituras)
+        const spaced = clean.match(/R\$\s?(\d{1,5})\s(\d{2})(?![\d.,])/);
+        const glued = !spaced && clean.match(/R\$\s?(\d{3,7})(?![\d.,])(?!\s\d)/);
+        if (spaced) add(parseFloat(spaced[1] + '.' + spaced[2]), 3);
+        else if (glued) add(parseInt(glued[1], 10) / 100, 3);
       }
     });
     return Object.values(seen)

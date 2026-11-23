@@ -102,10 +102,19 @@ Resumo do que nunca pode ser esquecido (o detalhe está na diretriz):
   perguntar e conte o que mudou.
 - **Segurança**: nenhuma senha, chave de API, token ou segredo entra no código, no repositório, no chat ou em
   arquivo. Chaves de IA ficam só no cofre do navegador da pessoa. Se uma chave aparecer no chat, peça para revogar.
-- **Idioma**: textos para o usuário em PT e EN; instruções para o dono em português, passo a passo, como para
-  iniciante (ele não é desenvolvedor).
+- **Idioma** (dono, 14/Nov/2026): textos para o usuário em **PT (Brasil), EN (EUA) e ES (Espanha)**, tradução
+  humanizada; **um seletor só em todo lugar**, bandeira + sigla (🇧🇷 PT · 🇺🇸 EN · 🇪🇸 ES), componente do módulo comum,
+  nunca toggle ou dropdown próprio; ES só aparece num app quando ele está 100 % traduzido (até lá, PT|EN). Detalhe na
+  diretriz, "Idioma e datas". Instruções para o dono em português, passo a passo, como para iniciante (ele não é
+  desenvolvedor).
 - **Entrega**: um `.zip` por app, nome `<NOME APP> <VERSAO> <dd-Mmm-aaaa> <HHhMMm>.zip`, arquivos soltos na
   raiz; atualizar `versoes.json`, a versão no código, o `sw.js` e `ARQUITETURA.md`/`PENDENCIAS.md`.
 - **Trabalho demorado** (foto, OCR, IA, importação, áudio) roda no módulo `Fundo`: nunca morre ao sair da tela,
   Wake Lock, aviso antes de fechar, pílula de andamento, resultado entregue onde a pessoa estiver.
 - **Feedback dos usuários**: pergunta do dia, 💬 em toda tela e no AssistONE, tudo estruturado no RootifyONE.
+
+## Aviso do dono (13/Nov/2026): Definition of done de 12 pontos e teia de integrações
+
+- A Definition of done da plataforma passa a ter 12 pontos: manual e orientações, AssistONE, Novidades da versão, termos, comunicações e e-mails, RootifyONE, ArchONE, EaglePlanONE (roadmap), retrocompatibilidade, segurança e LGPD, qualidade verificável e registro. Vai nascer uma teia de integrações entre os apps, o RootifyONE, o ArchONE e o EaglePlanONE (eventos e comandos com aprovação). Quando a diretriz nova sair (conversa de diretrizes da SolverONE), siga-a.
+- Cada ponto vale quando for aplicável ao estágio atual deste app (hoje: site aberto sem login, sem banco, só no GitHub Pages). NÃO criar login, não migrar para banco e não criar integração por causa deste aviso. O que não se aplica hoje: dizer "não aplicável hoje" e o motivo em uma linha. Quando o app ganhar login, banco ou integração nova, ele já nasce cumprindo os pontos que passaram a valer.
+- Até a diretriz nova: em cada entrega, dizer no resumo o que o RootifyONE, o ArchONE ou o EaglePlanONE precisariam saber (integração nova ou removida, recurso novo, item do roadmap concluído); nada de integração nova sem a regra zero.

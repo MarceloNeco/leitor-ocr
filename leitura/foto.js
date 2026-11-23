@@ -272,7 +272,8 @@
   // and left to right; the person confirms before they are read apart.
   function findPapers(img) {
     const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
-    const SMALL = 400;
+    // 700 pontos: com 400, canhotos pequenos numa foto com 14 papéis viravam manchas de poucos pontos
+    const SMALL = 700;
     const k = Math.min(1, SMALL / Math.max(w0, h0));
     const sw = Math.max(1, Math.round(w0 * k)), sh = Math.max(1, Math.round(h0 * k));
     const small = document.createElement('canvas');
@@ -281,7 +282,7 @@
     ctx.drawImage(img, 0, 0, sw, sh);
     const d = ctx.getImageData(0, 0, sw, sh).data;
     const gray = new Uint8Array(sw * sh);
-    for (let i = 0; i < gray.length; i++) gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+    for (let i = 0; i < gray.length; i++) gray[i] = Math.min(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]);   // o quanto é branco: papel branco em mesa bege, rosa ou de madeira
     const otsu = (from) => {
       const hist = new Array(256).fill(0);
       let n = 0;
@@ -299,23 +300,28 @@
       }
       return thr;
     };
+    let rotulo = null;
     const blobs = (thr) => {
+      const mask = new Uint8Array(sw * sh);
+      for (let i = 0; i < mask.length; i++) mask[i] = gray[i] > thr ? 1 : 0;
       const seen = new Uint8Array(sw * sh);
+      rotulo = new Int32Array(sw * sh).fill(-1);
       const out = [];
       const stack = [];
       for (let start = 0; start < gray.length; start++) {
-        if (seen[start] || gray[start] <= thr) continue;
+        if (seen[start] || !mask[start]) continue;
+        const id = out.length;
         let area = 0, x0 = sw, y0 = sh, x1 = 0, y1 = 0;
         seen[start] = 1; stack.push(start);
         while (stack.length) {
           const p = stack.pop();
           const x = p % sw, y = (p - x) / sw;
-          area++;
+          area++; rotulo[p] = id;
           if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
           const nb = [x > 0 ? p - 1 : -1, x < sw - 1 ? p + 1 : -1, y > 0 ? p - sw : -1, y < sh - 1 ? p + sw : -1];
-          for (const q of nb) if (q >= 0 && !seen[q] && gray[q] > thr) { seen[q] = 1; stack.push(q); }
+          for (const q of nb) if (q >= 0 && !seen[q] && mask[q]) { seen[q] = 1; stack.push(q); }
         }
-        out.push({ area, x0, y0, x1, y1, frac: area / (sw * sh), fill: area / ((x1 - x0 + 1) * (y1 - y0 + 1)) });
+        out.push({ id, area, x0, y0, x1, y1, frac: area / (sw * sh), fill: area / ((x1 - x0 + 1) * (y1 - y0 + 1)) });
       }
       return out.sort((a, b) => b.area - a.area);
     };
@@ -327,15 +333,69 @@
     }
     const papers = found.filter(b => b.frac >= 0.008 && b.frac < 0.9 && b.fill >= 0.35 && (b.x1 - b.x0) >= 0.06 * sw && (b.y1 - b.y0) >= 0.06 * sh);
     // A small blob inside a bigger one is a bright patch of that paper, not another paper
-    const inside = (a, b) => a.x0 >= b.x0 - 2 && a.y0 >= b.y0 - 2 && a.x1 <= b.x1 + 2 && a.y1 <= b.y1 + 2;
-    const kept = papers.filter((a, i) => !papers.some((b, j) => j < i && inside(a, b)));
+    // (cercada de verdade pelo papel maior: a moldura em volta dela é desse papel, não da mesa;
+    // um canhoto que só cai dentro do retângulo de um papel torto ou de dois papéis grudados é outro papel)
+    const cercada = (a, b) => {
+      let dele = 0, n = 0;
+      const x0 = Math.max(0, a.x0 - 3), x1 = Math.min(sw - 1, a.x1 + 3), y0 = Math.max(0, a.y0 - 3), y1 = Math.min(sh - 1, a.y1 + 3);
+      for (let x = x0; x <= x1; x++) for (const y of [y0, y1]) { n++; if (rotulo[y * sw + x] === b.id) dele++; }
+      for (let y = y0; y <= y1; y++) for (const x of [x0, x1]) { n++; if (rotulo[y * sw + x] === b.id) dele++; }
+      return dele > 0.5 * n;
+    };
+    const inside = (a, b) => a.x0 >= b.x0 - 2 && a.y0 >= b.y0 - 2 && a.x1 <= b.x1 + 2 && a.y1 <= b.y1 + 2 && cercada(a, b);
+    let kept = papers.filter((a, i) => !papers.some((b, j) => j < i && inside(a, b)));
+    // Dois papéis tortos encostados (o canto de um sobre o outro) formam um bloco só, que não é um
+    // retângulo: afinar só esse bloco, aos poucos, até ele se partir em pedaços grandes; cada pedaço
+    // vira um papel, com a caixa crescida de volta
+    const separar = b => {
+      if (b.fill >= 0.7 || b.frac < 0.02) return [b];
+      const bw = b.x1 - b.x0 + 1, bh = b.y1 - b.y0 + 1;
+      let m = new Uint8Array(bw * bh);
+      for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) m[y * bw + x] = rotulo[(b.y0 + y) * sw + b.x0 + x] === b.id ? 1 : 0;
+      for (let e = 1; e <= 30; e++) {
+        const m2 = new Uint8Array(m.length);
+        for (let y = 1; y < bh - 1; y++) for (let x = 1; x < bw - 1; x++) { const p = y * bw + x; m2[p] = m[p] && m[p - 1] && m[p + 1] && m[p - bw] && m[p + bw] ? 1 : 0; }
+        m = m2;
+        const seen = new Uint8Array(m.length), partes = [];
+        for (let st = 0; st < m.length; st++) {
+          if (!m[st] || seen[st]) continue;
+          let area = 0, x0 = bw, y0 = bh, x1 = 0, y1 = 0;
+          const pilha = [st]; seen[st] = 1;
+          while (pilha.length) {
+            const p = pilha.pop(), x = p % bw, y = (p - x) / bw; area++;
+            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+            for (const q of [x > 0 ? p - 1 : -1, x < bw - 1 ? p + 1 : -1, y > 0 ? p - bw : -1, y < bh - 1 ? p + bw : -1]) if (q >= 0 && m[q] && !seen[q]) { seen[q] = 1; pilha.push(q); }
+          }
+          partes.push({ area, x0, y0, x1, y1 });
+        }
+        const total = partes.reduce((t, q) => t + q.area, 0);
+        const grandes = partes.filter(q => q.area >= 0.15 * total && q.area >= 0.004 * sw * sh);
+        if (grandes.length >= 2) {
+          const novos = grandes.map(q => {
+            const x0 = Math.max(0, b.x0 + q.x0 - e), y0 = Math.max(0, b.y0 + q.y0 - e), x1 = Math.min(sw - 1, b.x0 + q.x1 + e), y1 = Math.min(sh - 1, b.y0 + q.y1 + e);
+            return { id: b.id, area: q.area, x0, y0, x1, y1, frac: q.area / (sw * sh), fill: Math.min(1, (q.area + 2 * e * (q.x1 - q.x0 + q.y1 - q.y0)) / ((x1 - x0 + 1) * (y1 - y0 + 1))) };
+          });
+          // dois papéis de verdade ficam um ao lado do outro; pedaços que se sobrepõem são o mesmo
+          // papel cortado por uma mão ou uma dobra: o bloco fica inteiro
+          const ar = q => (q.x1 - q.x0) * (q.y1 - q.y0);
+          const sobre = (p, q) => Math.max(0, Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0)) * Math.max(0, Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0));
+          const sobrepoe = novos.some((p, i) => novos.some((q, j) => j > i && sobre(p, q) > 0.1 * Math.min(ar(p), ar(q))));
+          return sobrepoe ? [b] : novos;
+        }
+        if (!total) break;
+      }
+      return [b];
+    };
+    kept = kept.flatMap(separar);
 
     // Letters on a grid (same small size, so the cells line up with the blobs)
     const { count, gw, gh, CELL } = letterGrid(small, SMALL);
     const toCells = b => ({ x0: Math.floor(b.x0 / CELL), y0: Math.floor(b.y0 / CELL), x1: Math.floor(b.x1 / CELL), y1: Math.floor(b.y1 / CELL) });
     const letters = c => { let n = 0; for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) n += count[y * gw + x] || 0; return n; };
     const rows = c => { let n = 0; for (let y = c.y0; y <= c.y1; y++) { let m = 0; for (let x = c.x0; x <= c.x1; x++) if ((count[y * gw + x] || 0) >= 2) m++; if (m >= 2) n++; } return n; };
-    const hasText = c => letters(c) >= 15 && rows(c) >= 3;   // a few lines of text, not a stripe of light or a loose corner
+    const cols = c => { let n = 0; for (let x = c.x0; x <= c.x1; x++) { let m = 0; for (let y = c.y0; y <= c.y1; y++) if ((count[y * gw + x] || 0) >= 2) m++; if (m >= 2) n++; } return n; };
+    // a few lines of text (across or, on a paper lying on its side, down), not a stripe of light or a loose corner
+    const hasText = c => letters(c) >= 15 && (rows(c) >= 3 || cols(c) >= 3);
     const trim = c => {
       let x0 = gw, y0 = gh, x1 = -1, y1 = -1;
       for (let y = c.y0; y <= c.y1; y++) for (let x = c.x0; x <= c.x1; x++) if ((count[y * gw + x] || 0) >= 2) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
@@ -372,8 +432,8 @@
       const c = toCells(b);
       if (!hasText(c)) return;
       const parts = (b.fill >= 0.85 ? [] : cut(c, 0)).filter(hasText);   // one neat paper is never cut
-      if (parts.length <= 1) { boxes.push({ x0: b.x0, y0: b.y0, x1: b.x1 + 1, y1: b.y1 + 1 }); return; }
-      parts.forEach(t => boxes.push({ x0: t.x0 * CELL - CELL, y0: t.y0 * CELL - CELL, x1: (t.x1 + 2) * CELL, y1: (t.y1 + 2) * CELL }));
+      if (parts.length <= 1) { boxes.push({ x0: b.x0, y0: b.y0, x1: b.x1 + 1, y1: b.y1 + 1, de: b.id }); return; }
+      parts.forEach(t => boxes.push({ x0: t.x0 * CELL - CELL, y0: t.y0 * CELL - CELL, x1: (t.x1 + 2) * CELL, y1: (t.y1 + 2) * CELL, de: b.id }));
     });
     // Dark bands printed across a bill split its paper into stacked strips: glue back
     // pieces that nearly touch and line up on both sides
@@ -381,11 +441,21 @@
     for (let i = 0; i < boxes.length; i++) for (let j = boxes.length - 1; j > i; j--) {
       const a = boxes[i], b = boxes[j];
       const W = Math.max(a.x1 - a.x0, b.x1 - b.x0), H = Math.max(a.y1 - a.y0, b.y1 - b.y0);
-      const stacked = Math.max(a.y0 - b.y1, b.y0 - a.y1) <= near && Math.abs(a.x0 - b.x0) <= 0.1 * W && Math.abs(a.x1 - b.x1) <= 0.1 * W;
+      // pedaços do mesmo bloco claro (o corte pelas letras partiu o cupom comprido no espaço antes do
+      // QR code) colam de mais longe
+      const perto = a.de !== undefined && a.de === b.de ? 0.05 * Math.max(sw, sh) : near;
+      const stacked = Math.max(a.y0 - b.y1, b.y0 - a.y1) <= perto && Math.abs(a.x0 - b.x0) <= 0.1 * W && Math.abs(a.x1 - b.x1) <= 0.1 * W;
       const beside = Math.max(a.x0 - b.x1, b.x0 - a.x1) <= near && Math.abs(a.y0 - b.y0) <= 0.1 * H && Math.abs(a.y1 - b.y1) <= 0.1 * H;
       if (!stacked && !beside) continue;
       boxes[i] = { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
       boxes.splice(j, 1); j = boxes.length;   // the glued box may now touch another piece
+    }
+    // Uma caixa quase toda dentro de outra é o mesmo papel achado duas vezes (pelo bloco claro e
+    // pelo corte das letras): fica a maior
+    {
+      const areaB = b => (b.x1 - b.x0) * (b.y1 - b.y0);
+      const comum = (a, b) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+      for (let i = boxes.length - 1; i >= 0; i--) if (boxes.some((b, j) => j !== i && (b.de === boxes[i].de || areaB(b) <= 2.5 * areaB(boxes[i])) && areaB(b) >= areaB(boxes[i]) && comum(boxes[i], b) >= 0.7 * areaB(boxes[i]))) boxes.splice(i, 1);
     }
     const pad = 0.015 * Math.max(sw, sh);
     const out = boxes.map(b => {
@@ -748,7 +818,11 @@
       tipo = tipoPedido === 'auto' ? detectDocType(readings, grandes) : tipoPedido;
       const def = L.tipo(tipo), wantsValue = def.vitais.includes('Valor');
       if (!wantsValue && (readings.length >= 2 || (tipoPedido !== 'auto' && !def.itens))) break;
-      if (wantsValue && decidirValor(readings, tipo, grandes).valor !== null) break;
+      // valor fechado: só para depois de uma leitura em preto e branco. Duas leituras da mesma imagem
+      // em tamanhos diferentes erram juntas (o "0" de miolo cheio lido "8": 34,08 num canhoto de
+      // 34,00); a em preto e branco, quando lê outro dígito, deixa o valor em dúvida (decidirValor)
+      if (wantsValue && decidirValor(readings, tipo, grandes).valor !== null
+        && (readings.some(r => r.bin) || !passes.slice(next).some(p => p[1]))) break;
       if (next >= passes.length) break;
       if (readings.length >= 2 && Date.now() - started > 20000) break;   // não prender a pessoa
       aviso(label + 'Conferindo com outra leitura...');
