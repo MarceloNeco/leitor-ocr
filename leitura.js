@@ -17,7 +17,7 @@
 (function () {
   'use strict';
   const L = window.Leitura = window.Leitura || {};
-  L.versao = '1.12.1';
+  L.versao = '1.13.0';
   // O app que está usando o motor (ex.: 'hypernutry'), para L.ondeLer; o Leitor OCR aceita tudo
   L.app = L.app || null;
 
@@ -52,7 +52,7 @@
     const t = L.catalogo.tipo(id) || L.catalogo.tipo('livre');
     const leitor = L.leitores[t.leitor];
     return Object.assign({ vitais: [] }, leitor || {}, {
-      id: t.id, nome: t.pt, familia: t.familia, leitor: leitor ? t.leitor : null, privacidade: t.privacidade || 'comum'
+      id: t.id, nome: t.pt, familia: t.familia, leitor: leitor ? t.leitor : null, privacidade: t.privacidade || 'comum', semIA: !!t.semIA
     });
   };
 

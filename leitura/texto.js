@@ -147,6 +147,10 @@
     // digits starting with 8): its 2nd digit says which of them it is
     const arrecadacao = L.leitores.arrecadacao && readings.map(r => L.leitores.arrecadacao.achar(r.text)).find(Boolean);
     if (arrecadacao && L.leitores.arrecadacao.tipoDe(arrecadacao)) return L.leitores.arrecadacao.tipoDe(arrecadacao);
+    // A workshop's service order talks about services and totals like a
+    // restaurant bill, but has its sections, totals of services and parts
+    // and dates in and out: with its own signs it comes first (leitores/os-oficina.js)
+    if (L.leitores['os-oficina'] && L.leitores['os-oficina'].reconhece(text)) return 'os_oficina';
     // A card bill or a condo's financial report talks about credit and debit
     // all the time, like a card slip, but no slip says "pagamento mínimo" or
     // "posição financeira": with 6 or more of their own signs, they come
@@ -378,6 +382,8 @@
     if (prod) Object.assign(r, { produtos: prod.produtos, produtosConferido: prod.conferido, produtosDiferenca: prod.diferenca !== null ? prod.diferenca / 100 : undefined });
     // the parts of the amount (boleto), in the same format as every transaction
     if (codigo && codigo.itens) r.itens = codigo.itens.map(i => L.leitores.extrato.contrato(i, { tipo, conferido: true, papel: '' }));
+    // the reader finishes the result its own way (the two parts of a workshop's OS, its products, a better-photo request)
+    if (codigo && codigo.ajustar) codigo.ajustar(r);
     return r;
   }
 
