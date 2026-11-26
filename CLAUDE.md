@@ -118,3 +118,24 @@ Resumo do que nunca pode ser esquecido (o detalhe está na diretriz):
 - A Definition of done da plataforma passa a ter 12 pontos: manual e orientações, AssistONE, Novidades da versão, termos, comunicações e e-mails, RootifyONE, ArchONE, EaglePlanONE (roadmap), retrocompatibilidade, segurança e LGPD, qualidade verificável e registro. Vai nascer uma teia de integrações entre os apps, o RootifyONE, o ArchONE e o EaglePlanONE (eventos e comandos com aprovação). Quando a diretriz nova sair (conversa de diretrizes da SolverONE), siga-a.
 - Cada ponto vale quando for aplicável ao estágio atual deste app (hoje: site aberto sem login, sem banco, só no GitHub Pages). NÃO criar login, não migrar para banco e não criar integração por causa deste aviso. O que não se aplica hoje: dizer "não aplicável hoje" e o motivo em uma linha. Quando o app ganhar login, banco ou integração nova, ele já nasce cumprindo os pontos que passaram a valer.
 - Até a diretriz nova: em cada entrega, dizer no resumo o que o RootifyONE, o ArchONE ou o EaglePlanONE precisariam saber (integração nova ou removida, recurso novo, item do roadmap concluído); nada de integração nova sem a regra zero.
+
+## AssistONE: quem cuida (decisão do dono, 26/Nov/2026)
+
+- O **AssistONE** (personagem, balão, tour, busca, passo a passo e "Perguntar ao assistente") é desenvolvido, melhorado e
+  controlado pela **conta nova do Claude, conversa ASSISTONE**. Registrado na `01-PONTE-GERAL`
+  (Drive "0-Orchestration": índice, "Quem escreve onde" e "Pedidos e conflitos").
+- O **master** mora no repositório privado **`MarceloNeco/assist-one`**: `balao/assistone.js` (o balão), `balao/visual/` (o
+  visual novo: personagem, menu, conversa, cores, fontes), `servidor/` (cópia sem segredos do leitor da fila e do Hermes da
+  VPS) e os testes. O **visual novo**, aprovado no Claude Design em 26/Nov/2026, é o padrão para todos os apps; a
+  especificação está em `assist-one/docs/desenho-pacote/ESPECIFICACAO.md`.
+- São da conversa ASSISTONE, além do master: as cópias nos apps (`assistone.js` e a pasta `assistone/`, sempre idênticas ao
+  master; **nunca editar a cópia**); no MoneyTRIO, o objeto `AssistOne` do `index.html` e `modulos/assist-hermes.js`; no
+  `solverone-app`, a fila e as funções `assist_*` e `admin_assist_*` (SQL 2026-11-26b a 26g) e o medidor de uso de IA
+  (`ia_consumo` / `admin_ia_uso`); no RootifyONE, a tela Atendimento → AssistONE (`rootify-assistone-adm.js`); na VPS, o
+  leitor da fila e o Hermes (com a conversa HOSTINGER).
+- **Qualquer sessão desta conta que precise mexer num desses itens pede antes na Ponte**, em "Pedidos e conflitos", para a
+  ASSISTONE, e **não mexe sozinha**.
+- Continua igual: os interruptores e as regras por app, plano, conta e família ficam no **RootifyONE**, e o AssistONE obedece a
+  eles; a **diretriz master** continua com a conversa de diretrizes (conta antiga).
+- **Toda IA da plataforma mede tokens e custo no porteiro `solverone-ia`** (decisão D-A17, 26/Nov/2026); nenhum app fala
+  direto com provedor de IA.
